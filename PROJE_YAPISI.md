@@ -90,9 +90,9 @@ Panel bota doğrudan bağlanmaz: bot veriyi panele **iter**, panel komutları **
 | `balance.py` (118) bakiye/K-Z · `risk.py` (188) yoğunlaşma, korelasyon · `discipline.py` (155) tilt koruması · `journal.py` (106) işlem günlüğü · `shadow.py` (113) gölge portföy · `benchmark.py` (225) kıyas · `dca.py` (106) birikim planı · `pf_alarm.py` (94) portföy alarmı · `assets.py` (70) altın/döviz · `exits.py` (206) çıkış/tepe analizi · `model_score.py` (55) model karnesi |
 
 **Diğer**
-| `watchlist.py` (187) takip listesi · `opportunities.py` (335) "şu an ne alınır" taraması · `macro.py` (477) FRED/BLS/CFTC, rejim, takvim · `news.py` (239) RSS haberler · `risk_news.py` (152) riskli başlık uyarısı · `freshness.py` (158) veri güncelliği · `universe.py` (91) seçim listeleri · `costs.py` (61) harcama kaydı · `charts.py` (105) PNG grafik · `web_sync.py` (677) panel köprüsü |
+| `features.py` panel dönemi özellikleri: plan listesi, 90 günlük portföy geçmişi, hedef dağılım, şirket takvimi (bilanço/temettü), KAP bildirimleri, takip kuralları, haftalık ders, sanal işlemler · `watchlist.py` (187) takip listesi · `opportunities.py` (335) "şu an ne alınır" taraması · `macro.py` (477) FRED/BLS/CFTC, rejim, takvim · `news.py` (239) RSS haberler · `risk_news.py` (152) riskli başlık uyarısı · `freshness.py` (158) veri güncelliği · `universe.py` (91) seçim listeleri · `costs.py` (61) harcama kaydı · `charts.py` (105) PNG grafik · `web_sync.py` (677) panel köprüsü |
 
-**Testler:** `test_features.py`, `test_bist.py`, `test_startup.py` (64 test). Çalıştırma: `.venv\Scripts\python -m unittest test_features test_bist test_startup`
+**Testler:** `test_features.py`, `test_bist.py`, `test_startup.py` (68 test). Çalıştırma: `.venv\Scripts\python -m unittest test_features test_bist test_startup`
 
 ### 3.2 Veri dosyaları (`data\`)
 
@@ -108,6 +108,9 @@ Panel bota doğrudan bağlanmaz: bot veriyi panele **iter**, panel komutları **
 | `macro_cache.json`, `universe.json`, `takip_durum.json` | önbellekler |
 | `bot.log*` | loglar (**GitHub'a gitmez**: Telegram token'ı içeren adresler olabilir) |
 | `positions_yedek_20260926.json` | portföy temizlenmeden önceki yedek |
+| `pf_history.json` | günlük portföy değeri + 90 günlük geriye dönük seri |
+| `sirket_takvimi.json`, `kap_seen.json` | bilanço/temettü takvimi, görülen KAP bildirimleri |
+| `sanal.json` | sanal (kağıt) işlemler; gerçek portföyde sayılmaz |
 
 ### 3.3 Zamanlanmış işler (bot açıkken otomatik)
 
@@ -115,7 +118,11 @@ Panel bota doğrudan bağlanmaz: bot veriyi panele **iter**, panel komutları **
 |---|---|
 | Sürekli (websocket) | Kripto kapanış alarmları |
 | 15 dk | Plan takibi (kripto), BIST saatlik kontrol, portföy alarmı, panel "extras" |
-| 30 dk | Riskli haber uyarısı; **takip listesi sorusu** ("bakmak ister misin?", sessiz) |
+| 15 dk | KAP: portföydeki BIST hisseleri için yeni bildirim |
+| 30 dk | Riskli haber uyarısı; **takip listesi sorusu** ("bakmak ister misin?", sessiz); takip kuralları (desteğe yakın, RSI, hacim) |
+| Her gün 08:45 ve 20:00 | Şirket takvimi (bilanço, temettü) hatırlatması |
+| Her gün 19:15 | Hedef dağılımdan sapma hatırlatması |
+| Pazar 20:10 | Haftanın dersi |
 | 4 saatte bir | Kripto çıkış/tepe analizi |
 | Her gün 09:30 | Evren güncelleme · 09:45 kurumsal işlemler (temettü/bölünme) · 10:15 birikim hatırlatma |
 | Her gün 16:05 | Okul raporu (okul modu açıksa) |
@@ -131,7 +138,7 @@ Kripto: `/analiz /haber /vadeli /duygu /new_alert /backtest`
 BIST: `/incele /bist /guc /temel /gunsonu /temettu` · ABD: `/abd /temel AAPL`
 Portföy: `/grafik /risk /kiyas /palarm /birikim /hesap /pozisyonlar /sat /duzelt /kayitsil`
 Alarm: `/view_alerts /cancel_alert` · Takip/karne: `/rapor /haftalik /golge /karne /gunluk /disiplin`
-Makro: `/makro /takvim` · Sistem: `/model /maliyet /durum /okul /pozisyon /sil /sifirla /set_config /get_logs /start`
+Yeni: `/hedef /sanal /ders /kap /olaylar /takip kural` · Makro: `/makro /takvim` · Sistem: `/model /maliyet /durum /okul /pozisyon /sil /sifirla /set_config /get_logs /start`
 
 Düz yazı da anlaşılır: "BTC ne durumda", "portföy", "bakiye", "şu an alabileceğim bir şey var mı", "takip listem", "THYAO 300 üstünde kapanırsa haber ver", "astordan 4 tane 260 TL'den aldım". Ekran görüntüsü atılırsa portföy okunur (Kimi K3).
 
@@ -163,13 +170,14 @@ Düz yazı da anlaşılır: "BTC ne durumda", "portföy", "bakiye", "şu an alab
 | Sayfa | Adres | Veri |
 |---|---|---|
 | Genel bakış | `/app` | overview, extras, macro, candles |
-| Portföy | `/app/portfoy` | extras (portföy, kıyas, kur) |
-| Takip listem | `/app/takip` | extras.takip_listesi |
-| Pozisyonlar | `/app/pozisyonlar` | positions (+ "Sattım") |
-| Grafik | `/app/grafik?kod=&piyasa=&tf=` | chart |
+| Portföy | `/app/portfoy` | extras (portföy, geçmiş grafiği, hedef dağılım, kıyas, kur) |
+| Takip listem | `/app/takip` | extras.takip_listesi, takip kuralları, seçili kodlar için yapay zekâ analizi |
+| Pozisyonlar | `/app/pozisyonlar` | positions (+ "Sattım"), Sanal sekmesi |
+| Grafik | `/app/grafik?kod=&piyasa=&tf=` | chart (+ alış/plan çizgileri, destek/direnç bölgeleri, sinyal işaretleri, "Analiz et") |
+| Planlar & fırsatlar | `/app/planlar` | extras.planlar, firsat ("Şimdi tara") |
 | Sinyaller | `/app/sinyaller` | signals, decisions (+ Aldım/Pas) |
 | Alarmlar | `/app/alarmlar` | alerts (+ kur/sil) |
-| Disiplin | `/app/disiplin` | extras, report |
+| Disiplin | `/app/disiplin` | extras, report, haftanın dersi |
 | Rapor & karne, Backtest, Makro, Vadeli, Maliyet, Ayarlar | `/app/rapor` ... | report, backtest, macro, derivatives, usage, settings |
 | Giriş | `/giris` | auth |
 | Tanıtım sitesi | `/`, `/ozellikler`, `/nasil-calisir`, `/kurallar`, `/sss`, `/iletisim` | — |
@@ -196,7 +204,9 @@ Düz yazı da anlaşılır: "BTC ne durumda", "portföy", "bakiye", "şu an alab
 | Testler | bölüm 3.1 |
 | Arşiv | GitHub private depolar (bölüm 2). `.env`, loglar, `.venv`, `node_modules`, `build` gitmez |
 
-Sınırlar: panel yalnız bu bilgisayarda (`localhost`) açılır; bilgisayar kapalıyken bot ve panel çalışmaz. BIST verisi ~15 dk gecikmeli (Yahoo).
+Telefon: Tailscale kurulu. `kriptografikbotu\mobil-panel.ps1` paneli yalnız Tailscale ağına HTTPS ile açar; telefonda adres + `/app`, sonra "Ana ekrana ekle" (PWA).
+
+Sınırlar: bilgisayar kapalıyken bot ve panel çalışmaz. BIST verisi ~15 dk gecikmeli (Yahoo).
 
 ---
 
@@ -222,10 +232,10 @@ Sınırlar: panel yalnız bu bilgisayarda (`localhost`) açılır; bilgisayar ka
 
 ## 7. Plan yaparken bakılacak açık konular
 
-- **Mobil erişim:** panel yalnız bilgisayarda. Seçenekler: Tailscale + "Ana ekrana ekle" (önerilen), sonra istersen Capacitor ile APK.
-- **Panelden yapılamayanlar** (yalnız Telegram): fırsat taraması (`/firsat`), plan yönetimi (`/plan`), temel analiz (`/temel`), takip listesine ekleme, yapay zekâ analizi başlatma. İstenirse API'ye eklenebilir.
+- **APK:** istenirse Capacitor ile PWA'dan paketlenebilir.
+- **Panelden yapılamayanlar** (yalnız Telegram): temel analiz (`/temel`), takip listesine ekleme/çıkarma.
+- **Vergi hesabı:** bilerek eklenmedi.
 - **ABD bütçesi girilmedi:** `/abd butce 1000` (yoksa ABD ilk kademe ve günlük zarar sınırı hesaplanamaz).
 - **Alış tarihi olmayan pozisyonlar:** kıyas ve dolar/enflasyon bazlı getiri için `/duzelt ID tarih=...`.
-- **Gölge portföy grafiği:** panelde zaman serisi yok (bot yalnız toplam gönderiyor); istenirse bot günlük seri kaydedebilir.
 - **Tanıtım sitesi** henüz eski tasarımda; yalnız renkleri yeni.
 - **Logo:** birkaç yazılı logo (AYGAZ, CVX) daireye kırpılınca kenarları kesiliyor; istenirse dosyaları değiştirilebilir.

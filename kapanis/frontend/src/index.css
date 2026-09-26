@@ -1,0 +1,184 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Kapanış paleti, koyu (varsayılan). Kanal biçimi: Tailwind opaklık için "R G B". */
+    --c-ink: 5 6 8;          /* bg #050608 */
+    --c-side: 10 12 16;      /* #0a0c10 kenar çubuğu */
+    --c-surface: 15 18 23;   /* surface #0f1217 */
+    --c-raised: 21 26 34;    /* surface-hover #151a22 */
+    --c-hairline: 37 44 56;  /* line #252c38 */
+    --c-strong: 91 101 119;  /* line-strong #5b6577 */
+    --c-grid: 28 34 44;      /* grid #1c222c */
+    --c-t1: 245 247 250;     /* text #f5f7fa */
+    --c-t2: 170 180 195;     /* text-2 #aab4c3 */
+    --c-t3: 124 135 151;     /* text-3 #7c8797 */
+    --c-up: 31 214 122;      /* #1fd67a */
+    --c-down: 255 77 94;     /* #ff4d5e */
+    --c-wait: 255 176 32;    /* warn #ffb020 */
+    --c-info: 77 163 255;    /* #4da3ff */
+    --c-brand: 45 212 191;   /* accent #2dd4bf */
+    --c-on-brand: 4 32 28;   /* on-accent #04201c */
+    --c-violet: 192 132 252; /* sma-200 #c084fc */
+    --c-rsi: 255 159 67;     /* rsi #ff9f43 */
+    --c-shine: 255 255 255;
+
+    --background: 220 23% 3%;
+    --foreground: 216 33% 97%;
+    --card: 217 21% 7%;
+    --card-foreground: 216 33% 97%;
+    --popover: 217 21% 7%;
+    --popover-foreground: 216 33% 97%;
+    --primary: 172 66% 50%;
+    --primary-foreground: 220 23% 3%;
+    --secondary: 217 23% 11%;
+    --secondary-foreground: 216 33% 97%;
+    --muted: 217 23% 11%;
+    --muted-foreground: 216 15% 72%;
+    --accent: 217 23% 13%;
+    --accent-foreground: 216 33% 97%;
+    --destructive: 354 100% 65%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 218 20% 18%;
+    --input: 218 20% 18%;
+    --ring: 172 66% 50%;
+    --radius: 0.75rem;
+  }
+  .light {
+    --c-ink: 246 247 249;
+    --c-side: 255 255 255;
+    --c-surface: 255 255 255;
+    --c-raised: 241 243 246;
+    --c-hairline: 226 229 234;
+    --c-strong: 131 139 152;
+    --c-grid: 236 238 242;
+    --c-t1: 11 13 18;
+    --c-t2: 74 82 97;
+    --c-t3: 99 107 122;
+    --c-up: 15 157 88;
+    --c-down: 229 56 59;
+    --c-wait: 154 91 0;
+    --c-info: 29 111 209;
+    --c-brand: 11 124 112;
+    --c-on-brand: 255 255 255;
+    --c-violet: 139 63 217;
+    --c-rsi: 201 106 16;
+    --c-shine: 0 0 0;
+
+    --background: 220 20% 97%;
+    --foreground: 224 23% 6%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 23% 6%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 23% 6%;
+    --primary: 175 84% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 95%;
+    --secondary-foreground: 224 23% 6%;
+    --muted: 220 20% 95%;
+    --muted-foreground: 217 14% 32%;
+    --accent: 220 20% 93%;
+    --accent-foreground: 224 23% 6%;
+    --destructive: 359 77% 56%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 88%;
+    --ring: 175 84% 32%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    background: rgb(var(--c-ink));
+    color-scheme: dark;
+  }
+  html.light {
+    color-scheme: light;
+  }
+  body {
+    margin: 0;
+    background: rgb(var(--c-ink));
+    color: rgb(var(--c-t1));
+    font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, Inter, "Segoe UI", system-ui, sans-serif;
+    font-size: 1.0625rem; /* 17px gövde metni */
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection {
+    background: rgb(var(--c-brand) / 0.35);
+    color: rgb(var(--c-t1));
+  }
+}
+
+@layer utilities {
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    letter-spacing: -0.01em;
+  }
+  /* Kartın üst kenarında ince ışık çizgisi */
+  .card-shine {
+    position: relative;
+  }
+  .card-shine::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 1px;
+    border-radius: inherit;
+    background: rgb(var(--c-shine) / 0.06);
+    pointer-events: none;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--c-info));
+    outline-offset: 2px;
+  }
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .grain {
+    background-image: radial-gradient(hsla(0, 0%, 100%, 0.02) 1px, transparent 1px);
+    background-size: 3px 3px;
+  }
+}
+
+@layer base {
+  [data-debug-wrapper="true"] {
+    display: contents !important;
+  }
+}
+
+/* Ince kaydırma çubuğu */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--c-ink));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-hairline));
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-t3));
+}
+
+/* Mobilde bildirimler alt menünün üstünde çıksın */
+@media (max-width: 1023px) {
+  [data-sonner-toaster][data-y-position="bottom"] {
+    bottom: 80px !important;
+  }
+}

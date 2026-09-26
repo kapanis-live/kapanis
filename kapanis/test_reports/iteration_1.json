@@ -1,0 +1,56 @@
+{
+  "summary": "First test iteration for Kapanış Turkish trading-signal platform. Backend: 42/43 pytest tests pass (only brute-force lock fails due to rotating ingress client IPs). Frontend: all 6 public routes load, login/logout work, all 10 panel pages render, live R/R, goalpost stop rules, macro, cost, signals detail all work.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "/api/auth/login",
+        "issue": "Brute-force lockout ineffective behind ingress: identifier uses request.client.host which rotates between multiple proxy IPs (observed 10.208.147.136 and 10.208.147.137 in same 6-request burst), so per-IP fail counter never reaches MAX_FAILED=5. 6 wrong-password calls returned 6x 401 instead of the expected 5x401 + 429. Fix: derive real client IP from X-Forwarded-For / X-Real-IP header (fallback to request.client.host).",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Overview / Macro",
+        "issues": ["Timestamps read 'Güncellendi 105 gün önce' because mock_data.NOW is pinned to 2026-06-12 while the container clock is on 2026-09-25. Cosmetic; consider using dynamic 'now' or relative offsets from live time so seeded data doesn't look stale."]
+      },
+      {
+        "screen": "Multiple panel pages",
+        "issues": ["Recharts warnings 'The width(-1) and height(-1) of chart should be greater than 0' on Signals/Backtest/Cost — chart container renders before layout settles. Non-blocking but should set explicit min-height on ResponsiveContainer parent."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix brute-force lockout to use real client IP (parse X-Forwarded-For) so 5-fails/IP → 15-min lock actually triggers behind the k8s ingress.",
+    "(Optional/cosmetic) Refresh mock_data timestamps relative to datetime.now(timezone.utc) instead of a hard-coded 2026-06-12.",
+    "(Optional) Give Recharts ResponsiveContainer a min-height to remove width/height=-1 console warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py get_current_user: catches ExpiredSignatureError before InvalidTokenError — good.",
+    "seed_admin idempotent and updates password hash if changed — good.",
+    "_queue_command inserts then pops _id from local dict, good; MongoDB _id is excluded from all responses via projection.",
+    "Goalpost logic in PATCH /api/positions/{id}/stop correctly returns 409 for lower stop on long and higher stop on short — verified.",
+    "CORS uses explicit origin + allow_credentials — correct for httpOnly cookies.",
+    "Cookies set with secure=True samesite='none' — required for cross-site https preview.",
+    "BUG: request.client.host is not trustworthy behind ingress — rate-limit key must use forwarded IP.",
+    "Login endpoint does not sleep/hash-check on unknown emails uniformly — minor timing side-channel, low priority."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "97.7% (42/43)", "frontend": "100% of tested flows"},
+  "test_credentials": "admin@kapanis.io / Kapanis2026 ; X-Bot-Key: dev-bot-key-2026-secret-change-me",
+  "seed_data_creation": "None manually created. Backend auto-seeds admin + mock collections on startup. Tests created TEST_-prefixed alerts and queued commands (non-mutating to seed data).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend brute-force lock test is the only failing test; if main agent fixes IP resolution, re-run pytest /app/backend/tests/backend_test.py::TestAuth::test_brute_force_lock. All other 42 backend tests and all frontend flows currently pass on preview URL https://decision-panel-2.preview.emergentagent.com.",
+  "rca of the issue": "The FastAPI backend sits behind the Kubernetes ingress. `request.client.host` reports the ingress proxy's pod IP, not the actual client. The cluster load-balancer distributes even sequential requests across multiple ingress replicas (observed 10.208.147.136 and 10.208.147.137 in the same burst), so the per-IP counter in the `login_attempts` collection is split into different documents. Consequently no single identifier reaches 5 failures and the 429 lock never triggers. Reproduction: `for i in {1..6}; do curl -s -o /dev/null -w '%{http_code}\\n' -X POST $URL/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"x@x.io\",\"password\":\"x\"}'; done` returns six 401s. Mitigation: use `request.headers.get('x-forwarded-for', request.client.host).split(',')[0].strip()` as the IP source (add trust-proxy config as appropriate)."
+}

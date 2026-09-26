@@ -84,6 +84,36 @@
       "tetikler": [],
       "olusturulma": "2026-09-26T17:04:37+03:00",
       "iptal_nedeni": "kullanici"
+    },
+    {
+      "id": 5,
+      "tetik": 500.0,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 480.0,
+      "hedef": 560.0,
+      "hacim_sart": true,
+      "durum": "iptal",
+      "son_tetik_zamani": null,
+      "tetikler": [],
+      "olusturulma": "2026-09-26T18:47:10+03:00",
+      "iptal_nedeni": "kullanici"
+    },
+    {
+      "id": 6,
+      "tetik": 120000.0,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 115000.0,
+      "hedef": 135000.0,
+      "hacim_sart": true,
+      "durum": "iptal",
+      "son_tetik_zamani": null,
+      "tetikler": [],
+      "olusturulma": "2026-09-26T18:52:48+03:00",
+      "iptal_nedeni": "kullanici"
     }
   ],
   "ETH/USDT": [

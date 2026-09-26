@@ -35,3 +35,4 @@
 {"utc": "2026-09-26T13:05:24+00:00", "tarife": "offpeak", "hit": 16640, "miss": 20067, "out": 1608, "usd": 0.004025, "etiket": "[TAKİP] Kullanıcı takip listesinden 6 ko", "model": "deepseek"}
 {"utc": "2026-09-26T14:17:12+00:00", "tarife": "offpeak", "hit": 0, "miss": 54646, "out": 1120, "usd": 0.0, "etiket": "[OTOMATİK UYARI] HYPE: Fiyat (92.29) pla", "model": "kimi"}
 {"utc": "2026-09-26T14:32:57+00:00", "tarife": "offpeak", "hit": 16640, "miss": 22864, "out": 2486, "usd": 0.004971, "etiket": "AKE analiz et.\n(Not: AKE için Binance'te", "model": "deepseek"}
+{"utc": "2026-09-26T15:02:42+00:00", "tarife": "offpeak", "hit": 0, "miss": 56628, "out": 1272, "usd": 0.0, "etiket": "[OTOMATİK UYARI] HYPE: 15dk mum 92.4 ile", "model": "kimi"}

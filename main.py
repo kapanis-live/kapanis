@@ -48,6 +48,7 @@ import us
 import us_fund
 import us_signals
 import watchlist
+import features
 import config
 import conversation_store as store
 import llm
@@ -80,6 +81,7 @@ HELP = """📋 KOMUTLAR (menü: mesaj kutusundaki / tuşu)
 /firsat — "şu an alabileceğim tetiklenen hisse ya da coin var mı?" (düz yazıyla da sorabilirsin)
 /takip — takip listem (16 coin, 35 BIST, 53 ABD). 30 dk'da bir sessizce sorar; tek/çoklu seç → 📊 durum (kod) / 🧠 analiz
   /takip THYAO BTC — direkt durum · /takip ekle X · /takip cikar X · /takip liste · /takip kapat|ac · /takip aralik 60
+  /takip kural destek=1.5 rsi_alti=30 rsi_ustu=75 hacim=2 — son kapanışa göre koşullu uyarılar
 /portfoy — portföy: adet, değer, günlük/toplam %, TUT/SAT (➕ Ekle butonu, çoklu seçim)
 /portfoy detay — satış/tepe analizi · /portfoy analiz — yapay zekâ yorumu
 /portföy astordan 4 tane var 260 tl iken almıştım, europower 5 adet 70 tl — doğal yazıyla ekle (onay sorar)
@@ -105,6 +107,7 @@ HELP = """📋 KOMUTLAR (menü: mesaj kutusundaki / tuşu)
 /bist kapat · /bist ac — otomatik tarama (18:35)
 /guc — haftalık güç sıralaması + sektör rotasyonu (cuma 19:00)
 /gunsonu — gün sonu raporu (18:45) · /temettu [THYAO] — temettü ve bedelsiz
+/kap — portföyündeki hisselerin KAP bildirimleri · /olaylar — bilanço ve temettü takvimi
 
 🇺🇸 ABD HİSSELERİ (orta/uzun vade · Tiingo/Yahoo fiyat + SEC bilanço + analist tahminleri)
 /abd — S&P 500/Nasdaq kapısı, VIX, 10Y faiz, dolar endeksi, bütçe · /abd butce 1000 (USD)
@@ -116,6 +119,8 @@ HELP = """📋 KOMUTLAR (menü: mesaj kutusundaki / tuşu)
 /grafik — dağılım + 90 gün · /risk — yoğunlaşma, korelasyon · /kiyas — BIST 100/BTC/altın/mevduat kıyası (/kiyas faiz 45)
 /palarm kripto %-10 · /palarm bist 20000 — portföy alarmı · /palarm sil ID
 /birikim ekle BTC 50 gun=5 — aylık düzenli alım · /birikim · /birikim sil ID
+/hedef BIST 50 KRIPTO 20 ABD 20 NAKIT 10 — hedef dağılım (akşam sapma uyarısı)
+/sanal al THYAO 290 5000 · /sanal sat ID [FIYAT] — gerçek para olmadan işlem takibi
 /hesap THYAO 320 stop=300 hedef=360 — kaç adet, risk, R/R
 /pozisyonlar · /sat ID FIYAT [adet=N | yuzde=50]
 /duzelt ID giris=X miktar=Y adet=N stop=X hedef=Y tarih=2025-03-01
@@ -131,6 +136,7 @@ Düz yazı: "THYAO 300 üstünde kapanırsa haber ver", "kripto portföyüm %10 
 /rapor [gün] — performans · /haftalik — haftalık özet (pazar 20:00)
 /golge — her ŞİMDİ AL'ı alsaydın · /karne — kural + model karnesi
 /gunluk — neden aldım/sattım · /disiplin — tilt koruması (/disiplin sifirla)
+/ders — haftanın kural ve işlem dersi (pazar 20:10 otomatik)
 
 🌍 MAKRO
 /makro — ABD makro pano · /takvim — ABD + Türkiye veri takvimi
@@ -153,6 +159,11 @@ BOT_MENU = [
     ("plan", "Seçtiğin coin/hisselerin planı (/plan ekle BTC THYAO)"),
     ("firsat", "Şu an alabileceğim tetiklenen coin/hisse var mı?"),
     ("takip", "Takip listem: kripto/BIST/ABD, tek/çoklu seç, bak"),
+    ("hedef", "Hedef dağılım ve sapma: /hedef BIST 50 KRIPTO 20 ..."),
+    ("sanal", "Sanal işlem (gerçek para yok): /sanal al THYAO 290 5000"),
+    ("olaylar", "Bilanço ve temettü tarihleri (portföy + takip)"),
+    ("kap", "Portföyündeki hisselerin KAP bildirimleri"),
+    ("ders", "Haftanın dersi: hangi kural işe yaradı"),
     ("tara", "Fırsat taraması: kripto + BIST"),
     # kripto
     ("analiz", "🪙 Kripto analizi: /analiz BTC"),
@@ -4330,6 +4341,20 @@ async def takip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         watchlist.set_settings(aktif=sub != "kapat")
         await update.message.reply_text("🔕 30 dk'lık soru kapandı; liste duruyor (/takip)." if sub == "kapat"
                                         else f"🔔 Takip listesi sorusu açık: her {watchlist.settings().get('aralik_dk', 30)} dk.")
+    elif sub == "kural":
+        kv = _parse_kv(args[1:])
+        if len(args) > 1 and args[1].lower() in ("kapat", "ac", "aç"):
+            r = features.set_watch_rules(aktif=args[1].lower() != "kapat")
+        elif kv:
+            r = features.set_watch_rules(destek_yakin=kv.get("destek"), rsi_alti=kv.get("rsi_alti"), rsi_ustu=kv.get("rsi_ustu"),
+                                         hacim_kat=kv.get("hacim"))
+        else:
+            r = features.watch_rules()
+        await update.message.reply_text(
+            f"🔔 Takip listesi kuralları: {'açık' if r['aktif'] else 'kapalı'} (30 dk'da bir, her kod+kural günde 1 kez)\n"
+            f"• desteğe %{r['destek_yakin']:g} yakın\n• RSI ≤ {r['rsi_alti']:g} (çok satılmış)\n• RSI ≥ {r['rsi_ustu']:g} (ısınmış)\n"
+            f"• hacim ≥ ortalamanın {r['hacim_kat']:g} katı\n"
+            "Değiştir: /takip kural destek=1.5 rsi_alti=30 rsi_ustu=75 hacim=2 · /takip kural kapat|ac (0 = o kural kapalı)")
     elif sub == "aralik" and len(args) > 1 and args[1].isdigit():
         watchlist.set_settings(aralik_dk=max(15, int(args[1])))
         await update.message.reply_text(f"⏰ Takip sorusu artık her {max(15, int(args[1]))} dk.")
@@ -4359,6 +4384,303 @@ async def takip(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await takip_show(update, context, {m: g for m, g in groups.items() if g})
 
 
+# --- panel-era features: analysis/plans/opportunity from the panel, targets, calendar, KAP, rules, paper, lesson ---
+
+async def panel_analysis(bot, piyasa: str, kodlar: list[str]) -> str | None:
+    """Analysis asked from the panel: the same engines as Telegram; the answer goes to Telegram AND the panel."""
+    chat = config.ALLOWED_CHAT_ID
+    kodlar = [k.upper() for k in kodlar if k][:10]
+    if not kodlar:
+        return None
+    if len(kodlar) > 1:
+        res = await takip_rows({piyasa: kodlar})
+        reply = await run_analysis(bot, chat, f"[TAKİP] Panelden {len(kodlar)} kod için karşılaştırma istendi. Kodla hesaplanmış "
+                                   "hızlı durum [PİYASA VERİSİ].TAKIP_LISTESI içinde.", [], data={"TAKIP_LISTESI": res},
+                                   buttons=None, allow_state_update=False)
+    elif piyasa == "KRIPTO":
+        reply = await run_analysis(bot, chat, f"{kodlar[0]} analiz et.", [kodlar[0]])
+    elif piyasa == "BIST":
+        async with httpx.AsyncClient() as client:
+            data = await bist_market_data(client, kodlar[0])
+        reply = await run_analysis(bot, chat, f"[BIST] {kodlar[0]} analiz et.", [], data=data, buttons=None,
+                                   footer="Fiyat Yahoo'dan, ~15 dk gecikmeli.")
+    else:
+        data = await us_signals.market_data(kodlar[0])
+        reply = await run_analysis(bot, chat, f"[ABD] {kodlar[0]} analiz et.", [], data=data, buttons=None)
+    if reply and web_sync.enabled():
+        now = alerts_store.now_tr()
+        await web_sync.push_docs("analyses", [{"id": f"an_{int(now.timestamp())}_{kodlar[0]}", "kodlar": kodlar, "piyasa": piyasa,
+                                               "zaman": now.isoformat(), "metin": reply}])
+    return reply
+
+
+async def weekly_lesson(bot) -> str | None:
+    """The week's lesson: code computes, the AI writes at most five sentences. Stored for the panel."""
+    data = features.lesson_data(7)
+    reply = await run_analysis(bot, config.ALLOWED_CHAT_ID,
+                               "[DERS] Bu haftanın dersi. Kodla hesaplanmış veri [PİYASA VERİSİ].HAFTALIK_DERS içinde.",
+                               [], data={"HAFTALIK_DERS": data}, buttons=None, allow_state_update=False)
+    if reply:
+        s = alerts_store.load_settings()
+        s["son_ders"] = {"zaman": alerts_store.now_tr().isoformat(), "metin": reply, "veri": {k: v for k, v in data.items() if k != "kural_istatistik"}}
+        alerts_store.save_settings(s)
+    return reply
+
+
+async def lesson_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await weekly_lesson(context.bot)
+    except Exception as e:
+        log.warning("Weekly lesson failed: %s", e)
+
+
+async def calendar_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await features.refresh_calendar(watchlist.load())
+        text = features.calendar_reminders()
+        if text:
+            await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
+    except Exception as e:
+        log.warning("Company calendar failed: %s", e)
+
+
+def _held_bist() -> set[str]:
+    return {bist.ticker(p["symbol"]) for p in positions.open_positions() if p.get("piyasa") == "BIST"}
+
+
+async def kap_job(context: ContextTypes.DEFAULT_TYPE):
+    if not 8 <= alerts_store.now_tr().hour < 23:
+        return
+    try:
+        new = await features.kap_new(_held_bist())
+        if new:
+            await context.bot.send_message(config.ALLOWED_CHAT_ID, features.kap_text(new), disable_web_page_preview=True,
+                                           disable_notification=silent())
+    except Exception as e:
+        log.warning("KAP check failed: %s", e)
+
+
+async def allocation_job(context: ContextTypes.DEFAULT_TYPE):
+    if not features.target() or not positions.open_positions():
+        return
+    try:
+        text = features.allocation_text(features.allocation(await collect_portfolio(verdicts=False)))
+        if text:
+            await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
+    except Exception as e:
+        log.warning("Allocation check failed: %s", e)
+
+
+async def watch_rules_job(context: ContextTypes.DEFAULT_TYPE):
+    if alerts_store.is_quiet() or alerts_store.now_tr().hour < 8:
+        return
+    try:
+        rows = (await watchlist.panel_rows()).get("piyasalar", {})
+        text = features.check_watch_rules(rows)
+        if text:
+            await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=True)
+    except Exception as e:
+        log.warning("Watchlist rules failed: %s", e)
+
+
+def _parse_kv(args: list[str]) -> dict[str, str]:
+    return {a.split("=", 1)[0].lower(): a.split("=", 1)[1] for a in args if "=" in a}
+
+
+@authorized
+async def hedef(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/hedef                          -> current vs target allocation
+    /hedef BIST 50 KRIPTO 20 ABD 20 NAKIT 10 [tolerans=5]  -> set the target"""
+    args = context.args
+    if args:
+        nums, kv = {}, _parse_kv(args)
+        plain = [a for a in args if "=" not in a]
+        for name, val in zip(plain[::2], plain[1::2]):
+            key = {"BIST": "BIST", "KRIPTO": "KRIPTO", "KRİPTO": "KRIPTO", "ABD": "ABD", "NAKIT": "NAKIT", "NAKİT": "NAKIT"}.get(name.upper())
+            if key:
+                nums[key] = float(val.replace(",", ".").replace("%", ""))
+        if not nums:
+            await update.message.reply_text("Kullanım: /hedef BIST 50 KRIPTO 20 ABD 20 NAKIT 10 [tolerans=5]\n"
+                                            "Yüzdeler toplamı 100 olmazsa oranlanır.")
+            return
+        t = features.set_target(nums, float(kv.get("tolerans", 5)))
+        await update.message.reply_text("🎯 Hedef dağılım kaydedildi: " + " · ".join(f"{k} %{t[k]:g}" for k in features.TARGET_KEYS)
+                                        + f" · tolerans ±{t['tolerans']:g} puan\nSapma olursa her akşam 19:15'te haber veririm.")
+        return
+    if not positions.open_positions():
+        await update.message.reply_text("Portföy boş.")
+        return
+    a = features.allocation(await collect_portfolio(verdicts=False))
+    if not a:
+        await update.message.reply_text("Dolar kuru alınamadı; biraz sonra tekrar dene.")
+        return
+    name = {"BIST": "BIST", "KRIPTO": "Kripto", "ABD": "ABD", "NAKIT": "Nakit"}
+    lines = [f"⚖️ DAĞILIM (toplam ₺{a['toplam_tl']:,.0f})"]
+    for r in a["satirlar"]:
+        goal = "" if r["hedef"] is None else f" · hedef %{r['hedef']:g} ({r['sapma']:+.1f} puan)"
+        lines.append(f"{name[r['piyasa']]}: %{r['gercek']:g} (₺{r['deger_tl']:,.0f}){goal}")
+    if not a["hedef_var"]:
+        lines.append("\nHedef yok. Koy: /hedef BIST 50 KRIPTO 20 ABD 20 NAKIT 10")
+    elif a["asanlar"]:
+        lines.append(f"\nTolerans (±{a['tolerans']:g}) dışında: " + ", ".join(name[r['piyasa']] for r in a["asanlar"]))
+    lines.append("Nakit: /bakiye nakit ile girilen tutarlar. Bu bir öneri değildir.")
+    await update.message.reply_text("\n".join(lines))
+
+
+@authorized
+async def sanal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/sanal · /sanal al KOD FIYAT TUTAR (ya da adet=N) · /sanal sat ID [FIYAT]"""
+    args = context.args
+    sub = args[0].lower() if args else ""
+    if sub == "al" and len(args) >= 3:
+        code = _takip_code(args[1])
+        mkt = await _detect_market(code)
+        if mkt not in ("KRIPTO", "BIST", "ABD"):
+            await update.message.reply_text(f"❌ {code} bulunamadı (kripto, BIST ya da ABD olmalı).")
+            return
+        price = float(args[2].replace(",", "."))
+        if not math.isfinite(price) or price <= 0:
+            await update.message.reply_text("❌ Alış fiyatı sıfırdan büyük olmalı.")
+            return
+        kv = _parse_kv(args[3:])
+        if "adet" in kv:
+            qty = float(kv["adet"].replace(",", "."))
+        elif len(args) >= 4 and "=" not in args[3]:
+            qty = float(args[3].replace(",", ".").lower().removesuffix("tl").removesuffix("$")) / price
+        else:
+            await update.message.reply_text("Kullanım: /sanal al KOD FIYAT TUTAR · örnek: /sanal al THYAO 290 5000 · /sanal al NVDA 225 adet=3")
+            return
+        if not math.isfinite(qty):
+            await update.message.reply_text("❌ Adet geçerli bir sayı olmalı.")
+            return
+        if mkt == "BIST" and "adet" not in kv:
+            qty = math.floor(qty)
+        if qty <= 0:
+            await update.message.reply_text("❌ Fiyat ve adet sıfırdan büyük olmalı; BIST için en az 1 tam hisse gerekir.")
+            return
+        p = features.paper_open(mkt, code, price, qty, kv.get("not", ""))
+        await update.message.reply_text(f"🧪 Sanal alım #{p['id']}: {code} ({mkt}) {qty:.6g} adet @ {price:g}. "
+                                        "Gerçek portföyde sayılmaz. Durum: /sanal")
+        return
+    if sub == "sat" and len(args) >= 2:
+        pid = int(args[1].lstrip("#"))
+        row = next((r for r in features.paper_all() if r["id"] == pid), None)
+        if not row:
+            await update.message.reply_text("Bu ID'de sanal işlem yok. /sanal")
+            return
+        price = float(args[2].replace(",", ".")) if len(args) >= 3 else None
+        if price is None:
+            async with httpx.AsyncClient() as client:
+                price = await features.last_price(client, row["piyasa"], row["kod"])
+        p = features.paper_close(pid, price)
+        if not p:
+            await update.message.reply_text("Bu sanal işlem zaten kapalı.")
+            return
+        await update.message.reply_text(f"🧪 Sanal satış #{pid} {p['kod']} @ {price:g}: {(price - p['giris']) * p['adet']:+,.2f} "
+                                        f"({(price / p['giris'] - 1) * 100:+.2f}%)")
+        return
+    await update.message.reply_text(features.paper_text(await features.paper_view()))
+
+
+@authorized
+async def ders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await weekly_lesson(context.bot)
+
+
+@authorized
+async def kap(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    new = await features.kap_new(_held_bist())
+    recent = features.kap_for_panel()
+    if not recent:
+        await update.message.reply_text("📢 Bugün portföyündeki BIST hisseleri için KAP bildirimi yok. Yeni bildirim gelince haber veririm.")
+        return
+    await update.message.reply_text(features.kap_text(recent[:8]) if not new else features.kap_text(new), disable_web_page_preview=True)
+
+
+@authorized
+async def olaylar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await features.refresh_calendar(watchlist.load())
+    items = features.calendar_for_panel(45)
+    if not items:
+        await update.message.reply_text("📅 Önümüzdeki 45 günde portföy ve takip listende bilanço/temettü tarihi görünmüyor.")
+        return
+    lines = ["📅 ŞİRKET OLAYLARI (45 gün · Yahoo, kesin tarih için KAP)"]
+    for i in items[:40]:
+        lines.append(f"{i['tarih'][8:10]}.{i['tarih'][5:7]} {'💼 ' if i['portfoyde'] else ''}{i['kod']} ({i['piyasa']}) · {i['etiket']}")
+    await send_lines(context.bot, update.effective_chat.id, "\n".join(lines))
+
+
+# panel -> bot actions (queued by the panel, applied here with the same functions as Telegram)
+
+def register_panel_actions(bot):
+    async def analysis(p):
+        piyasa = p.get("piyasa", "KRIPTO")
+        kodlar = p.get("kodlar") or [p.get("kod")]
+        await panel_analysis(bot, piyasa, kodlar)
+        return f"🧠 Panelden analiz: {', '.join(k for k in kodlar if k)} ({piyasa}) — cevap yukarıda ve panelde."
+
+    async def plan_add_(p):
+        key = await plan_key(str(p.get("kod", "")))
+        if not key:
+            return f"❌ Panel: {p.get('kod')} bulunamadı (plan listesi)"
+        save_plan_list(plan_list() + [key])
+        return f"✅ Panelden plan listesine eklendi: {plan_key_name(key)}"
+
+    async def plan_remove(p):
+        key = p.get("key")
+        save_plan_list([k for k in plan_list() if k != key])
+        return f"🗑 Panelden plan listesinden çıkarıldı: {plan_key_name(key or '')}"
+
+    async def firsat_run(p):
+        res = await opportunities.collect()
+        await web_sync.push_docs("firsat", [{"id": "firsat", **res, "metin": opportunities.text(res)}], replace=True)
+        return f"🔎 Panelden fırsat taraması: {len(res['alinabilir'])} alınabilir, {len(res['kalemler'])} kalem incelendi."
+
+    async def target_set(p):
+        t = features.set_target({k: p.get(k) for k in features.TARGET_KEYS}, float(p.get("tolerans") or 5))
+        return "🎯 Panelden hedef dağılım: " + " · ".join(f"{k} %{t[k]:g}" for k in features.TARGET_KEYS)
+
+    async def rules_set(p):
+        r = features.set_watch_rules(**{k: p.get(k) for k in features.RULE_DEFAULTS})
+        return ("🔔 Takip kuralları " + ("açık" if r["aktif"] else "kapalı") + f": desteğe %{r['destek_yakin']:g}, RSI ≤{r['rsi_alti']:g}, "
+                f"RSI ≥{r['rsi_ustu']:g}, hacim ≥{r['hacim_kat']:g}×")
+
+    async def paper_open_(p):
+        code = _takip_code(str(p.get("kod", "")))
+        mkt = p.get("piyasa") or await _detect_market(code)
+        price = float(p["fiyat"])
+        if price <= 0 or not code or mkt not in ("BIST", "KRIPTO", "ABD"):
+            return "❌ Panel: sanal işlem için geçerli piyasa, kod ve pozitif fiyat gerekli"
+        async with httpx.AsyncClient() as client:
+            await features.last_price(client, mkt, code)  # verify the symbol in the selected market
+        qty = float(p["adet"]) if p.get("adet") else float(p["tutar"]) / price
+        if mkt == "BIST" and not p.get("adet"):
+            qty = math.floor(qty)
+        row = features.paper_open(mkt, code, price, qty, p.get("not") or "")
+        return f"🧪 Panelden sanal alım #{row['id']}: {code} {qty:.6g} adet @ {price:g}"
+
+    async def paper_close_(p):
+        row = next((r for r in features.paper_all() if r["id"] == int(p["id"])), None)
+        if not row:
+            return "❌ Panel: sanal işlem yok"
+        price = p.get("fiyat")
+        if not price:
+            async with httpx.AsyncClient() as client:
+                price = await features.last_price(client, row["piyasa"], row["kod"])
+        done = features.paper_close(row["id"], float(price))
+        return f"🧪 Panelden sanal satış #{row['id']} {row['kod']} @ {float(price):g}" if done else "ℹ️ Sanal işlem zaten kapalı"
+
+    async def lesson(p):
+        await weekly_lesson(bot)
+        return "📘 Panelden haftalık ders istendi — cevap yukarıda ve panelde."
+
+    web_sync.EXTRA_HANDLERS.update({
+        "analysis.request": analysis, "plan.add": plan_add_, "plan.remove": plan_remove, "firsat.run": firsat_run,
+        "target.set": target_set, "watch.rules": rules_set, "paper.open": paper_open_, "paper.close": paper_close_,
+        "lesson.request": lesson,
+    })
+
+
 # web panel: one "extras" document with the portfolio-level features (every 15 minutes)
 
 async def build_extras() -> dict:
@@ -4375,6 +4697,9 @@ async def build_extras() -> dict:
                            "reel_yuzde": g["reel"].get("reel_yuzde"), "temettu": round(g["temettu"], 2)}
                           for g in pf["gruplar"]]
         doc["yogunlasma"] = pf["yogunlasma"]
+        doc["usdtry"] = pf.get("usdtry")
+        features.record_history(pf)
+        doc["dagilim"] = features.allocation(pf)
         try:
             async with httpx.AsyncClient() as client:
                 doc["kiyas"] = benchmark.compare(benchmark.rows_from_portfolio(pf), await benchmark.benchmark_series(client),
@@ -4385,6 +4710,8 @@ async def build_extras() -> dict:
     doc["golge"] = {k: {kk: vv for kk, vv in v.items() if kk != "islemler"} for k, v in shadow.summary(since30).items()}
     st = discipline.status()
     doc["disiplin"] = {"aktif": st["aktif"], "seri": st["seri"], "bekleme_bitis": st["bekleme_bitis"],
+                       "seri_sinir": config.LOSS_STREAK, "bekleme_saat": config.COOLDOWN_HOURS,
+                       "gunluk_zarar_yuzde": config.DAILY_LOSS_PCT,
                        "piyasa": st["piyasa"], "olaylar": {discipline.VIOLATION_LABELS.get(k, k): len(v)
                                                             for k, v in discipline.violations(since7).items()}}
     doc["gunluk"] = journal.summary(since30)
@@ -4396,6 +4723,18 @@ async def build_extras() -> dict:
         doc["takip_listesi"] = await watchlist.panel_rows()
     except Exception as e:
         log.warning("Panel watchlist failed: %s", e)
+    for key, fn in (("planlar", lambda: features.plans_for_panel(plan_list())), ("geriye", lambda: features.backfill_history(90)),
+                    ("sanal", features.paper_view)):
+        try:
+            doc[key] = await fn()
+        except Exception as e:
+            log.warning("Panel %s failed: %s", key, e)
+    doc["gecmis"] = features.history_for_panel()["gunluk"]
+    doc["hedef"] = features.target()
+    doc["takvim"] = features.calendar_for_panel(45)
+    doc["kap"] = features.kap_for_panel()
+    doc["takip_kurallari"] = features.watch_rules()
+    doc["ders"] = alerts_store.load_settings().get("son_ders")
     return doc
 
 
@@ -4918,6 +5257,7 @@ async def web_command_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         if await web_sync.process_commands(engine.refresh, notify):
             await web_sync.push_all()  # show the result in the panel right away
+            await web_sync.push_extras(await build_extras())
     except Exception as e:
         log.warning("Web command poll failed: %s", e)
 
@@ -4950,6 +5290,7 @@ def main():
             log.warning("Could not set the Telegram command menu: %s", e)
         if config.ALLOWED_CHAT_ID:
             app.bot_data["engine_task"] = asyncio.create_task(engine.run())
+        register_panel_actions(app.bot)
 
     async def stop_engine(app: Application):
         task = app.bot_data.get("engine_task")
@@ -5013,6 +5354,11 @@ def main():
     app.add_handler(CommandHandler("abd", abd))
     app.add_handler(CommandHandler("palarm", palarm))
     app.add_handler(CommandHandler("takip", takip))
+    app.add_handler(CommandHandler("hedef", hedef))
+    app.add_handler(CommandHandler("sanal", sanal))
+    app.add_handler(CommandHandler("ders", ders))
+    app.add_handler(CommandHandler("kap", kap))
+    app.add_handler(CommandHandler("olaylar", olaylar))
     app.add_error_handler(on_error)
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo_message))
@@ -5053,6 +5399,13 @@ def main():
         app.job_queue.run_daily(after_sale_job, dtime(19, 0, tzinfo=macro.TR), name="satis_sonrasi")
         app.job_queue.run_repeating(risk_news_job, interval=30 * 60, first=120, name="risk_haber")
         app.job_queue.run_repeating(takip_job, interval=5 * 60, first=180, name="takip_sor")  # asks every 30 min (/takip aralik)
+        app.job_queue.run_repeating(watch_rules_job, interval=30 * 60, first=600, name="takip_kural")
+        app.job_queue.run_repeating(kap_job, interval=15 * 60, first=240, name="kap")
+        app.job_queue.run_daily(calendar_job, dtime(8, 45, tzinfo=macro.TR), name="sirket_takvimi")
+        app.job_queue.run_daily(calendar_job, dtime(20, 0, tzinfo=macro.TR), name="sirket_takvimi_aksam")
+        app.job_queue.run_once(calendar_job, when=150, name="sirket_takvimi_ilk")
+        app.job_queue.run_daily(allocation_job, dtime(19, 15, tzinfo=macro.TR), name="hedef_dagilim")
+        app.job_queue.run_daily(lesson_job, dtime(20, 10, tzinfo=macro.TR), days=(0,), name="haftalik_ders")  # 0 = Sunday
         if web_sync.enabled():
             app.job_queue.run_repeating(extras_job, interval=15 * 60, first=90, name="panel_ekstra")
         if alerts_store.load_settings().get("plan_takip"):

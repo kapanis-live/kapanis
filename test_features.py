@@ -13,6 +13,7 @@ os.environ["DATA_DIR"] = _TMP
 import pandas as pd  # noqa: E402
 
 import alerts_store  # noqa: E402
+import bist  # noqa: E402
 import config  # noqa: E402
 import corporate  # noqa: E402
 import dca  # noqa: E402
@@ -20,6 +21,7 @@ import discipline  # noqa: E402
 import journal  # noqa: E402
 import positions  # noqa: E402
 import risk  # noqa: E402
+import features  # noqa: E402
 
 
 def _reset():
@@ -37,6 +39,77 @@ def _closed(pair, entry, exit_, qty, when, **extra):
             p.update(durum="kapali", kapanis_fiyat=exit_, kapanis_zamani=when.isoformat())
     positions.save(items)
     return pos["id"]
+
+
+class PortfolioHistoryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_closed_bist_market_keeps_friday_close_on_crypto_weekend(self):
+        _reset()
+
+        def frame(prices):
+            times = [int(datetime.fromisoformat(d).timestamp() * 1000) for d in prices]
+            return pd.DataFrame({"open_time": times, "close": list(prices.values())})
+
+        friday, saturday, sunday, monday = "2026-09-18", "2026-09-19", "2026-09-20", "2026-09-21"
+        bist_rows = {
+            "THYAO.IS": frame({friday: 100, monday: 110}),
+            "USDTRY=X": frame({friday: 40, monday: 41}),
+            "XU100.IS": frame({friday: 10000, monday: 10100}),
+            "GC=F": frame({friday: 3000, monday: 3100}),
+        }
+        crypto = frame({friday: 10, saturday: 11, sunday: 12, monday: 13})
+
+        async def fetch_bist(_client, symbol, _interval):
+            return bist_rows[symbol]
+
+        async def fetch_crypto(_client, _symbol, _interval, limit):
+            return crypto
+
+        held = [{"piyasa": "BIST", "symbol": "THYAO.IS", "adet": 1},
+                {"piyasa": "KRIPTO", "symbol": "BTCUSDT", "adet": 1}]
+        with unittest.mock.patch.object(features, "_today", return_value=monday), \
+             unittest.mock.patch.object(positions, "open_positions", return_value=held), \
+             unittest.mock.patch.object(bist, "fetch", side_effect=fetch_bist), \
+             unittest.mock.patch.object(features.market, "fetch_klines", side_effect=fetch_crypto):
+            rows = (await features.backfill_history(10))["satirlar"]
+
+        by_day = {r["tarih"]: r for r in rows}
+        self.assertEqual(by_day[saturday]["bist"], 100)
+        self.assertEqual(by_day[sunday]["bist"], 100)
+        self.assertEqual(by_day[sunday]["xu100"], 10000)
+        self.assertEqual(by_day[sunday]["toplam_tl"], 580)
+        self.assertAlmostEqual(by_day[sunday]["gram_altin"], round(3000 * 40 / features.assets.OUNCE_GRAMS, 2))
+
+
+class PanelInputTest(unittest.TestCase):
+    def setUp(self):
+        _reset()
+
+    def test_allocation_rejects_invalid_percentages(self):
+        with self.assertRaises(ValueError):
+            features.set_target({"BIST": -10, "KRIPTO": 110})
+        with self.assertRaises(ValueError):
+            features.set_target({"BIST": 100}, float("nan"))
+        self.assertAlmostEqual(sum(features.set_target({"BIST": 1, "KRIPTO": 1, "ABD": 1}).get(k, 0)
+                                   for k in features.TARGET_KEYS), 100)
+
+    def test_paper_trade_rejects_zero_or_nonfinite_prices_and_quantity(self):
+        for price, qty in ((0, 1), (1, -1), (float("nan"), 1)):
+            with self.assertRaises(ValueError):
+                features.paper_open("BIST", "THYAO", price, qty)
+        with self.assertRaises(ValueError):
+            features.paper_open("BIST", "THYAO", 100, 1.5)
+        row = features.paper_open("BIST", "THYAO", 100, 1)
+        with self.assertRaises(ValueError):
+            features.paper_close(row["id"], 0)
+
+    def test_watch_alert_uses_closed_price(self):
+        features.set_watch_rules(destek_yakin=2, rsi_alti=0, rsi_ustu=0, hacim_kat=0)
+        row = {"kod": "THYAO", "fiyat": 101, "destek": 100, "destek_yuzde": -1,
+               "kapanis_fiyat": 110, "kapanis_destek": 100, "kapanis_destek_yuzde": -9,
+               "rsi": 50, "hacim_kat": 1}
+        self.assertIsNone(features.check_watch_rules({"BIST": [row]}))
+        row.update(kapanis_fiyat=101, kapanis_destek_yuzde=-1)
+        self.assertIn("son kapanış 101", features.check_watch_rules({"BIST": [row]}))
 
 
 class SplitTest(unittest.TestCase):

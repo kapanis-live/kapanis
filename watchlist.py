@@ -86,17 +86,25 @@ def _row(code: str, price: float, prev: float | None, d) -> dict:
     zones = market.sr_zones(d, None, price, atr, top=1)
     sup = zones["destekler"][0] if zones["destekler"] else None
     res = zones["direncler"][0] if zones["direncler"] else None
+    closed_price = float(last.close)
+    closed_zones = market.sr_zones(d, None, closed_price, atr, top=1)
+    closed_sup = closed_zones["destekler"][0] if closed_zones["destekler"] else None
     s50, s200 = last.sma50, last.sma200
     if not _nan(s50) and not _nan(s200):
         trend = "↗ güçlü" if price > s50 > s200 else "↘ zayıf" if price < s50 < s200 else "→ karışık"
     else:
         trend = "↗" if not _nan(s50) and price > s50 else "↘" if not _nan(s50) else "az veri"
     week = float(d.close.iloc[-6]) if len(d) > 6 else None
+    vol_avg = float(last.vol_avg20) if "vol_avg20" in d and not _nan(last.vol_avg20) else None
+    vol_x = round(float(last.volume) / vol_avg, 2) if vol_avg else None  # last closed day vs its 20-day average
     return {"kod": code, "fiyat": price, "gun_yuzde": round((price / prev - 1) * 100, 2) if prev else None,
+            "kapanis_fiyat": closed_price, "kapanis_destek": closed_sup["orta"] if closed_sup else None,
+            "kapanis_destek_yuzde": closed_sup["uzaklik_yuzde"] if closed_sup else None,
             "hafta_yuzde": round((price / week - 1) * 100, 2) if week else None, "trend": trend,
             "rsi": round(float(last.rsi14)) if not _nan(last.rsi14) else None,
             "destek": sup["orta"] if sup else None, "destek_yuzde": sup["uzaklik_yuzde"] if sup else None,
-            "direnc": res["orta"] if res else None, "direnc_yuzde": res["uzaklik_yuzde"] if res else None}
+            "direnc": res["orta"] if res else None, "direnc_yuzde": res["uzaklik_yuzde"] if res else None,
+            "hacim_kat": vol_x}
 
 
 async def rows(mkt: str, codes: list[str]) -> list[dict]:
@@ -171,12 +179,12 @@ async def panel_rows() -> dict:
     """All lists for the web panel, cached for 30 minutes so the panel never hammers the data sources."""
     try:
         cached = json.loads(CACHE.read_text(encoding="utf-8"))
-        if time.time() - cached["zaman"] < PANEL_TTL:
+        if cached.get("surum") == 2 and time.time() - cached["zaman"] < PANEL_TTL:
             return cached
     except (FileNotFoundError, json.JSONDecodeError, KeyError):
         pass
     lists = load()
-    out = {"zaman": time.time(), "piyasalar": {}}
+    out = {"zaman": time.time(), "surum": 2, "piyasalar": {}}
     for mkt, codes in lists.items():
         try:
             out["piyasalar"][mkt] = await rows(mkt, codes)

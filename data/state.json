@@ -60,9 +60,9 @@
       "not": "Plan A VWAP üstü kırılım R/R 2.6, hacim MA20 üstü şart; Plan B 91.55 taban dönüşü zayıf destek",
       "guncelleme": 1790375400,
       "pozisyon": false,
-      "son_mum": 1790433000000,
-      "son_yakinlik": 1790432120,
-      "bekleyen_teyit": 1790433000000
+      "son_mum": 1790452800000,
+      "son_yakinlik": 1790439320,
+      "bekleyen_teyit": 1790435700000
     },
     "XRP": {
       "tetik": 1.508,
@@ -82,7 +82,7 @@
       "not": "Plan B destek retesti; 4.73-4.75 bölgesi, 15m SMA200/1h SMA50 destek, R/R 2.9. Plan A: tetik 4.92, teyit 4.87, iptal 4.80, hedef 5.05 uste 5.15, R/R zayif-orta",
       "guncelleme": 1790414599,
       "pozisyon": false,
-      "son_mum": 1790433000000
+      "son_mum": 1790452800000
     }
   },
   "btc_not": "BTC 15m 83980, SMA50 84032.8 altı; kapı KAPALI, 84550 tetiği uzak, 83750 iptal. Günlük trend yukarı, kısa vade 83395-84337 bandında sıkışma."

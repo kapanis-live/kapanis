@@ -35,6 +35,7 @@ CLOSED_POSITIONS_SHOWN = 10
 SIGNALS_SHOWN = 30
 PENDING_DECISION_HOURS = 24  # an unanswered alert decision expires from "Bekleyen kararlar" after this
 DERIVATIVE_COINS = ["BTC", "ETH"]
+ALERT_MAX_DISTANCE = 0.5  # panel alarm trigger must be within ±50% of the current price
 
 ALERT_STATUS = {"aktif": "armed", "tetiklendi": "triggered", "iptal": "cancelled", "pasif": "cancelled"}
 
@@ -544,6 +545,14 @@ async def push_all():
     log.info("Web sync: pushed %s", ", ".join(f"{k}={len(v)}" for k, v in collections.items()))
 
 
+async def push_docs(collection: str, docs: list[dict], replace: bool = False):
+    """Send documents to one panel collection (analyses, firsat...). replace=True: the list is the whole collection."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(f"{config.WEB_URL}/api/ingest/{collection}", params={"replace": "true" if replace else "false"},
+                              json=docs, headers=_headers())
+        r.raise_for_status()
+
+
 async def push_extras(doc: dict):
     """Portfolio-level features (benchmark, shadow portfolio, discipline, journal...) as one document."""
     async with httpx.AsyncClient(timeout=30) as client:
@@ -555,6 +564,8 @@ async def push_extras(doc: dict):
 # --- panel commands -> bot actions ---------------------------------------------
 
 Notify = Callable[[str], Awaitable[None]]
+# Panel actions that need the bot's own functions (analysis, plans, paper trades...): main.py registers them.
+EXTRA_HANDLERS: dict[str, Callable[[dict], Awaitable[str]]] = {}
 
 
 def _pair(symbol: str) -> str:
@@ -583,9 +594,13 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
             return f"❌ Panel alarmı reddedildi: {pair} {direction} için hedef tetiğin {'üstünde' if above else 'altında'} olmalı"
         async with httpx.AsyncClient() as client:
             try:
-                await market.last_price(client, alerts_store.pair_to_symbol(pair))
+                price = await market.last_price(client, alerts_store.pair_to_symbol(pair))
             except market.SymbolNotFound:
                 return f"❌ Panel alarmı reddedildi: Binance'te {pair} yok"
+        # A typo (500 for 500.000) would fire on the next close: refuse levels far from the market.
+        if price and not (1 - ALERT_MAX_DISTANCE <= trigger / price <= 1 + ALERT_MAX_DISTANCE):
+            return (f"❌ Panel alarmı reddedildi: {pair} tetik {trigger:g}, şu anki fiyat {price:g} "
+                    f"(%{abs(trigger / price - 1) * 100:.0f} uzak). Yazım hatası olabilir; kontrol edip tekrar kur.")
         a = alerts_store.add_alert(pair, {"tetik": trigger, "yon": direction, "timeframe": tf,
                                           "cooldown": cooldown, "iptal": stop, "hedef": target,
                                           "hacim_sart": True})
@@ -650,6 +665,8 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
         return (f"✅ Panelden 'Aldım': #{pos['id']} {d['pair']} {amount} @ {pos['giris']:g}"
                 + (f"\n{warning}" if warning else ""))
 
+    if t in EXTRA_HANDLERS:
+        return await EXTRA_HANDLERS[t](p)
     return f"❌ Panel: bilinmeyen komut {t}"
 
 

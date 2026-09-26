@@ -1,5 +1,5 @@
 // Kapanış service worker: yalnız uygulama kabuğu. API cevapları asla önbelleğe alınmaz (veri hep canlı).
-const CACHE = "kapanis-shell-v1";
+const CACHE = "kapanis-shell-v2";
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/manifest.json", "/icon-192.png"])).then(() => self.skipWaiting()));
 });

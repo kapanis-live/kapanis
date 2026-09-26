@@ -1,0 +1,143 @@
+{
+  "SOL/USDT": [
+    {
+      "id": 1,
+      "tetik": 119.3,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 117.8,
+      "hedef": 122.3,
+      "hacim_sart": true,
+      "durum": "pasif",
+      "son_tetik_zamani": "2026-09-26T01:30:00+03:00",
+      "tetikler": [
+        "2026-09-25T15:30:01+03:00",
+        "2026-09-25T17:00:02+03:00",
+        "2026-09-25T18:00:03+03:00",
+        "2026-09-25T19:15:01+03:00",
+        "2026-09-25T20:15:01+03:00",
+        "2026-09-25T21:45:00+03:00",
+        "2026-09-25T22:45:01+03:00",
+        "2026-09-26T00:15:01+03:00",
+        "2026-09-26T01:30:00+03:00"
+      ],
+      "olusturulma": "2026-09-25T15:27:18+03:00"
+    }
+  ],
+  "BTC/USDT": [
+    {
+      "id": 1,
+      "tetik": 84550.0,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 83750.0,
+      "hedef": 85500.0,
+      "hacim_sart": true,
+      "durum": "aktif",
+      "son_tetik_zamani": null,
+      "tetikler": [],
+      "olusturulma": "2026-09-25T16:59:20+03:00"
+    },
+    {
+      "id": 2,
+      "tetik": 500000.0,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 480000.0,
+      "hedef": 560000.0,
+      "hacim_sart": true,
+      "durum": "iptal",
+      "son_tetik_zamani": null,
+      "tetikler": [],
+      "olusturulma": "2026-09-26T16:48:28+03:00",
+      "iptal_nedeni": "kullanici"
+    },
+    {
+      "id": 3,
+      "tetik": 500000.0,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 480000.0,
+      "hedef": 560000.0,
+      "hacim_sart": true,
+      "durum": "iptal",
+      "son_tetik_zamani": null,
+      "tetikler": [],
+      "olusturulma": "2026-09-26T17:02:52+03:00",
+      "iptal_nedeni": "kullanici"
+    },
+    {
+      "id": 4,
+      "tetik": 500000.0,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 480000.0,
+      "hedef": 560000.0,
+      "hacim_sart": true,
+      "durum": "iptal",
+      "son_tetik_zamani": null,
+      "tetikler": [],
+      "olusturulma": "2026-09-26T17:04:37+03:00",
+      "iptal_nedeni": "kullanici"
+    }
+  ],
+  "ETH/USDT": [
+    {
+      "id": 1,
+      "tetik": 2725.0,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 2680.0,
+      "hedef": 2785.0,
+      "hacim_sart": true,
+      "durum": "aktif",
+      "son_tetik_zamani": null,
+      "tetikler": [],
+      "olusturulma": "2026-09-25T16:59:20+03:00"
+    }
+  ],
+  "AAVE/USDT": [
+    {
+      "id": 1,
+      "tetik": 146.6,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 145.4,
+      "hedef": 149.5,
+      "hacim_sart": true,
+      "durum": "pasif",
+      "son_tetik_zamani": "2026-09-25T19:00:03+03:00",
+      "tetikler": [
+        "2026-09-25T19:00:03+03:00"
+      ],
+      "olusturulma": "2026-09-25T18:47:56+03:00"
+    }
+  ],
+  "XRP/USDT": [
+    {
+      "id": 1,
+      "tetik": 1.508,
+      "yon": "ABOVE",
+      "timeframe": "15m",
+      "cooldown": "1h",
+      "iptal": 1.497,
+      "hedef": 1.549,
+      "hacim_sart": true,
+      "durum": "pasif",
+      "son_tetik_zamani": "2026-09-26T14:15:00+03:00",
+      "tetikler": [
+        "2026-09-26T11:15:00+03:00",
+        "2026-09-26T12:30:00+03:00",
+        "2026-09-26T14:15:00+03:00"
+      ],
+      "olusturulma": "2026-09-26T11:10:16+03:00"
+    }
+  ]
+}

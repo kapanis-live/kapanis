@@ -29,14 +29,16 @@ function computeRR(side, entry, stop, target) {
   return reward / risk;
 }
 
-const RR_HINT = { up: "R/R hedefi karşılıyor (≥ 2.0)", wait: "Sınırda (1.5 – 2.0)", down: "Eşik altı (< 2.0) — pas geçilir", muted: "Geçerli giriş/stop/hedef gir" };
+const RR_HINT = { up: "R/R yeterli (≥ 1.5)", wait: "Sınırda (1.0 – 1.5) — RİSK-OFF rejimde pas", down: "R/R 1'in altında — kural gereği pas", muted: "Geçerli tetik/iptal/hedef gir" };
+const TIMEFRAMES = ["5m", "15m", "30m", "1h", "4h", "1d"];
 
 export default function Alerts() {
   const q = useData("alerts", "/alerts", LIVE);
   const qc = useQueryClient();
   const pend = usePendingCommands();
-  const [form, setForm] = useState({ symbol: "", side: "long", entry: "", stop: "", target: "", note: "" });
+  const [form, setForm] = useState({ symbol: "", side: "long", entry: "", stop: "", target: "", note: "", timeframe: "15m" });
   const [submitting, setSubmitting] = useState(false);
+  const [queuedIds, setQueuedIds] = useState([]);
 
   const rr = useMemo(() => computeRR(form.side, form.entry, form.stop, form.target), [form]);
   const tone = rrTone(rr);
@@ -54,9 +56,10 @@ export default function Alerts() {
         stop: parseFloat(form.stop),
         target: parseFloat(form.target),
         note: form.note,
+        timeframe: form.timeframe,
       });
       toast.success("Alarm bota iletildi. Bot işleyince listede güncellenecek.");
-      setForm({ symbol: "", side: "long", entry: "", stop: "", target: "", note: "" });
+      setForm({ symbol: "", side: "long", entry: "", stop: "", target: "", note: "", timeframe: "15m" });
       qc.invalidateQueries({ queryKey: ["commands"] });
     } catch (err) {
       toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Alarm oluşturulamadı.");
@@ -65,7 +68,10 @@ export default function Alerts() {
     }
   };
 
+  const [confirmId, setConfirmId] = useState(null);
+
   const remove = async (id) => {
+    setConfirmId(null);
     setQueuedIds((s) => [...s, id]);
     try {
       await api.delete(`/alerts/${id}`);
@@ -78,7 +84,7 @@ export default function Alerts() {
 
   return (
     <div>
-      <PageHeader title="Alarmlar" subtitle="Kurulu alarmlar ve canlı R/R ile yeni alarm." testid="page-alerts" />
+      <PageHeader eyebrow="Sinyaller / Alarmlar" title="Alarmlar" subtitle="Kurulu alarmlar ve canlı R/R ile yeni alarm." testid="page-alerts" />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Yeni alarm formu */}
@@ -86,36 +92,46 @@ export default function Alerts() {
           <form onSubmit={submit} className="space-y-3.5" data-testid="alert-form">
             <div className="space-y-1.5">
               <Label className="text-t-2">Sembol</Label>
-              <Input value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} placeholder="BTC/USDT" className="bg-black border-hairline text-t-1 uppercase" data-testid="alert-symbol" />
+              <Input value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} placeholder="BTC/USDT" className="bg-ink border-hairline text-t-1 uppercase" data-testid="alert-symbol" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-t-2">Yön</Label>
               <Select value={form.side} onValueChange={(v) => setForm({ ...form, side: v })}>
-                <SelectTrigger className="bg-black border-hairline text-t-1" data-testid="alert-side"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="bg-ink border-hairline text-t-1" data-testid="alert-side"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="long">Long</SelectItem>
                   <SelectItem value="short">Short</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-t-2">Zaman dilimi</Label>
+              <Select value={form.timeframe} onValueChange={(v) => setForm({ ...form, timeframe: v })}>
+                <SelectTrigger className="bg-ink border-hairline text-t-1" data-testid="alert-timeframe"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TIMEFRAMES.map((tf) => <SelectItem key={tf} value={tf}>{tf}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-t-3">Mod: KAPANIŞ (sabit). Sadece mum kapanışı tetikler; iğne asla.</p>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1.5">
-                <Label className="text-t-2 text-xs">Giriş</Label>
-                <Input type="number" step="any" value={form.entry} onChange={(e) => setForm({ ...form, entry: e.target.value })} className="num bg-black border-hairline text-t-1" data-testid="alert-entry" />
+                <Label className="text-t-2 text-xs">Tetik</Label>
+                <Input type="number" step="any" value={form.entry} onChange={(e) => setForm({ ...form, entry: e.target.value })} className="num bg-ink border-hairline text-t-1" data-testid="alert-entry" />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-t-2 text-xs">Stop</Label>
-                <Input type="number" step="any" value={form.stop} onChange={(e) => setForm({ ...form, stop: e.target.value })} className="num bg-black border-hairline text-t-1" data-testid="alert-stop" />
+                <Label className="text-t-2 text-xs">İptal</Label>
+                <Input type="number" step="any" value={form.stop} onChange={(e) => setForm({ ...form, stop: e.target.value })} className="num bg-ink border-hairline text-t-1" data-testid="alert-stop" />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-t-2 text-xs">Hedef</Label>
-                <Input type="number" step="any" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} className="num bg-black border-hairline text-t-1" data-testid="alert-target" />
+                <Input type="number" step="any" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} className="num bg-ink border-hairline text-t-1" data-testid="alert-target" />
               </div>
             </div>
 
             {/* Canlı R/R */}
             <div className={cn("rounded-lg border p-3 transition-colors duration-200",
-              tone === "up" ? "border-up/40 bg-up/5" : tone === "wait" ? "border-wait/40 bg-wait/5" : tone === "down" ? "border-down/40 bg-down/5" : "border-hairline bg-black")}
+              tone === "up" ? "border-up/40 bg-up/5" : tone === "wait" ? "border-wait/40 bg-wait/5" : tone === "down" ? "border-down/40 bg-down/5" : "border-hairline bg-ink")}
               data-testid="alert-live-rr">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-t-2">Canlı R/R</span>
@@ -144,7 +160,7 @@ export default function Alerts() {
                 ) : (
                   <div className="space-y-2.5">
                     {alerts.map((a) => (
-                      <div key={a.id} className="rounded-lg border border-hairline bg-black p-4" data-testid={`alert-row-${a.id}`}>
+                      <div key={a.id} className="rounded-lg border border-hairline bg-ink p-4" data-testid={`alert-row-${a.id}`}>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2.5">
                             <span className="font-semibold text-t-1">{a.symbol}</span>
@@ -155,8 +171,14 @@ export default function Alerts() {
                             <RRPill rr={a.rr} />
                             {queuedIds.includes(a.id) ? (
                               <QueuedBadge label="Siliniyor" />
+                            ) : confirmId === a.id ? (
+                              <span className="flex items-center gap-1.5 text-xs">
+                                <span className="text-t-2">Silinsin mi?</span>
+                                <button onClick={() => remove(a.id)} className="rounded-md bg-down/15 px-2 py-1 font-semibold text-down hover:bg-down/25" data-testid={`alert-delete-confirm-${a.id}`}>Sil</button>
+                                <button onClick={() => setConfirmId(null)} className="rounded-md px-2 py-1 text-t-2 hover:bg-raised hover:text-t-1">Vazgeç</button>
+                              </span>
                             ) : (
-                              <button onClick={() => remove(a.id)} className="rounded-md p-1.5 text-t-3 transition-colors duration-150 hover:bg-down/10 hover:text-down" data-testid={`alert-delete-${a.id}`} aria-label="Sil">
+                              <button onClick={() => setConfirmId(a.id)} className="rounded-md p-1.5 text-t-3 transition-colors duration-150 hover:bg-down/10 hover:text-down" data-testid={`alert-delete-${a.id}`} aria-label="Sil">
                                 <Trash2 className="h-4 w-4" />
                               </button>
                             )}

@@ -21,6 +21,8 @@ export interface Alert {
 
 export interface Position {
   id: string;
+  market?: "KRIPTO" | "BIST";
+  currency?: "USD" | "TL";
   symbol: string;
   side: Side;
   entry: number;
@@ -38,6 +40,8 @@ export interface Position {
 
 export interface Decision {
   id: string;
+  market?: "KRIPTO" | "BIST";
+  currency?: "USD" | "TL";
   symbol: string;
   kind: "KARAR";
   verdict: "Aldım" | "Pas" | null;
@@ -60,6 +64,8 @@ export interface SignalPanel {
 
 export interface Signal {
   id: string;
+  market?: "KRIPTO" | "BIST";
+  currency?: "USD" | "TL";
   symbol: string;
   timeframe: string;
   type: string;

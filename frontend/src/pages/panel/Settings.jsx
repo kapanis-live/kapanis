@@ -20,15 +20,22 @@ export default function Settings() {
   const { user } = useAuth();
   return (
     <div>
-      <PageHeader title="Ayarlar" subtitle="Risk parametreleri, hesap ve kuralların salt okunur özeti." testid="page-settings" />
+      <PageHeader eyebrow="Sistem / Ayarlar" title="Ayarlar" subtitle="Risk parametreleri, hesap ve kuralların salt okunur özeti." testid="page-settings" />
       <DataView query={q} loadingText={TEXTS.loading.default}>
         {(d) => (
           <div className="grid gap-6 lg:grid-cols-2">
-            <Panel title="Risk parametreleri" testid="settings-risk">
-              <Row label="İşlem başına risk" value={`%${formatNumber(d.risk_per_trade_pct, { decimals: 1 })}`} />
-              <Row label="Maks. açık pozisyon" value={formatNumber(d.max_open_positions, { decimals: 0 })} />
-              <Row label="Minimum R/R" value={formatNumber(d.default_rr_min, { decimals: 1 })} />
+            <Panel title="Bot parametreleri" testid="settings-risk">
+              {d.params ? (
+                d.params.map((p) => <Row key={p.label} label={p.label} value={p.value} />)
+              ) : (
+                <>
+                  <Row label="İşlem başına risk" value={`%${formatNumber(d.risk_per_trade_pct, { decimals: 1 })}`} />
+                  <Row label="Maks. açık pozisyon" value={formatNumber(d.max_open_positions, { decimals: 0 })} />
+                  <Row label="Minimum R/R" value={formatNumber(d.default_rr_min, { decimals: 1 })} />
+                </>
+              )}
               <Row label="Saat dilimi" value={d.timezone} />
+              <p className="mt-3 text-xs text-t-3">Bu değerler bottan okunur; değiştirmek için Telegram komutlarını kullan (/set_config).</p>
             </Panel>
 
             <Panel title="Hesap" testid="settings-account">

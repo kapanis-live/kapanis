@@ -21,7 +21,7 @@ export function RegimeScale({ score, label }) {
           <div className="text-xs text-t-3">-5 … +5 skalası</div>
         </div>
       </div>
-      <div className="relative mt-3 h-2 rounded-full bg-black border border-hairline overflow-hidden">
+      <div className="relative mt-3 h-2 rounded-full bg-ink border border-hairline overflow-hidden">
         <div className="absolute inset-y-0 left-1/2 w-px bg-t-3" />
         <div
           className={cn("absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-black", clamped >= 0 ? "bg-up" : "bg-down")}
@@ -42,7 +42,7 @@ export default function Macro() {
   const q = useData("macro", "/macro");
   return (
     <div>
-      <PageHeader title="Makro" subtitle="Rejim skalası, alt dolar endeksi ve ekonomik takvim." testid="page-macro" />
+      <PageHeader eyebrow="Piyasa / Makro" title="Makro" subtitle="Rejim skalası, alt dolar endeksi ve ekonomik takvim." testid="page-macro" />
       <DataView query={q} loadingText={TEXTS.loading.macro}>
         {(d) => (
           <div className="space-y-6">

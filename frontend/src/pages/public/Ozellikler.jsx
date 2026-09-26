@@ -51,7 +51,7 @@ export default function Ozellikler() {
                 className="rounded-xl border border-hairline bg-surface p-5"
                 data-testid={`feature-card-${i}`}
               >
-                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-black text-t-1">
+                <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-ink text-t-1">
                   <Icon className="h-4 w-4" />
                 </div>
                 <h3 className="text-sm font-semibold text-t-1">{f.title}</h3>

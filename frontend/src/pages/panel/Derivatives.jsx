@@ -7,6 +7,9 @@ import { TEXTS } from "@/lib/texts";
 import { cn } from "@/lib/utils";
 
 function CotBar({ pct }) {
+  if (pct === null || pct === undefined) {
+    return <p className="text-xs text-t-3">COT verisi bu kontrat için yok (sadece CME BTC/ETH).</p>;
+  }
   const tone = pct >= 90 ? "bg-down" : pct >= 70 ? "bg-wait" : "bg-info";
   return (
     <div>
@@ -14,7 +17,7 @@ function CotBar({ pct }) {
         <span className="text-t-2">COT yüzdeliği</span>
         <span className={cn("num font-semibold", pct >= 90 ? "text-down" : pct >= 70 ? "text-wait" : "text-info")}>%{pct}</span>
       </div>
-      <div className="mt-1.5 h-2 rounded-full bg-black border border-hairline overflow-hidden">
+      <div className="mt-1.5 h-2 rounded-full bg-ink border border-hairline overflow-hidden">
         <div className={cn("h-full rounded-full", tone)} style={{ width: `${pct}%` }} />
       </div>
       {pct >= 90 && <p className="mt-1.5 text-xs text-down">Aşırı uç bölge — pozisyonlanma kalabalık.</p>}
@@ -26,7 +29,7 @@ export default function Derivatives() {
   const q = useData("derivatives", "/derivatives");
   return (
     <div>
-      <PageHeader title="Vadeli" subtitle="Funding, açık pozisyon, long/short oranı ve COT yüzdeliği." testid="page-derivatives" />
+      <PageHeader eyebrow="Piyasa / Vadeli" title="Vadeli" subtitle="Funding, açık pozisyon, long/short oranı ve COT yüzdeliği." testid="page-derivatives" />
       <DataView query={q} loadingText={TEXTS.loading.derivatives}>
         {(list) =>
           !list || list.length === 0 ? (

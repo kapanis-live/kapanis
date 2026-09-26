@@ -14,6 +14,8 @@ import { toast } from "sonner";
 import { Check, X, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const VERDICT_CLS = { AL: "bg-up/15 text-up", "ŞİMDİ AL": "bg-up/15 text-up", TUT: "bg-info/15 text-info", BEKLE: "bg-wait/15 text-wait", PAS: "bg-down/15 text-down" };
+
 function ScoreChip({ score }) {
   const up = score > 0, down = score < 0;
   const Icon = up ? TrendingUp : down ? TrendingDown : Minus;
@@ -49,6 +51,7 @@ function PendingDecisions({ decisions }) {
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center rounded bg-t-1 px-1.5 py-0.5 text-[11px] font-bold text-black">KARAR</span>
                 <span className="font-semibold text-t-1">{d.symbol}</span>
+                {d.market === "BIST" && <span className="rounded bg-info/15 px-1.5 py-0.5 text-[11px] text-info">BIST · TL</span>}
               </div>
               <RRPill rr={d.rr} />
             </div>
@@ -77,9 +80,73 @@ function PendingDecisions({ decisions }) {
   );
 }
 
+const RULE_STYLE = {
+  gecti: { icon: "✓", cls: "text-up" },
+  kaldi: { icon: "✕", cls: "text-down" },
+  uyari: { icon: "!", cls: "text-wait" },
+};
+const OUTCOME_TEXT = {
+  hedef: { label: "Hedefe gitti", cls: "text-up" },
+  stop: { label: "Stopa gitti", cls: "text-down" },
+  "açık": { label: "Henüz sonuçlanmadı", cls: "text-t-2" },
+  "veri yok": { label: "Veri yok", cls: "text-t-3" },
+};
+
+// "Neden AL / BEKLE / PAS?" — the code gate's rules, the candle it used, and what happened after.
+function WhyPanel({ analysis, currency }) {
+  const gate = analysis?.gate;
+  const outcome = analysis?.outcome;
+  if (!gate && !outcome) return null;
+  const o = outcome ? OUTCOME_TEXT[outcome.sonuc] || { label: outcome.sonuc, cls: "text-t-2" } : null;
+  return (
+    <div className="rounded-lg border border-hairline bg-ink p-4" data-testid="why-panel">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-t-3">Neden? — kod kapısı</span>
+        {gate && (
+          <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold", gate.ok ? "bg-up/15 text-up" : "bg-down/15 text-down")}>
+            {gate.ok ? "GEÇTİ" : "KALDI"}
+          </span>
+        )}
+      </div>
+      {gate?.mum && (
+        <p className="num mt-2 text-xs text-t-2">
+          Kullanılan mum: {gate.mum.zaman_dilimi} · {gate.mum.acilis_utc} UTC · kapanış {formatPrice(gate.mum.kapanis)}
+        </p>
+      )}
+      {gate?.kurallar && (
+        <ul className="mt-3 space-y-1.5">
+          {gate.kurallar.map((r) => {
+            const st = RULE_STYLE[r.durum] || RULE_STYLE.uyari;
+            return (
+              <li key={r.kural} className="flex items-start gap-2 text-xs">
+                <span className={cn("num w-3 shrink-0 font-bold", st.cls)}>{st.icon}</span>
+                <span className="text-t-1 font-medium shrink-0">{r.kural}</span>
+                <span className="text-t-2">{r.detay}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {gate && (
+        <p className="num mt-3 text-xs text-t-2">
+          R/R {gate.rr ?? "—"} · ilk kademe {currency === "TL" ? `${gate.lot ?? 0} lot / ${gate.kademe_tl ?? 0} TL` : `${gate.kademe_usd ?? 0} USD`}{gate.risk_off ? " · risk azaltıldı" : ""}
+        </p>
+      )}
+      {o && (
+        <div className="mt-3 border-t border-hairline pt-3 text-xs">
+          <span className="text-t-3">Sonradan ne oldu (kapanışla): </span>
+          <span className={cn("font-semibold", o.cls)}>{o.label}</span>
+          {outcome.R != null && <span className="num text-t-2"> · {outcome.R > 0 ? "+" : ""}{outcome.R}R · {outcome.mum} mum</span>}
+        </div>
+      )}
+      {analysis?.user_action && <p className="mt-1.5 text-xs text-t-3">Senin kararın: {analysis.user_action}</p>}
+    </div>
+  );
+}
+
 function AnalysisDetail({ signal }) {
   const symbolId = signal.symbol.replace("/", "-");
-  const cq = useData(["candles", symbolId], `/candles/${symbolId}`, { retry: false });
+  const cq = useData(["candles", symbolId], `/candles/${symbolId}`, { retry: false, enabled: signal.market !== "BIST" });
   const bot = signal.analysis?.bot_decision;
 
   return (
@@ -96,7 +163,11 @@ function AnalysisDetail({ signal }) {
       </div>
 
       {/* Grafik */}
-      {cq.isSuccess ? (
+      {signal.market === "BIST" ? (
+        <div className="flex h-[120px] items-center justify-center rounded-lg border border-hairline bg-ink text-xs text-t-3">
+          BIST grafiği panelde yok. Sinyal ve fiyat verisi gecikmeli; fiyatı aracı kurumdan doğrula.
+        </div>
+      ) : cq.isSuccess ? (
         <div>
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs text-t-2">Fiyat & hareketli ortalamalar</span>
@@ -105,9 +176,9 @@ function AnalysisDetail({ signal }) {
           <PriceChart data={cq.data.candles} sma20={cq.data.sma20} sma50={cq.data.sma50} sma200={cq.data.sma200} />
         </div>
       ) : cq.isLoading ? (
-        <div className="h-[280px] rounded-lg bg-black animate-pulse" />
+        <div className="h-[280px] rounded-lg bg-ink animate-pulse" />
       ) : (
-        <div className="flex h-[120px] items-center justify-center rounded-lg border border-hairline bg-black text-xs text-t-3">
+        <div className="flex h-[120px] items-center justify-center rounded-lg border border-hairline bg-ink text-xs text-t-3">
           Bu sembol için grafik verisi yok.
         </div>
       )}
@@ -115,7 +186,7 @@ function AnalysisDetail({ signal }) {
       {/* 4 panel */}
       <div className="grid grid-cols-2 gap-3" data-testid="analysis-panels">
         {signal.analysis?.panels?.map((p) => (
-          <div key={p.key} className="rounded-lg border border-hairline bg-black p-3">
+          <div key={p.key} className="rounded-lg border border-hairline bg-ink p-3">
             <div className="text-xs text-t-3">{p.title}</div>
             <div className="mt-0.5 text-sm font-semibold text-t-1">{p.value}</div>
             <p className="mt-1 text-xs text-t-2">{p.detail}</p>
@@ -125,18 +196,30 @@ function AnalysisDetail({ signal }) {
 
       {/* Bot kararı */}
       {bot && (
-        <div className="rounded-lg border border-hairline bg-black p-4" data-testid="bot-decision">
+        <div className="rounded-lg border border-hairline bg-ink p-4" data-testid="bot-decision">
           <div className="flex items-center justify-between">
             <span className="text-xs text-t-3">Bot kararı</span>
-            <span className="text-sm font-semibold text-t-1">{bot.verdict}</span>
+            <span className={cn("rounded-md px-2 py-0.5 text-sm font-bold", VERDICT_CLS[bot.verdict] || "bg-t-3/15 text-t-1")}>{bot.verdict}</span>
           </div>
-          <div className="mt-2 h-1.5 rounded-full bg-surface overflow-hidden">
-            <div className="h-full bg-t-1" style={{ width: `${Math.round(bot.confidence * 100)}%` }} />
-          </div>
+          {bot.confidence != null && (
+            <div className="mt-2 h-1.5 rounded-full bg-surface overflow-hidden">
+              <div className="h-full bg-t-1" style={{ width: `${Math.round(bot.confidence * 100)}%` }} />
+            </div>
+          )}
           <div className="mt-1.5 flex items-center justify-between text-xs text-t-2">
             <span>{bot.reason}</span>
-            <span className="num">%{Math.round(bot.confidence * 100)}</span>
+            {bot.confidence != null && <span className="num">%{Math.round(bot.confidence * 100)}</span>}
           </div>
+        </div>
+      )}
+
+      <WhyPanel analysis={signal.analysis} currency={signal.currency} />
+
+      {/* Botun tam analiz metni */}
+      {signal.analysis?.text && (
+        <div className="rounded-lg border border-hairline bg-ink p-4" data-testid="analysis-text">
+          <div className="mb-2 text-xs text-t-3">Analiz metni</div>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-t-1">{signal.analysis.text}</p>
         </div>
       )}
     </div>
@@ -154,7 +237,7 @@ export default function Signals() {
 
   return (
     <div>
-      <PageHeader title="Sinyaller & Analiz" subtitle="Sinyal akışı, 4 panelli analiz ve bot kararı." testid="page-signals" />
+      <PageHeader eyebrow="Sinyaller / Analiz" title="Sinyaller & Analiz" subtitle="Sinyal akışı, 4 panelli analiz ve bot kararı." testid="page-signals" />
 
       {dq.isSuccess && <PendingDecisions decisions={dq.data} />}
 
@@ -174,7 +257,7 @@ export default function Signals() {
                         data-testid={`signal-item-${s.id}`}
                         className={cn(
                           "w-full rounded-lg border p-3 text-left transition-colors duration-150",
-                          selected?.id === s.id ? "border-t-2/50 bg-black" : "border-hairline bg-black hover:border-t-3"
+                          selected?.id === s.id ? "border-t-2/50 bg-ink" : "border-hairline bg-ink hover:border-t-3"
                         )}
                       >
                         <div className="flex items-center justify-between">

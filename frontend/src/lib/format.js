@@ -1,36 +1,52 @@
-// Sayı biçimi: 84 350.25 (binlik ayıracı ince boşluk, ondalık nokta)
-const THIN = "\u2009";
+// Sayı biçimi tr-TR: 84.350,25 (binlik nokta, ondalık virgül), negatifte gerçek eksi
+export const MINUS = "−";
 
 export function formatNumber(value, opts = {}) {
   const { decimals = 2, sign = false } = opts;
   if (value === null || value === undefined || value === "" || isNaN(Number(value))) return "—";
   const n = Number(value);
-  const neg = n < 0;
   const fixed = Math.abs(n).toFixed(decimals);
+  const zero = Number(fixed) === 0;
   let [intPart, decPart] = fixed.split(".");
-  intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, THIN);
-  let out = decPart ? `${intPart}.${decPart}` : intPart;
-  if (neg) out = "-" + out;
-  else if (sign) out = "+" + out;
+  intPart = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  let out = decPart ? `${intPart},${decPart}` : intPart;
+  if (n < 0 && !zero) out = MINUS + out;
+  else if (sign && !zero) out = "+" + out;
   return out;
 }
 
+// Serbest ondalıklı sayı metnini (ör. "0.00000594") Türkçe yaz
+export function trDecimal(str) {
+  const s = String(str);
+  const neg = s.startsWith("-");
+  const [i, d] = s.replace("-", "").split(".");
+  const int = i.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return (neg ? MINUS : "") + (d ? `${int},${d}` : int);
+}
+
 export function formatPrice(value) {
+  if (value === null || value === undefined || value === "") return "—";
   const n = Number(value);
   if (isNaN(n)) return "—";
   const decimals = Math.abs(n) >= 1000 ? 2 : Math.abs(n) >= 1 ? 2 : 4;
   return formatNumber(n, { decimals });
 }
 
+// Yüzde işareti önde: +%2,41 · −%0,85 · %12,0 (sign: false)
 export function formatPct(value, opts = {}) {
   const { decimals = 2, sign = true } = opts;
   if (value === null || value === undefined || isNaN(Number(value))) return "—";
-  return formatNumber(Number(value), { decimals, sign }) + "%";
+  const n = Number(value);
+  const body = "%" + formatNumber(Math.abs(n), { decimals });
+  if (Number(Math.abs(n).toFixed(decimals)) === 0) return body;
+  if (n < 0) return MINUS + body;
+  return sign ? "+" + body : body;
 }
 
 export function formatCurrency(value, decimals = 2) {
   if (value === null || value === undefined || isNaN(Number(value))) return "—";
-  return "$" + formatNumber(Number(value), { decimals });
+  const n = Number(value);
+  return (n < 0 ? MINUS : "") + "$" + formatNumber(Math.abs(n), { decimals });
 }
 
 export function formatCompact(value) {

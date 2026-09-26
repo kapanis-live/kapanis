@@ -36,7 +36,7 @@ export default function NasilCalisir() {
                 className="relative pb-10 last:pb-0"
                 data-testid={`how-step-${i}`}
               >
-                <div className="absolute -left-[41px] flex h-6 w-6 items-center justify-center rounded-full border border-hairline bg-black text-t-1">
+                <div className="absolute -left-[41px] flex h-6 w-6 items-center justify-center rounded-full border border-hairline bg-ink text-t-1">
                   <Icon className="h-3 w-3" />
                 </div>
                 <h3 className="text-base font-semibold text-t-1">{s.title}</h3>

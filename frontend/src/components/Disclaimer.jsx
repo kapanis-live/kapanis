@@ -1,13 +1,8 @@
-import { TEXTS } from "@/lib/texts";
-
 export function Disclaimer({ className = "" }) {
   return (
-    <p
-      data-testid="legal-disclaimer"
-      className={`text-xs leading-relaxed text-t-3 border-t border-hairline pt-4 ${className}`}
-    >
-      <span className="text-t-2 font-medium">Yasal uyarı — </span>
-      {TEXTS.disclaimer}
+    <p data-testid="legal-disclaimer"
+      className={`mt-10 border-t border-hairline pb-2 pt-5 text-center text-[0.9375rem] text-t-3 ${className}`}>
+      Yatırım tavsiyesi değildir. Bot işlem yapmaz.
     </p>
   );
 }

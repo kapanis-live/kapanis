@@ -1,5 +1,6 @@
 import { ComposedChart, Line, Area, ReferenceLine, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { formatPrice, formatTime } from "@/lib/format";
+import { useTheme } from "@/lib/theme";
 
 function ChartTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) return null;
@@ -15,24 +16,25 @@ function ChartTooltip({ active, payload }) {
 
 export function PriceChart({ data, sma20, sma50, sma200, height = 280 }) {
   const candles = data || [];
+  const { colors: c } = useTheme();
   return (
     <div style={{ width: "100%", height }} data-testid="price-chart">
       <ResponsiveContainer>
         <ComposedChart data={candles} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
           <defs>
             <linearGradient id="closeFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#26A69A" stopOpacity={0.18} />
-              <stop offset="100%" stopColor="#26A69A" stopOpacity={0} />
+              <stop offset="0%" stopColor={c.brand} stopOpacity={0.25} />
+              <stop offset="100%" stopColor={c.brand} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="#1F1F1F" vertical={false} />
-          <XAxis dataKey="t" tickFormatter={(t) => formatTime(t).slice(0, 5)} tick={{ fill: "#555555", fontSize: 10 }} axisLine={{ stroke: "#1F1F1F" }} tickLine={false} minTickGap={40} />
-          <YAxis domain={["auto", "auto"]} tick={{ fill: "#555555", fontSize: 10 }} axisLine={false} tickLine={false} width={56} tickFormatter={(v) => formatPrice(v)} />
+          <CartesianGrid stroke={c.grid} vertical={false} />
+          <XAxis dataKey="t" tickFormatter={(t) => formatTime(t).slice(0, 5)} tick={{ fill: c.axis, fontSize: 10 }} axisLine={{ stroke: c.grid }} tickLine={false} minTickGap={40} />
+          <YAxis domain={["auto", "auto"]} tick={{ fill: c.axis, fontSize: 10 }} axisLine={false} tickLine={false} width={56} tickFormatter={(v) => formatPrice(v)} />
           <Tooltip content={<ChartTooltip />} />
-          <Area type="monotone" dataKey="c" stroke="#EDEDED" strokeWidth={1.5} fill="url(#closeFill)" dot={false} isAnimationActive={false} />
-          {sma20 != null && <ReferenceLine y={sma20} stroke="#F5C518" strokeDasharray="4 3" strokeWidth={1} />}
-          {sma50 != null && <ReferenceLine y={sma50} stroke="#2196F3" strokeDasharray="4 3" strokeWidth={1} />}
-          {sma200 != null && <ReferenceLine y={sma200} stroke="#E040FB" strokeDasharray="4 3" strokeWidth={1} />}
+          <Area type="monotone" dataKey="c" stroke={c.brand} strokeWidth={2} fill="url(#closeFill)" dot={false} isAnimationActive={false} />
+          {sma20 != null && <ReferenceLine y={sma20} stroke={c.wait} strokeDasharray="4 3" strokeWidth={1} />}
+          {sma50 != null && <ReferenceLine y={sma50} stroke={c.info} strokeDasharray="4 3" strokeWidth={1} />}
+          {sma200 != null && <ReferenceLine y={sma200} stroke={c.violet} strokeDasharray="4 3" strokeWidth={1} />}
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -40,10 +42,11 @@ export function PriceChart({ data, sma20, sma50, sma200, height = 280 }) {
 }
 
 export function SmaLegend() {
+  const { colors } = useTheme();
   const items = [
-    { c: "#F5C518", l: "SMA20" },
-    { c: "#2196F3", l: "SMA50" },
-    { c: "#E040FB", l: "SMA200" },
+    { c: colors.wait, l: "SMA20" },
+    { c: colors.info, l: "SMA50" },
+    { c: colors.violet, l: "SMA200" },
   ];
   return (
     <div className="flex items-center gap-4 text-xs text-t-2">

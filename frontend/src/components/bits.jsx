@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { formatPct } from "@/lib/format";
+import { ChangeBadge } from "@/components/kp";
 
 export function SideBadge({ side }) {
   const long = side === "long";
@@ -35,11 +36,11 @@ export function StatusBadge({ status }) {
   );
 }
 
-// R/R eşiklerine göre renk: <1.5 kırmızı, 1.5–2 sarı, ≥2 yeşil
+// R/R eşikleri botun kuralıyla aynı: <1 kırmızı (pas), 1–1.5 sarı (RİSK-OFF'ta pas), ≥1.5 yeşil
 export function rrTone(rr) {
   if (rr === null || rr === undefined || isNaN(rr)) return "muted";
-  if (rr >= 2) return "up";
-  if (rr >= 1.5) return "wait";
+  if (rr >= 1.5) return "up";
+  if (rr >= 1) return "wait";
   return "down";
 }
 
@@ -62,11 +63,33 @@ export function RRPill({ rr, className, testid = "rr-pill" }) {
   );
 }
 
-export function DeltaText({ value, suffix = "%", className }) {
-  const up = Number(value) >= 0;
+// Yükseliş/düşüş sadece renkle değil ▲ ▼ işaretiyle de anlatılır.
+export function DeltaText({ value, suffix = "%", className, arrow = true }) {
+  if (value === null || value === undefined || isNaN(Number(value))) return <span className="num text-t-3">—</span>;
+  const n = Number(value);
+  const up = n >= 0;
   return (
-    <span className={cn("num font-semibold", up ? "text-up" : "text-down", className)}>
-      {suffix === "%" ? formatPct(value) : (up ? "+" : "") + Number(value).toFixed(2)}
+    <span className={cn("num font-semibold", n === 0 ? "text-t-2" : up ? "text-up" : "text-down", className)}>
+      {arrow && n !== 0 ? (up ? "▲ " : "▼ ") : ""}
+      {suffix === "%" ? formatPct(n) : (up ? "+" : "") + n.toFixed(2)}
+    </span>
+  );
+}
+
+// Renkli zeminli yüzde rozeti = tasarım sistemindeki ChangeBadge
+export function PctBadge({ value, decimals = 2, className, size }) {
+  return <ChangeBadge value={value} decimals={decimals} className={className} size={size} />;
+}
+
+const MARKET_DOT = { KRIPTO: "bg-brand", BIST: "bg-wait", ABD: "bg-info", DIGER: "bg-violet" };
+const MARKET_NAME = { BIST: "BIST", KRIPTO: "Kripto", ABD: "ABD", DIGER: "Altın/Döviz" };
+
+// Piyasa etiketi: renkli nokta + ad (bayrak emojisi Windows'ta görünmüyor)
+export function MarketTag({ m, className, label }) {
+  return (
+    <span className={cn("inline-flex items-center gap-1.5", className)}>
+      <span className={cn("inline-block h-2 w-2 shrink-0 rounded-full", MARKET_DOT[m] || "bg-t-3")} />
+      {label ?? MARKET_NAME[m] ?? m}
     </span>
   );
 }

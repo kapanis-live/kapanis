@@ -37,7 +37,7 @@ function TelegramMockup() {
     <div className="w-full max-w-sm rounded-2xl border border-hairline bg-surface shadow-2xl" data-testid="telegram-mockup">
       {/* başlık */}
       <div className="flex items-center gap-3 border-b border-hairline px-4 py-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black text-t-1 border border-hairline">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-t-1 border border-hairline">
           <LogoMark size={18} />
         </div>
         <div className="leading-tight">
@@ -48,7 +48,7 @@ function TelegramMockup() {
 
       <div className="space-y-3 p-4">
         {/* 1) grafik mesajı */}
-        <motion.div variants={fade} initial="hidden" animate="show" custom={0} className="max-w-[85%] rounded-2xl rounded-tl-sm border border-hairline bg-black p-3">
+        <motion.div variants={fade} initial="hidden" animate="show" custom={0} className="max-w-[85%] rounded-2xl rounded-tl-sm border border-hairline bg-ink p-3">
           <div className="mb-2 flex items-center justify-between text-xs">
             <span className="font-semibold text-t-1">BTC/USDT · 4H</span>
             <span className="num text-t-2">{formatPrice(84350)}</span>
@@ -62,7 +62,7 @@ function TelegramMockup() {
         </motion.div>
 
         {/* 2) KARAR mesajı */}
-        <motion.div variants={fade} initial="hidden" animate="show" custom={1} className="max-w-[85%] rounded-2xl rounded-tl-sm border border-hairline bg-black p-3">
+        <motion.div variants={fade} initial="hidden" animate="show" custom={1} className="max-w-[85%] rounded-2xl rounded-tl-sm border border-hairline bg-ink p-3">
           <div className="mb-2 inline-flex items-center rounded bg-t-1 px-2 py-0.5 text-[11px] font-bold tracking-wide text-black">
             KARAR
           </div>
@@ -159,7 +159,7 @@ export default function Home() {
                   className="relative rounded-xl border border-hairline bg-surface p-4"
                   data-testid={`journey-step-${i}`}
                 >
-                  <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-black text-t-1">
+                  <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-ink text-t-1">
                     <Icon className="h-4 w-4" />
                   </div>
                   <div className="text-xs font-semibold text-t-3">{String(i + 1).padStart(2, "0")}</div>

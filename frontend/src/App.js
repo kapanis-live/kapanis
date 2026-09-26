@@ -5,6 +5,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PublicLayout } from "@/components/PublicLayout";
 import { PanelLayout } from "@/components/PanelLayout";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider, useTheme } from "@/lib/theme";
 
 import Home from "@/pages/public/Home";
 import Ozellikler from "@/pages/public/Ozellikler";
@@ -24,6 +25,10 @@ import Cost from "@/pages/panel/Cost";
 import Derivatives from "@/pages/panel/Derivatives";
 import Backtest from "@/pages/panel/Backtest";
 import Settings from "@/pages/panel/Settings";
+import Portfolio from "@/pages/panel/Portfolio";
+import Watchlist from "@/pages/panel/Watchlist";
+import Discipline from "@/pages/panel/Discipline";
+import ChartPage from "@/pages/panel/Chart";
 
 const pub = (el) => <PublicLayout>{el}</PublicLayout>;
 const panel = (el) => (
@@ -32,8 +37,14 @@ const panel = (el) => (
   </ProtectedRoute>
 );
 
+function ThemedToaster() {
+  const { theme } = useTheme();
+  return <Toaster position="bottom-right" theme={theme} />;
+}
+
 function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -49,6 +60,10 @@ function App() {
           <Route path="/app/alarmlar" element={panel(<Alerts />)} />
           <Route path="/app/sinyaller" element={panel(<Signals />)} />
           <Route path="/app/pozisyonlar" element={panel(<Positions />)} />
+          <Route path="/app/portfoy" element={panel(<Portfolio />)} />
+          <Route path="/app/takip" element={panel(<Watchlist />)} />
+          <Route path="/app/disiplin" element={panel(<Discipline />)} />
+          <Route path="/app/grafik" element={panel(<ChartPage />)} />
           <Route path="/app/rapor" element={panel(<Report />)} />
           <Route path="/app/makro" element={panel(<Macro />)} />
           <Route path="/app/maliyet" element={panel(<Cost />)} />
@@ -59,8 +74,9 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
-      <Toaster position="top-right" theme="dark" />
+      <ThemedToaster />
     </AuthProvider>
+    </ThemeProvider>
   );
 }
 

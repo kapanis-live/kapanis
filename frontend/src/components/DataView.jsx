@@ -14,27 +14,34 @@ export function DataView({ query, loadingText, children }) {
   return children(query.data);
 }
 
-export function StatCard({ label, value, sub, tone, testid }) {
-  const toneCls = tone === "up" ? "text-up" : tone === "down" ? "text-down" : tone === "wait" ? "text-wait" : "text-t-1";
+const TONE_TEXT = { up: "text-up", down: "text-down", wait: "text-wait", info: "text-info", brand: "text-brand" };
+
+// Özet kartı: etiket 15px, değer 34px kalın, alt satır 15px
+export function StatCard({ label, value, sub, tone, testid, icon: Icon, size = "md" }) {
   return (
-    <div className="rounded-xl border border-hairline bg-surface p-4" data-testid={testid}>
-      <div className="text-xs text-t-2">{label}</div>
-      <div className={`num mt-1.5 text-xl font-bold ${toneCls}`}>{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-t-3">{sub}</div>}
+    <div className="flex flex-col gap-2 rounded-xl border border-hairline bg-surface p-6" data-testid={testid}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[0.9375rem] font-medium text-t-2">{label}</span>
+        {Icon && <Icon className="h-[1.125rem] w-[1.125rem] text-t-3" aria-hidden />}
+      </div>
+      <div className={`num font-bold leading-[1.1] tracking-[-0.01em] ${size === "sm" ? "text-[1.625rem]" : "text-[2.125rem]"} ${TONE_TEXT[tone] || "text-t-1"}`}>
+        {value}
+      </div>
+      {sub && <div className="text-[0.9375rem] text-t-3">{sub}</div>}
     </div>
   );
 }
 
-export function Panel({ title, action, children, className = "", testid }) {
+export function Panel({ title, action, children, className = "", testid, bodyClass = "p-6" }) {
   return (
     <section className={`rounded-xl border border-hairline bg-surface ${className}`} data-testid={testid}>
       {(title || action) && (
-        <div className="flex items-center justify-between border-b border-hairline px-5 py-3.5">
-          {title && <h2 className="text-sm font-semibold text-t-1">{title}</h2>}
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-5">
+          {title && <h2 className="m-0 text-lg font-bold leading-snug text-t-1">{title}</h2>}
           {action}
         </div>
       )}
-      <div className="p-5">{children}</div>
+      <div className={(title || action) && bodyClass === "p-6" ? "px-6 pb-6 pt-4" : bodyClass}>{children}</div>
     </section>
   );
 }

@@ -17,6 +17,7 @@ from typing import Optional, Any
 from bson import ObjectId
 
 import mock_data
+import chart_data
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -105,10 +106,18 @@ class LoginBody(BaseModel):
 @api.post("/auth/login")
 async def login(body: LoginBody, request: Request, response: Response):
     email = body.email.lower()
-    # Kubernetes ingress arkasında gerçek IP X-Forwarded-For'un ilk kaydındadır.
-    fwd = request.headers.get("x-forwarded-for", "")
-    ip = fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
+    # The client can write X-Forwarded-For itself, so only the entry our own proxy appended
+    # (the right-most one) is trusted, and only when TRUST_PROXY=1. Lockout is per e-mail too,
+    # so rotating IPs doesn't bypass it.
+    ip = request.client.host if request.client else "unknown"
+    if os.environ.get("TRUST_PROXY") == "1":
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            ip = fwd.split(",")[-1].strip()
     ident = f"{ip}:{email}"
+    account = await db.login_attempts.find_one({"identifier": f"*:{email}"})
+    if account and account.get("locked_until") and datetime.fromisoformat(account["locked_until"]) > datetime.now(timezone.utc):
+        raise HTTPException(status_code=429, detail="Çok fazla hatalı deneme. 15 dakika sonra tekrar deneyin.")
     attempt = await db.login_attempts.find_one({"identifier": ident})
     now = datetime.now(timezone.utc)
     if attempt and attempt.get("locked_until"):
@@ -123,9 +132,14 @@ async def login(body: LoginBody, request: Request, response: Response):
         if count >= MAX_FAILED:
             update["locked_until"] = (now + timedelta(minutes=LOCK_MINUTES)).isoformat()
         await db.login_attempts.update_one({"identifier": ident}, {"$set": update}, upsert=True)
+        acc_count = (account["count"] + 1) if account else 1
+        acc_update = {"identifier": f"*:{email}", "count": acc_count}
+        if acc_count >= MAX_FAILED * 2:
+            acc_update["locked_until"] = (now + timedelta(minutes=LOCK_MINUTES)).isoformat()
+        await db.login_attempts.update_one({"identifier": f"*:{email}"}, {"$set": acc_update}, upsert=True)
         raise HTTPException(status_code=401, detail="E-posta veya şifre hatalı.")
 
-    await db.login_attempts.delete_one({"identifier": ident})
+    await db.login_attempts.delete_many({"identifier": {"$in": [ident, f"*:{email}"]}})
     uid = str(user["_id"])
     access = create_access_token(uid, email)
     refresh = create_refresh_token(uid)
@@ -181,6 +195,12 @@ async def _one(collection: str):
 @api.get("/overview")
 async def get_overview(user: dict = Depends(get_current_user)):
     return await _one("overview")
+
+
+@api.get("/extras")
+async def get_extras(user: dict = Depends(get_current_user)):
+    """Portfolio-level features from the bot: benchmark, shadow portfolio, discipline, journal, savings plans."""
+    return await _one("extras") or {"id": "extras", "guncelleme": None}
 
 
 @api.get("/alerts")
@@ -249,6 +269,18 @@ async def get_candles(symbol: str, user: dict = Depends(get_current_user)):
     return doc
 
 
+@api.get("/chart/{symbol}")
+async def get_chart(symbol: str, tf: str = "1d", market: Optional[str] = None, user: dict = Depends(get_current_user)):
+    """Candles + SMA20/50/200, RSI, volume MA and VWAP for any coin, BIST or US ticker."""
+    try:
+        return await chart_data.chart(symbol, tf, market)
+    except chart_data.ChartError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logging.getLogger(__name__).warning("Chart %s %s failed: %s", symbol, tf, e)
+        raise HTTPException(status_code=502, detail="Grafik verisi şu an alınamadı, biraz sonra tekrar dene.")
+
+
 # ---------------- Command creation (panel actions -> queued) ----------------
 async def _queue_command(cmd_type: str, payload: dict) -> dict:
     cmd = {
@@ -270,6 +302,8 @@ class AlertBody(BaseModel):
     stop: float
     target: float
     note: Optional[str] = ""
+    timeframe: Optional[str] = "15m"
+    cooldown: Optional[str] = "1h"
 
 
 @api.post("/alerts")
@@ -303,9 +337,25 @@ async def update_stop(position_id: str, body: StopBody, user: dict = Depends(get
     return {"queued": True, "command": cmd}
 
 
+class CloseBody(BaseModel):
+    price: Optional[float] = None
+
+
 @api.post("/positions/{position_id}/close")
-async def close_position(position_id: str, user: dict = Depends(get_current_user)):
-    cmd = await _queue_command("position.close", {"id": position_id})
+async def close_position(position_id: str, body: Optional[CloseBody] = None,
+                         user: dict = Depends(get_current_user)):
+    pos = await db.positions.find_one({"id": position_id}, {"_id": 0})
+    if not pos or pos.get("status") != "open":
+        raise HTTPException(status_code=404, detail="Açık pozisyon bulunamadı.")
+    is_bist = pos.get("market") == "BIST" or pos.get("symbol", "").endswith(".IS")
+    if is_bist and (body is None or body.price is None or not 0 < body.price < 1e9):
+        raise HTTPException(status_code=400, detail="BIST için gerçekleşen satış fiyatı gerekli.")
+    payload = {"id": position_id}
+    if body is not None and body.price is not None:
+        if not 0 < body.price < 1e9:
+            raise HTTPException(status_code=400, detail="Satış fiyatı geçersiz.")
+        payload["price"] = body.price
+    cmd = await _queue_command("position.close", payload)
     return {"queued": True, "command": cmd}
 
 
@@ -328,11 +378,13 @@ async def list_commands(user: dict = Depends(get_current_user)):
 
 # ---------------- Bot endpoints (X-Bot-Key) ----------------
 INGEST_COLLECTIONS = {"alerts", "positions", "decisions", "macro", "derivatives", "usage", "candles",
-                      "signals", "report", "backtest", "overview", "settings"}
+                      "signals", "report", "backtest", "overview", "settings", "extras"}
 
 
 @api.post("/ingest/{collection}")
-async def ingest(collection: str, request: Request, _: bool = Depends(require_bot_key)):
+async def ingest(collection: str, request: Request, replace: bool = False,
+                 _: bool = Depends(require_bot_key)):
+    """Upsert by id. With ?replace=true the payload is the full collection: other ids are deleted."""
     if collection not in INGEST_COLLECTIONS:
         raise HTTPException(status_code=400, detail="Bilinmeyen koleksiyon.")
     body = await request.json()
@@ -343,7 +395,18 @@ async def ingest(collection: str, request: Request, _: bool = Depends(require_bo
             raise HTTPException(status_code=400, detail="Her kayıtta 'id' alanı gerekli.")
         await db[collection].update_one({"id": item["id"]}, {"$set": item}, upsert=True)
         upserted += 1
-    return {"ok": True, "collection": collection, "upserted": upserted}
+    deleted = 0
+    if replace:
+        res = await db[collection].delete_many({"id": {"$nin": [i["id"] for i in items]}})
+        deleted = res.deleted_count
+    await db.bot_status.update_one({"id": "bot"}, {"$set": {"id": "bot", "last_ingest": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    return {"ok": True, "collection": collection, "upserted": upserted, "deleted": deleted}
+
+
+@api.get("/bot/status")
+async def bot_status(user: dict = Depends(get_current_user)):
+    doc = await db.bot_status.find_one({"id": "bot"}, {"_id": 0})
+    return doc or {"id": "bot", "last_ingest": None}
 
 
 @api.get("/commands/pending")
@@ -365,6 +428,22 @@ async def root():
 
 
 app.include_router(api)
+
+# Serve the prebuilt panel (frontend/build) from this same server, so the panel opens in seconds
+# instead of waiting for the React dev server to compile. /api routes above take precedence.
+FRONTEND_BUILD = ROOT_DIR.parent / "frontend" / "build"
+if FRONTEND_BUILD.is_dir():
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/static", StaticFiles(directory=FRONTEND_BUILD / "static"), name="static")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa(full_path: str):
+        candidate = (FRONTEND_BUILD / full_path).resolve()
+        if full_path and candidate.is_file() and FRONTEND_BUILD.resolve() in candidate.parents:
+            return FileResponse(candidate)
+        return FileResponse(FRONTEND_BUILD / "index.html")  # client-side routes like /app/makro
 
 app.add_middleware(
     CORSMiddleware,
@@ -403,7 +482,10 @@ async def startup():
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier")
     await seed_admin()
-    await seed_mock()
+    if os.environ.get("SEED_MOCK") == "1":  # real data comes from the bot via /api/ingest
+        await seed_mock()
+    if os.environ.get("ADMIN_PASSWORD") == "Kapanis2026":
+        logger.warning("ADMIN_PASSWORD is the published default; change it before going live")
     logger.info("Startup complete")
 
 

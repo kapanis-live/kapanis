@@ -1,0 +1,306 @@
+{
+ "ts": 1790455901.3428097,
+ "zaman": "2026-09-26T23:51:41+03:00",
+ "satirlar": [
+  {
+   "kod": "AKBNK",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 12.0,
+   "fiyat": 70.9,
+   "son12": 26.42,
+   "onceki12": 14.66,
+   "hisse_basi": 2.2018,
+   "aylar": {
+    "2027-03": 26.42
+   },
+   "odemeler": [
+    {
+     "tarih": "2026-03-26",
+     "tutar": 2.2018
+    }
+   ],
+   "verim": 3.11
+  },
+  {
+   "kod": "ASTOR",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 4.0,
+   "fiyat": 261.25,
+   "son12": 0.0,
+   "onceki12": 6.05,
+   "hisse_basi": 0,
+   "aylar": {},
+   "odemeler": [],
+   "verim": null
+  },
+  {
+   "kod": "BIMAS",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 8.0,
+   "fiyat": 424.75,
+   "son12": 56.0,
+   "onceki12": 64.0,
+   "hisse_basi": 7.0,
+   "aylar": {
+    "2026-12": 20.0,
+    "2027-06": 16.0,
+    "2027-09": 20.0
+   },
+   "odemeler": [
+    {
+     "tarih": "2025-12-17",
+     "tutar": 2.5
+    },
+    {
+     "tarih": "2026-06-17",
+     "tutar": 2.0
+    },
+    {
+     "tarih": "2026-09-16",
+     "tutar": 2.5
+    }
+   ],
+   "verim": 1.65
+  },
+  {
+   "kod": "ENJSA",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 2.0,
+   "fiyat": 107.3,
+   "son12": 10.16,
+   "onceki12": 5.74,
+   "hisse_basi": 5.08,
+   "aylar": {
+    "2027-04": 10.16
+   },
+   "odemeler": [
+    {
+     "tarih": "2026-04-13",
+     "tutar": 5.08
+    }
+   ],
+   "verim": 4.73
+  },
+  {
+   "kod": "EREGL",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 44.0,
+   "fiyat": 37.74,
+   "son12": 24.2,
+   "onceki12": 11.0,
+   "hisse_basi": 0.55,
+   "aylar": {
+    "2027-06": 24.2
+   },
+   "odemeler": [
+    {
+     "tarih": "2026-06-03",
+     "tutar": 0.55
+    }
+   ],
+   "verim": 1.46
+  },
+  {
+   "kod": "EUPWR",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 12.0,
+   "fiyat": 61.5,
+   "son12": 0.0,
+   "onceki12": 0.0,
+   "hisse_basi": 0,
+   "aylar": {},
+   "odemeler": [],
+   "verim": null
+  },
+  {
+   "kod": "ISCTR",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 6.0,
+   "fiyat": 13.07,
+   "son12": 3.24,
+   "onceki12": 1.09,
+   "hisse_basi": 0.5395,
+   "aylar": {
+    "2027-04": 3.24
+   },
+   "odemeler": [
+    {
+     "tarih": "2026-04-01",
+     "tutar": 0.539521
+    }
+   ],
+   "verim": 4.13
+  },
+  {
+   "kod": "KCHOL",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 13.0,
+   "fiyat": 216.5,
+   "son12": 88.79,
+   "onceki12": 89.44,
+   "hisse_basi": 6.83,
+   "aylar": {
+    "2027-03": 88.79
+   },
+   "odemeler": [
+    {
+     "tarih": "2026-03-25",
+     "tutar": 6.83
+    }
+   ],
+   "verim": 3.15
+  },
+  {
+   "kod": "KTLEV",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 46.198,
+   "fiyat": 13.16,
+   "son12": 6.6,
+   "onceki12": 1.31,
+   "hisse_basi": 0.1429,
+   "aylar": {
+    "2027-04": 2.64,
+    "2027-05": 1.32,
+    "2027-06": 1.32,
+    "2027-07": 1.32
+   },
+   "odemeler": [
+    {
+     "tarih": "2026-04-21",
+     "tutar": 0.028571
+    },
+    {
+     "tarih": "2026-04-28",
+     "tutar": 0.028571
+    },
+    {
+     "tarih": "2026-05-20",
+     "tutar": 0.028571
+    },
+    {
+     "tarih": "2026-06-23",
+     "tutar": 0.028571
+    },
+    {
+     "tarih": "2026-07-21",
+     "tutar": 0.028571
+    }
+   ],
+   "verim": 1.09
+  },
+  {
+   "kod": "THYAO",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 3.0,
+   "fiyat": 290.75,
+   "son12": 0.0,
+   "onceki12": 20.65,
+   "hisse_basi": 0,
+   "aylar": {},
+   "odemeler": [],
+   "verim": null
+  },
+  {
+   "kod": "YEOTK",
+   "piyasa": "BIST",
+   "para": "TL",
+   "adet": 57.0,
+   "fiyat": 31.2,
+   "son12": 0.0,
+   "onceki12": 0.0,
+   "hisse_basi": 0,
+   "aylar": {},
+   "odemeler": [],
+   "verim": null
+  }
+ ],
+ "toplam": {
+  "TL": {
+   "son12": 215.41,
+   "onceki12": 213.94,
+   "deger": 14058.5,
+   "verim": 1.53,
+   "degisim": 0.7
+  },
+  "USD": {
+   "son12": 0.0,
+   "onceki12": 0.0,
+   "deger": 0.0,
+   "verim": null,
+   "degisim": null
+  }
+ },
+ "takvim": [
+  {
+   "ay": "2026-09",
+   "TL": 0.0,
+   "USD": 0.0
+  },
+  {
+   "ay": "2026-10",
+   "TL": 0.0,
+   "USD": 0.0
+  },
+  {
+   "ay": "2026-11",
+   "TL": 0.0,
+   "USD": 0.0
+  },
+  {
+   "ay": "2026-12",
+   "TL": 20.0,
+   "USD": 0.0
+  },
+  {
+   "ay": "2027-01",
+   "TL": 0.0,
+   "USD": 0.0
+  },
+  {
+   "ay": "2027-02",
+   "TL": 0.0,
+   "USD": 0.0
+  },
+  {
+   "ay": "2027-03",
+   "TL": 115.21,
+   "USD": 0.0
+  },
+  {
+   "ay": "2027-04",
+   "TL": 16.04,
+   "USD": 0.0
+  },
+  {
+   "ay": "2027-05",
+   "TL": 1.32,
+   "USD": 0.0
+  },
+  {
+   "ay": "2027-06",
+   "TL": 41.52,
+   "USD": 0.0
+  },
+  {
+   "ay": "2027-07",
+   "TL": 1.32,
+   "USD": 0.0
+  },
+  {
+   "ay": "2027-08",
+   "TL": 0.0,
+   "USD": 0.0
+  }
+ ],
+ "not": "Brüt, geçen 12 ayın ödemeleri bugünkü adetle tekrarlanır (tahmin; kesin tarih ve tutarı KAP/şirket açıklar)."
+}

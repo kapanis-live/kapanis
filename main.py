@@ -49,6 +49,7 @@ import us_fund
 import us_signals
 import watchlist
 import features
+import tools
 import config
 import conversation_store as store
 import llm
@@ -121,6 +122,10 @@ HELP = """📋 KOMUTLAR (menü: mesaj kutusundaki / tuşu)
 /birikim ekle BTC 50 gun=5 — aylık düzenli alım · /birikim · /birikim sil ID
 /hedef BIST 50 KRIPTO 20 ABD 20 NAKIT 10 — hedef dağılım (akşam sapma uyarısı)
 /sanal al THYAO 290 5000 · /sanal sat ID [FIYAT] — gerçek para olmadan işlem takibi
+/kontrol THYAO 290 280 310 — alım öncesi kontrol: kod kapısı, adet, risk (stop/hedef yazmazsan bölgelerden önerir)
+/galarm THYAO sma50 ustu 1d · /galarm BTC rsi alti 30 4h · /galarm NVDA hacim 2 1d — gösterge alarmı (yalnız kapanış)
+/karsilastir THYAO PGSUS EREGL — 2-4 hisse yan yana (BIST ya da ABD)
+/temettu gelir — portföyün yıllık tahmini temettü geliri, ay ay
 /hesap THYAO 320 stop=300 hedef=360 — kaç adet, risk, R/R
 /pozisyonlar · /sat ID FIYAT [adet=N | yuzde=50]
 /duzelt ID giris=X miktar=Y adet=N stop=X hedef=Y tarih=2025-03-01
@@ -161,6 +166,9 @@ BOT_MENU = [
     ("takip", "Takip listem: kripto/BIST/ABD, tek/çoklu seç, bak"),
     ("hedef", "Hedef dağılım ve sapma: /hedef BIST 50 KRIPTO 20 ..."),
     ("sanal", "Sanal işlem (gerçek para yok): /sanal al THYAO 290 5000"),
+    ("kontrol", "Alım öncesi kontrol: /kontrol THYAO 290 280 310"),
+    ("galarm", "Gösterge alarmı: /galarm THYAO sma50 ustu 1d"),
+    ("karsilastir", "Hisse karşılaştır: /karsilastir THYAO PGSUS"),
     ("olaylar", "Bilanço ve temettü tarihleri (portföy + takip)"),
     ("kap", "Portföyündeki hisselerin KAP bildirimleri"),
     ("ders", "Haftanın dersi: hangi kural işe yaradı"),
@@ -3917,6 +3925,10 @@ async def dca_button(query, rest: list[str]):
 
 @authorized
 async def temettu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args and context.args[0].lower() in ("gelir", "plan"):
+        await update.message.reply_text("⏳ Temettü geçmişi alınıyor...")
+        await update.message.reply_text(tools.dividend_text(await tools.dividend_plan(force=True)))
+        return
     ticks = [bist.ticker(context.args[0])] if context.args else sorted(
         {bist.ticker(p["symbol"]) for p in positions.open_positions() if p.get("piyasa") == "BIST"})
     if not ticks:
@@ -4612,6 +4624,93 @@ async def olaylar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # panel -> bot actions (queued by the panel, applied here with the same functions as Telegram)
 
+# ---------------------------------------------------------------- decision tools (tools.py) ------------------------
+
+async def _code_market(arg: str, forced: str | None = None) -> tuple[str, str]:
+    code = _takip_code(arg)
+    mkt = forced if forced in tools.MARKETS else await _detect_market(arg)
+    if mkt not in tools.MARKETS:
+        raise ValueError(f"{code} kripto, BIST ya da ABD'de bulunamadı")
+    return code, mkt
+
+
+@authorized
+async def kontrol(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/kontrol KOD [GİRİŞ] [STOP] [HEDEF] [piyasa=BIST]: the market's decision gate for a hand-planned buy."""
+    pos, kv = _opts(context.args)
+    if not pos:
+        await update.message.reply_text("Kullanım: /kontrol KOD [GİRİŞ] [STOP] [HEDEF]\n"
+                                        "Örnek: /kontrol THYAO 290 280 310 · /kontrol BTC (şu anki fiyat, stop/hedef bölgelerden)\n"
+                                        "Aynı kod kapısı: GEÇTİ ise kurallara uygun adet ve risk yazılır. Bot işlem yapmaz.")
+        return
+    try:
+        code, mkt = await _code_market(pos[0], (kv.get("piyasa") or "").upper() or None)
+        nums = [_float(x) for x in pos[1:4]]
+        nums += [None] * (3 - len(nums))
+        await update.message.reply_text(f"⏳ {code} ({mkt}) kapıdan geçiriliyor...")
+        r = await tools.pre_trade(mkt, code, *nums)
+    except ValueError as e:
+        await update.message.reply_text(f"❌ {e}")
+        return
+    await web_sync.push_docs("sonuclar", [{"id": "kontrol", "tur": "kontrol", **r}])
+    await update.message.reply_text(tools.pre_trade_text(r))
+
+
+@authorized
+async def galarm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/galarm · /galarm KOD GÖSTERGE YÖN [DEĞER] TF · /galarm sil ID"""
+    args = [a.lower() for a in context.args]
+    if not args or args[0] in ("liste", "list"):
+        await update.message.reply_text(tools.ind_text())
+        return
+    if args[0] == "sil" and len(args) == 2:
+        hit = tools.ind_delete(int(args[1].lstrip("#")))
+        await update.message.reply_text(f"🗑 Silindi: {tools.ind_label(hit)}" if hit else "❌ Bu ID yok. Liste: /galarm")
+        return
+    usage = ("Kullanım: /galarm KOD GÖSTERGE YÖN [DEĞER] ZAMAN\n"
+             "Gösterge: sma20, sma50, sma200, rsi, hacim · yön: ustu / alti · zaman: kripto 1h 4h 1d, BIST/ABD 1d 1wk\n"
+             "Örnek: /galarm THYAO sma50 ustu 1d · /galarm BTC rsi alti 30 4h · /galarm NVDA hacim 2 1d")
+    try:
+        code, mkt = await _code_market(context.args[0])
+        ind = args[1]
+        rest = args[2:]
+        direction = "ustu" if ind == "hacim" else rest.pop(0).replace("üstü", "ustu").replace("altı", "alti")
+        value = _float(rest.pop(0)) if ind in ("rsi", "hacim") else None
+        tf = rest.pop(0) if rest else ("1d" if mkt != "KRIPTO" else "4h")
+        a = tools.ind_create(mkt, code, ind, direction, tf, value)
+    except (IndexError, ValueError) as e:
+        await update.message.reply_text((f"❌ {e}\n" if str(e) and not isinstance(e, IndexError) else "") + usage)
+        return
+    await update.message.reply_text(f"📈 Kuruldu: {tools.ind_label(a)}\nYalnız kapanmış mumla, her yeni kesişmede bir kez haber veririm. "
+                                    "Bu bir AL sinyali değildir.")
+
+
+@authorized
+async def karsilastir(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/karsilastir KOD KOD [KOD KOD]: BIST or US stocks side by side."""
+    if not 2 <= len(context.args) <= 4:
+        await update.message.reply_text("Kullanım: /karsilastir THYAO PGSUS [EREGL] [ASELS] · ABD: /karsilastir NVDA AMD\n"
+                                        "2-4 hisse, aynı piyasadan. Temel skor, büyüme, marj, borç, değerleme, trend.")
+        return
+    try:
+        first, mkt = await _code_market(context.args[0])
+        await update.message.reply_text(f"⏳ {len(context.args)} hisse karşılaştırılıyor (bilançolar indiriliyor, ~20-60 sn)...")
+        c = await tools.compare(mkt, [first] + [_takip_code(a) for a in context.args[1:]])
+    except ValueError as e:
+        await update.message.reply_text(f"❌ {e}")
+        return
+    await web_sync.push_docs("sonuclar", [{"id": "karsilastirma", "tur": "karsilastirma", **c, "en_iyi": tools.best_of(c["satirlar"])}])
+    await update.message.reply_text(tools.compare_text(c))
+
+
+async def ind_alarm_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        for text in await tools.check_ind_alerts():
+            await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
+    except Exception as e:
+        log.warning("Indicator alarms failed: %s", e)
+
+
 def register_panel_actions(bot):
     async def analysis(p):
         piyasa = p.get("piyasa", "KRIPTO")
@@ -4674,10 +4773,54 @@ def register_panel_actions(bot):
         await weekly_lesson(bot)
         return "📘 Panelden haftalık ders istendi — cevap yukarıda ve panelde."
 
+    async def check_req(p):
+        try:
+            code, mkt = await _code_market(str(p.get("kod", "")), p.get("piyasa"))
+            num = lambda k: float(p[k]) if p.get(k) not in (None, "") else None
+            r = await tools.pre_trade(mkt, code, num("giris"), num("stop"), num("hedef"))
+        except ValueError as e:
+            await web_sync.push_docs("sonuclar", [{"id": "kontrol", "tur": "kontrol", "hata": str(e),
+                                                   "zaman": alerts_store.now_tr().isoformat()}])
+            return f"❌ Panel kontrol: {e}"
+        await web_sync.push_docs("sonuclar", [{"id": "kontrol", "tur": "kontrol", **r}])
+        return "Panelden " + tools.pre_trade_text(r)
+
+    async def ind_create_(p):
+        try:
+            code, mkt = await _code_market(str(p.get("kod", "")), p.get("piyasa"))
+            v = p.get("deger")
+            a = tools.ind_create(mkt, code, str(p.get("gosterge", "")), str(p.get("yon", "ustu")), str(p.get("tf", "1d")),
+                                 float(v) if v not in (None, "") else None)
+        except ValueError as e:
+            return f"❌ Panel gösterge alarmı: {e}"
+        return f"📈 Panelden gösterge alarmı kuruldu: {tools.ind_label(a)}"
+
+    async def ind_delete_(p):
+        hit = tools.ind_delete(int(p.get("id", 0)))
+        return f"🗑 Panelden gösterge alarmı silindi: {tools.ind_label(hit)}" if hit else "❌ Panel: gösterge alarmı yok"
+
+    async def compare_req(p):
+        try:
+            mkt = p.get("piyasa")
+            c = await tools.compare(mkt, [_takip_code(str(k)) for k in (p.get("kodlar") or [])])
+        except ValueError as e:
+            await web_sync.push_docs("sonuclar", [{"id": "karsilastirma", "tur": "karsilastirma", "hata": str(e),
+                                                   "zaman": alerts_store.now_tr().isoformat()}])
+            return f"❌ Panel karşılaştırma: {e}"
+        await web_sync.push_docs("sonuclar", [{"id": "karsilastirma", "tur": "karsilastirma", **c,
+                                               "en_iyi": tools.best_of(c["satirlar"])}])
+        return f"⚖️ Panelden karşılaştırma: {', '.join(c['kodlar'])} — sonuç panelde."
+
+    async def dividend_refresh(p):
+        plan = await tools.dividend_plan(force=True)
+        return "💰 Panelden temettü planı yenilendi.\n" + tools.dividend_text(plan)
+
     web_sync.EXTRA_HANDLERS.update({
         "analysis.request": analysis, "plan.add": plan_add_, "plan.remove": plan_remove, "firsat.run": firsat_run,
         "target.set": target_set, "watch.rules": rules_set, "paper.open": paper_open_, "paper.close": paper_close_,
         "lesson.request": lesson,
+        "check.request": check_req, "ind.create": ind_create_, "ind.delete": ind_delete_, "compare.request": compare_req,
+        "dividend.refresh": dividend_refresh,
     })
 
 
@@ -4735,6 +4878,11 @@ async def build_extras() -> dict:
     doc["kap"] = features.kap_for_panel()
     doc["takip_kurallari"] = features.watch_rules()
     doc["ders"] = alerts_store.load_settings().get("son_ders")
+    doc["gosterge_alarmlari"] = [a for a in tools.ind_alerts() if a["durum"] == "aktif"]
+    try:
+        doc["temettu_plani"] = await tools.dividend_plan()
+    except Exception as e:
+        log.warning("Panel dividend plan failed: %s", e)
     return doc
 
 
@@ -5359,6 +5507,9 @@ def main():
     app.add_handler(CommandHandler("ders", ders))
     app.add_handler(CommandHandler("kap", kap))
     app.add_handler(CommandHandler("olaylar", olaylar))
+    app.add_handler(CommandHandler("kontrol", kontrol))
+    app.add_handler(CommandHandler("galarm", galarm))
+    app.add_handler(CommandHandler("karsilastir", karsilastir))
     app.add_error_handler(on_error)
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo_message))
@@ -5401,6 +5552,7 @@ def main():
         app.job_queue.run_repeating(takip_job, interval=5 * 60, first=180, name="takip_sor")  # asks every 30 min (/takip aralik)
         app.job_queue.run_repeating(watch_rules_job, interval=30 * 60, first=600, name="takip_kural")
         app.job_queue.run_repeating(kap_job, interval=15 * 60, first=240, name="kap")
+        app.job_queue.run_repeating(ind_alarm_job, interval=15 * 60, first=300, name="gosterge_alarm")
         app.job_queue.run_daily(calendar_job, dtime(8, 45, tzinfo=macro.TR), name="sirket_takvimi")
         app.job_queue.run_daily(calendar_job, dtime(20, 0, tzinfo=macro.TR), name="sirket_takvimi_aksam")
         app.job_queue.run_once(calendar_job, when=150, name="sirket_takvimi_ilk")

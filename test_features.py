@@ -22,6 +22,7 @@ import journal  # noqa: E402
 import positions  # noqa: E402
 import risk  # noqa: E402
 import features  # noqa: E402
+import tools  # noqa: E402
 
 
 def _reset():
@@ -629,6 +630,54 @@ class WatchlistTest(unittest.TestCase):
 def benchmark_mod():
     import benchmark
     return benchmark
+
+
+class ToolsTest(unittest.TestCase):
+    def setUp(self):
+        _reset()
+
+    @staticmethod
+    def bar(close, sma50=100.0, rsi=50.0, volume=100.0, avg=100.0):
+        return pd.Series({"close": close, "sma20": sma50, "sma50": sma50, "sma200": sma50, "rsi14": rsi,
+                          "volume": volume, "vol_avg20": avg})
+
+    def test_sma_cross_only_on_crossing(self):
+        a = {"gosterge": "sma50", "yon": "ustu", "deger": None}
+        self.assertTrue(tools.crossed(a, self.bar(99), self.bar(101))[0])
+        self.assertFalse(tools.crossed(a, self.bar(101), self.bar(102))[0])  # already above: no repeat
+        self.assertTrue(tools.crossed({**a, "yon": "alti"}, self.bar(101), self.bar(99))[0])
+
+    def test_rsi_and_volume_cross(self):
+        rsi = {"gosterge": "rsi", "yon": "alti", "deger": 30}
+        self.assertTrue(tools.crossed(rsi, self.bar(1, rsi=33), self.bar(1, rsi=28))[0])
+        self.assertFalse(tools.crossed(rsi, self.bar(1, rsi=28), self.bar(1, rsi=25))[0])
+        vol = {"gosterge": "hacim", "yon": "ustu", "deger": 2}
+        self.assertTrue(tools.crossed(vol, self.bar(1, volume=150), self.bar(1, volume=250))[0])
+        self.assertFalse(tools.crossed(vol, self.bar(1, volume=250), self.bar(1, volume=300))[0])
+
+    def test_indicator_alarm_validation(self):
+        with self.assertRaises(ValueError):
+            tools.ind_create("BIST", "THYAO", "sma50", "ustu", "4h")  # BIST is daily/weekly only
+        with self.assertRaises(ValueError):
+            tools.ind_create("KRIPTO", "BTC", "rsi", "alti", "4h", 150)
+        a = tools.ind_create("KRIPTO", "btc", "hacim", "alti", "1d", 2)
+        self.assertEqual((a["kod"], a["yon"], a["son_mum"]), ("BTC", "ustu", None))
+        self.assertEqual(tools.ind_delete(a["id"])["id"], a["id"])
+        self.assertEqual(tools.ind_alerts(), [])
+
+    def test_dividend_projection(self):
+        divs = [{"tarih": "2024-10-01", "tutar": 1.0}, {"tarih": "2025-05-10", "tutar": 2.0},
+                {"tarih": "2025-11-20", "tutar": 0.5}]
+        pr = tools.project(divs, 10, date(2025, 12, 1))
+        self.assertEqual(pr["son12"], 25.0)
+        self.assertEqual(pr["onceki12"], 10.0)
+        self.assertEqual(pr["aylar"], {"2026-05": 20.0, "2026-11": 5.0})
+
+    def test_best_of(self):
+        rows = [{"kod": "A", "skor": 60, "fk": -3, "borc": 2.0}, {"kod": "B", "skor": 70, "fk": 9, "borc": 0.5},
+                {"kod": "C", "skor": 50, "fk": 12, "borc": None}]
+        best = tools.best_of(rows)
+        self.assertEqual((best["skor"], best["fk"], best["borc"]), ("B", "B", "B"))
 
 
 if __name__ == "__main__":

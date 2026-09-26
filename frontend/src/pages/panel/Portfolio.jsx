@@ -1,238 +1,182 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AssetLogo, chartHref } from "@/components/AssetLogo";
-import { PieChart as RPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { PageHeader } from "@/components/PanelLayout";
+import { K, U } from "@/ds";
 import { useData, LIVE } from "@/lib/useData";
-import { DataView, StatCard, Panel } from "@/components/DataView";
-import { PctBadge, DeltaText, MarketTag } from "@/components/bits";
-import { Segmented } from "@/components/kp";
+import { DataView } from "@/components/DataView";
 import { EmptyState } from "@/components/states";
-import { formatNumber, formatPct, formatTime } from "@/lib/format";
-import { useTheme } from "@/lib/theme";
-import { MARKET_LABEL, MARKET_ORDER, MARKET_TONE, px, qty, money, dayLabel, marketTotals } from "@/lib/portfolio";
+import { chartHref } from "@/components/AssetLogo";
+import { marketRows, curOf, logo, MARKET_UI, priceFmt } from "@/lib/dsmap";
+import { formatTime } from "@/lib/format";
+import { baseCode } from "@/lib/portfolio";
+import { sendAction } from "@/lib/actions";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Scale } from "lucide-react";
 
-function MarketCards({ totals }) {
-  const entries = MARKET_ORDER.filter((m) => totals[m]).map((m) => [m, totals[m]]);
+const TARGET_NAMES = { BIST: "BIST", KRIPTO: "Kripto", ABD: "ABD", NAKIT: "Nakit" };
+const TARGET_COLORS = { BIST: "var(--cat-1)", KRIPTO: "var(--cat-2)", ABD: "var(--cat-3)", NAKIT: "var(--cat-5)" };
+
+// Bugünkü varlıklar ve kıyaslar: aynı ilk güne göre yüzde değişim
+function HistoryCard({ rows }) {
+  const [period, setPeriod] = useState("90 gün");
+  const latest = rows?.[rows.length - 1]?.tarih;
+  const start = latest && new Date(`${latest}T12:00:00Z`);
+  if (start) start.setUTCDate(start.getUTCDate() - (period === "30 gün" ? 30 : 90));
+  const r = (rows || []).filter((x) => x.toplam_tl && (!start || x.tarih >= start.toISOString().slice(0, 10)));
+  if (r.length < 5) return null;
+  const base = r[0].toplam_tl;
+  const idx = r[0].xu100;
+  const gold = r[0].gram_altin;
+  const mine = r.map((x) => (x.toplam_tl / base - 1) * 100);
+  const bist = idx && r.every((x) => x.xu100) ? r.map((x) => (x.xu100 / idx - 1) * 100) : null;
+  const altin = gold && r.every((x) => x.gram_altin) ? r.map((x) => (x.gram_altin / gold - 1) * 100) : null;
+  const months = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+  // İlk gün, ay başları ve son gün; birbirine çok yakın etiketler atlanır (üst üste binmesin)
+  const gap = Math.max(4, Math.round(r.length / 10));
+  let lastAt = -gap;
+  const labels = r.map((x, i) => {
+    const want = i === 0 || x.tarih.slice(8) === "01" || i === r.length - 1;
+    if (!want || i - lastAt < gap || (i !== r.length - 1 && r.length - 1 - i < gap)) return "";
+    lastAt = i;
+    return `${+x.tarih.slice(8)} ${months[+x.tarih.slice(5, 7) - 1]}`;
+  });
+  const last = r[r.length - 1];
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {entries.map(([m, t]) => (
-        <div key={m} className={cn("card-shine rounded-xl border border-hairline bg-surface p-4 bg-gradient-to-b to-transparent",
-          t.kz >= 0 ? "from-up/[0.07]" : "from-down/[0.07]")} data-testid={`pf-market-${m}`}>
-          <div className="flex items-center justify-between text-xs font-semibold text-t-2">
-            <MarketTag m={m} />
-            <span className="text-t-3">{t.adet} varlık</span>
-          </div>
-          <div className="num mt-3 text-[28px] font-semibold tracking-tight text-t-1">{money(t.deger, t.para)}</div>
-          <div className="mt-3 space-y-1.5 text-sm">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-t-2">{dayLabel(m)}</span>
-              <span className="flex items-center gap-2">
-                <DeltaText value={t.gun} suffix="" arrow={false} className="text-xs" />
-                <PctBadge value={t.gun_yuzde} />
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-t-2">Toplam</span>
-              <span className="flex items-center gap-2">
-                <DeltaText value={t.kz} suffix="" arrow={false} className="text-xs" />
-                <PctBadge value={t.kz_yuzde} />
-              </span>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
+    <K.Card title="Portföy geçmişi" actions={<K.Segmented ariaLabel="Dönem" value={period} onChange={setPeriod} options={["30 gün", "90 gün"]} />}>
+      <K.LineChart height={240} labels={labels} series={[
+        { label: "Portföyüm (₺)", color: "var(--text)", values: mine },
+        ...(bist ? [{ label: "BIST 100", color: "var(--cat-1)", values: bist, dashed: true }] : []),
+        ...(altin ? [{ label: "Gram altın", color: "var(--cat-5)", values: altin, dashed: true }] : []),
+      ]} />
+      <p className="kp-note">
+        Bugünkü varlıklarının her gün ne ettiği (kripto ve ABD o günün kuruyla ₺). Alış tarihleri bilinmediği için bu bir
+        “eldekiler” görünümüdür. Bugün ₺{U.fmtNum(last.toplam_tl, 0)} · 1 $ = ₺{U.fmtNum(last.usdtry, 2)}.
+      </p>
+    </K.Card>
   );
 }
 
-function Donut({ rows, currency }) {
-  const { colors } = useTheme();
-  const palette = [colors.brand, colors.wait, colors.info, colors.violet, colors.up, colors.down, colors.axis];
-  const data = [...rows].sort((a, b) => b.deger - a.deger);
-  const total = data.reduce((s, r) => s + r.deger, 0);
-  const top = data.slice(0, 6);
-  const rest = data.slice(6).reduce((s, r) => s + r.deger, 0);
-  const slices = [...top.map((r) => ({ name: r.ad, value: r.deger })), ...(rest ? [{ name: "Diğer", value: rest }] : [])];
+function TargetCard({ dagilim, hedef }) {
+  const [edit, setEdit] = useState(false);
+  const [form, setForm] = useState(() => ({ BIST: 50, KRIPTO: 20, ABD: 20, NAKIT: 10, tolerans: 5, ...(hedef || {}) }));
+  if (!dagilim) return null;
+  const save = async () => {
+    const payload = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, U.parseTr(String(v)) || 0]));
+    if (await sendAction("target.set", payload, "Hedef dağılım kaydediliyor.")) setEdit(false);
+  };
   return (
-    <div>
-      <div className="relative h-44">
-        <ResponsiveContainer>
-          <RPieChart>
-            <Pie data={slices} dataKey="value" innerRadius="62%" outerRadius="92%" paddingAngle={2} stroke="none" isAnimationActive={false}>
-              {slices.map((s, i) => <Cell key={s.name} fill={palette[i % palette.length]} />)}
-            </Pie>
-            <Tooltip
-              formatter={(v, n) => [`${money(v, currency)} · ${formatPct((v / total) * 100, { sign: false, decimals: 1 })}`, n]}
-              contentStyle={{ background: colors.tooltipBg, border: `1px solid ${colors.tooltipBorder}`, borderRadius: 8, fontSize: 12 }}
-              itemStyle={{ color: colors.line }}
-            />
-          </RPieChart>
-        </ResponsiveContainer>
-        <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
-          <div>
-            <div className="num text-base font-semibold text-t-1">{formatNumber(total, { decimals: 0 })}</div>
-            <div className="text-[11px] text-t-3">{currency}</div>
-          </div>
-        </div>
-      </div>
-      <ul className="mt-3 space-y-1.5 text-sm">
-        {slices.map((s, i) => (
-          <li key={s.name} className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-t-1">
-              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: palette[i % palette.length] }} />{s.name}
-            </span>
-            <span className="num text-t-2">{formatPct((s.value / total) * 100, { sign: false, decimals: 1 })}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function HoldingsTable({ rows }) {
-  const navigate = useNavigate();
-  const has = (k) => rows.some((g) => g[k] !== null && g[k] !== undefined && g[k] !== 0);
-  const showFx = rows.some((g) => (g.para === "USD" ? g.tl_yuzde : g.usd_yuzde) != null);
-  const showReal = has("reel_yuzde");
-  const showDiv = has("temettu");
-  return (
-    <>
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full whitespace-nowrap text-[1.0625rem]">
-          <thead className="text-left text-sm font-semibold text-t-3">
-            <tr className="border-b border-hairline">
-              <th className="py-2.5 pl-5 pr-3 font-semibold">Varlık</th>
-              <th className="pr-3 text-right font-semibold">Adet</th>
-              <th className="pr-3 text-right font-semibold">Ort. maliyet</th>
-              <th className="pr-3 text-right font-semibold">Fiyat</th>
-              <th className="pr-3 text-right font-semibold">Değer</th>
-              <th className="pr-3 text-right font-semibold">Günlük</th>
-              <th className="pr-3 text-right font-semibold">Toplam</th>
-              <th className="pr-3 text-right font-semibold">K/Z</th>
-              {showFx && <th className="pr-3 text-right font-semibold" title="TL varlıkta dolar bazında, dolar varlıkta TL bazında getiri">$ / TL</th>}
-              {showReal && <th className="pr-3 text-right font-semibold" title="Enflasyondan arındırılmış">Reel</th>}
-              {showDiv && <th className="pr-5 text-right font-semibold">Temettü</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((g) => (
-              <tr key={g.piyasa + g.ad} onClick={() => navigate(chartHref(g.ad, g.piyasa))} title="Grafiği aç"
-                className="h-16 cursor-pointer border-b border-hairline transition-colors duration-150 last:border-0 hover:bg-raised">
-                <td className="pl-5 pr-3">
-                  <span className="flex items-center gap-3">
-                    <AssetLogo code={g.ad.split("/")[0]} market={g.piyasa} size={34} />
-                    <span>
-                      <span className="block text-lg font-bold leading-tight text-t-1">{g.ad}</span>
-                      <MarketTag m={g.piyasa} className="text-xs text-t-3" />
-                    </span>
-                  </span>
-                </td>
-                <td className="num pr-3 text-right text-t-1">{qty(g.adet)}</td>
-                <td className="num pr-3 text-right text-t-2">{px(g.adet ? g.maliyet / g.adet : null)}</td>
-                <td className="num pr-3 text-right text-t-1">{px(g.fiyat)}</td>
-                <td className="num pr-3 text-right font-bold text-t-1">{money(g.deger, g.para)}</td>
-                <td className="pr-3 text-right"><PctBadge value={g.gun_yuzde} /></td>
-                <td className="pr-3 text-right"><PctBadge value={g.toplam_yuzde} /></td>
-                <td className="pr-3 text-right"><DeltaText value={g.deger - g.maliyet} suffix="" arrow={false} /></td>
-                {showFx && <td className="pr-3 text-right"><DeltaText value={g.para === "USD" ? g.tl_yuzde : g.usd_yuzde} arrow={false} /></td>}
-                {showReal && <td className="pr-3 text-right"><DeltaText value={g.reel_yuzde} arrow={false} /></td>}
-                {showDiv && <td className="num pr-5 text-right text-t-2">{g.temettu ? money(g.temettu, "TL") : "—"}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="divide-y divide-hairline md:hidden">
-        {rows.map((g) => (
-          <div key={g.piyasa + g.ad} className="cursor-pointer p-4" onClick={() => navigate(chartHref(g.ad, g.piyasa))}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <AssetLogo code={g.ad.split("/")[0]} market={g.piyasa} size={32} />
-                <div>
-                <div className="text-lg font-bold text-t-1">{g.ad}</div>
-                <div className="text-xs text-t-3">{MARKET_LABEL[g.piyasa]} · {qty(g.adet)} adet · ort. {px(g.adet ? g.maliyet / g.adet : null)}</div>
-                </div>
-              </div>
-              <div className="num text-right font-semibold text-t-1">{money(g.deger, g.para)}</div>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-t-2">
-              {dayLabel(g.piyasa)} <PctBadge value={g.gun_yuzde} />
-              <span className="ml-1">Toplam</span> <PctBadge value={g.toplam_yuzde} />
-              <DeltaText value={g.deger - g.maliyet} suffix="" arrow={false} className="text-xs" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-export default function Portfolio() {
-  const q = useData("extras", "/extras", LIVE);
-  const [tab, setTab] = useState("TUMU");
-  return (
-    <div>
-      <PageHeader title="Portföy"
-        subtitle="Adet, maliyet, günlük ve toplam getiri. Rakamları bot kodla hesaplar, 15 dakikada bir günceller." testid="page-portfolio" />
-      <DataView query={q} loadingText="Portföy verisi yükleniyor...">
-        {(d) => {
-          if (!d.guncelleme) return <EmptyState text="Bot henüz portföy verisini göndermedi (15 dakikada bir gönderir)." />;
-          const all = d.portfoy || [];
-          if (!all.length) return <EmptyState text="Portföy boş. Telegram'da ekle: /portfoy veya düz yazıyla “astordan 4 tane 260 TL'den aldım”." />;
-          const totals = marketTotals(all);
-          const markets = MARKET_ORDER.filter((m) => totals[m]);
-          const rows = tab === "TUMU" ? all : all.filter((g) => g.piyasa === tab);
-          const byCurrency = rows.reduce((acc, g) => ((acc[g.para] ||= []).push(g), acc), {});
+    <K.Card title="Hedef dağılım" actions={<K.Button variant="ghost" onClick={() => setEdit(!edit)}>{edit ? "Vazgeç" : dagilim.hedef_var ? "Değiştir" : "Hedef koy"}</K.Button>}>
+      <div className="kp-col">
+        {dagilim.satirlar.map((r) => {
+          const over = r.sapma != null && Math.abs(r.sapma) > dagilim.tolerans;
           return (
-            <div className="space-y-6">
-              <MarketCards totals={totals} />
-
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <Segmented ariaLabel="Piyasa" value={tab} onChange={setTab}
-                  options={[{ value: "TUMU", label: "Tümü" }, ...markets.map((m) => ({ value: m, label: MARKET_LABEL[m] }))]} />
-                <span className="text-sm text-t-3">Güncelleme {formatTime(d.guncelleme)} · rakamları bot kodla hesaplar</span>
+            <div key={r.piyasa}>
+              <div className="flex items-center justify-between gap-3 text-[0.9375rem]">
+                <span className="flex items-center gap-2 font-semibold text-t-1"><i style={{ width: 10, height: 10, borderRadius: 3, background: TARGET_COLORS[r.piyasa] }} />{TARGET_NAMES[r.piyasa]}</span>
+                <span className="num text-t-2">
+                  <b className="text-t-1">%{U.fmtNum(r.gercek, 1)}</b>
+                  {r.hedef != null && <> · hedef %{U.fmtNum(r.hedef, 0)} · <b className={cn(over ? "text-wait" : "text-t-2")}>{r.sapma > 0 ? "+" : r.sapma < 0 ? "\u2212" : ""}{U.fmtNum(Math.abs(r.sapma), 1)} puan</b></>}
+                </span>
               </div>
-
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
-                <Panel title="Varlıklar" testid="pf-table" bodyClass="p-0" className="min-w-0"
-                  action={<span className="text-xs text-t-3">{rows.length} varlık</span>}>
-                  <HoldingsTable rows={rows} />
-                </Panel>
-                <div className="space-y-6">
-                  <Panel title="Dağılım" testid="pf-donut">
-                    <div className="space-y-6">
-                      {Object.entries(byCurrency).map(([cur, rs]) => <Donut key={cur} rows={rs} currency={cur} />)}
-                    </div>
-                  </Panel>
-                  {(d.yogunlasma?.uyarilar || []).length > 0 && (
-                    <div className="rounded-xl border border-wait/40 bg-wait/[0.08] p-4" data-testid="pf-concentration">
-                      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-wait"><AlertTriangle className="h-4 w-4" /> Yoğunlaşma</div>
-                      {d.yogunlasma.uyarilar.map((w) => <p key={w} className="text-base text-t-1">{w}</p>)}
-                      <p className="mt-2 text-xs text-t-2">Bu bir uyarıdır; bot otomatik işlem önermez. Ayrıntı: /risk</p>
-                    </div>
-                  )}
-                </div>
+              <div className="relative mt-1.5 h-2 rounded-full bg-hairline">
+                <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${Math.min(100, r.gercek)}%`, background: TARGET_COLORS[r.piyasa] }} />
+                {r.hedef != null && <span className="absolute -top-1 h-4 w-0.5 bg-t-1" style={{ left: `${Math.min(100, r.hedef)}%` }} title="hedef" />}
               </div>
-
-              <Panel title="Kıyas (TL, aynı tarihlerde)" testid="pf-benchmark" action={<Scale className="h-4 w-4 text-t-3" />}>
-                {!d.kiyas?.kiyas ? <p className="text-sm text-t-2">Kıyas için alış tarihi girilmiş açık pozisyon gerekli (/duzelt ID tarih=2025-03-01).</p> : (
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <StatCard label="Senin portföyün" value={formatPct(d.kiyas.portfoy_yuzde)} tone={d.kiyas.portfoy_yuzde >= 0 ? "up" : "down"} />
-                    {d.kiyas.kiyas.map((b) => (
-                      <StatCard key={b.ad} label={b.ad} value={formatPct(b.yuzde)}
-                        sub={b.not || (b.fark === null || b.fark === undefined ? "" : b.fark > 0 ? `yendin (+${formatNumber(b.fark, { decimals: 1 })} puan)` : `geride (${formatNumber(b.fark, { decimals: 1 })} puan)`)}
-                        tone={b.fark > 0 ? "up" : b.fark < 0 ? "down" : undefined} />
-                    ))}
-                  </div>
-                )}
-              </Panel>
             </div>
           );
-        }}
-      </DataView>
-    </div>
+        })}
+      </div>
+      {edit ? (
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {[...Object.keys(TARGET_NAMES), "tolerans"].map((k) => (
+            <K.Field key={k} label={k === "tolerans" ? "Tolerans (puan)" : `${TARGET_NAMES[k]} %`}>
+              <K.TextInput inputMode="decimal" value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
+            </K.Field>
+          ))}
+          <div className="col-span-2 flex items-end sm:col-span-5"><K.Button variant="primary" onClick={save}>Kaydet</K.Button></div>
+        </div>
+      ) : (
+        <p className="kp-note">
+          {dagilim.hedef_var
+            ? dagilim.asanlar.length ? `Tolerans (±${U.fmtNum(dagilim.tolerans, 0)} puan) dışında: ${dagilim.asanlar.map((r) => TARGET_NAMES[r.piyasa]).join(", ")}. Her akşam 19:15'te Telegram'dan hatırlatırım.` : `Hepsi tolerans (±${U.fmtNum(dagilim.tolerans, 0)} puan) içinde.`
+            : "Hedef koyarsan sapma olduğunda haber veririm. "}
+          Nakit: /bakiye nakit ile girilen tutarlar. Bu bir öneri değil, yalnız sapma hatırlatması.
+        </p>
+      )}
+    </K.Card>
+  );
+}
+
+const QTY = new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 8 });
+
+export default function Portfolio() {
+  const navigate = useNavigate();
+  const q = useData("extras", "/extras", LIVE);
+  const [tab, setTab] = useState("Tümü");
+  return (
+    <DataView query={q} loadingText="Portföy verisi yükleniyor...">
+      {(d) => {
+        if (!d.guncelleme) return <EmptyState text="Bot henüz portföy verisini göndermedi (15 dakikada bir gönderir)." />;
+        const all = (d.portfoy || []).map((g) => {
+          const cur = curOf(g.para);
+          const code = baseCode(g.ad);
+          return {
+            id: g.piyasa + code, code, market: g.piyasa, marketLabel: MARKET_UI[g.piyasa]?.label || g.piyasa, cur,
+            qty: g.adet, cost: g.adet ? g.maliyet / g.adet : 0, price: g.fiyat, value: g.deger, costv: g.maliyet,
+            day: g.gun_yuzde, total: g.toplam_yuzde, pl: g.deger - g.maliyet,
+          };
+        });
+        if (!all.length) return <EmptyState text="Portföy boş. Telegram'da ekle: /portfoy ya da düz yazıyla “astordan 4 tane 260 TL'den aldım”." />;
+        const markets = marketRows(d.portfoy);
+        const usd = d.usdtry;
+        const tl = (m) => (m.cur === "TRY" ? m.value : usd ? m.value * usd : null);
+        const totalTl = usd ? markets.reduce((a, m) => a + tl(m), 0) : null;
+        const filters = ["Tümü", ...markets.map((m) => m.label)];
+        const rows = all.filter((r) => tab === "Tümü" || r.marketLabel === tab);
+        const cols = [
+          { key: "code", label: "Kod", render: (r) => <K.Ticker symbol={r.code} name={r.marketLabel} logo={logo(r.code, r.market)} /> },
+          { key: "qty", label: "Adet", num: true, render: (r) => QTY.format(r.qty) },
+          { key: "cost", label: "Ort. maliyet", num: true, render: (r) => priceFmt(r.cost, r.cur) },
+          { key: "price", label: "Fiyat", num: true, strong: true, render: (r) => priceFmt(r.price, r.cur) },
+          { key: "value", label: "Değer", num: true, strong: true, mobile: false, render: (r) => U.fmtPrice(r.value, r.cur, 2) },
+          { key: "day", label: "Gün", num: true, render: (r) => (r.day == null ? "—" : <K.ChangeBadge value={r.day} />) },
+          { key: "total", label: "Toplam", num: true, render: (r) => <K.ChangeBadge value={r.total} /> },
+          { key: "pl", label: "K/Z", num: true, render: (r) => <span className={r.pl >= 0 ? "kp-num-up" : "kp-num-down"}>{U.fmtSignedMoney(r.pl, r.cur)}</span> },
+        ];
+        const warnings = d.yogunlasma?.uyarilar || [];
+        const kiyas = d.kiyas?.kiyas || [];
+        return (
+          <div className="kp-page">
+            <K.PageHeader controls={false} title="Portföy"
+              subtitle={totalTl != null ? `Toplam ${U.fmtPrice(totalTl, "TRY", 2)} · 1 $ = ₺${U.fmtNum(usd, 2)} · güncelleme ${formatTime(d.guncelleme)}` : `Güncelleme ${formatTime(d.guncelleme)}`} />
+            <div className="kp-grid kp-g-3">{markets.map((m) => <K.MarketCard key={m.key} {...m} />)}</div>
+            {warnings.length > 0 && <K.Callout tone="warn" title="Yoğunlaşma uyarısı">{warnings.join(" ")}</K.Callout>}
+            <K.Card title="Varlıklar" actions={<K.Segmented ariaLabel="Piyasa" value={tab} onChange={setTab} options={filters} />}>
+              <K.DataTable columns={cols} rows={rows} onRowClick={(r) => navigate(chartHref(r.code, r.market))}
+                mobileEnd={(r) => U.fmtPrice(r.value, r.cur, 2)} />
+              <p className="kp-note">Satıra dokun: o kodun grafiği açılır. Toplam % alış maliyetine göre; rakamları bot kodla hesaplar.</p>
+            </K.Card>
+            <HistoryCard rows={d.geriye?.satirlar} />
+            <TargetCard dagilim={d.dagilim} hedef={d.hedef} />
+            <div className="kp-grid kp-split-l">
+              <K.Card title="Dağılım">
+                {totalTl != null ? (
+                  <K.Donut center={{ label: "Toplam", value: `${U.fmtPrice(totalTl / 1000, "TRY", 1)} bin` }}
+                    items={markets.map((m) => ({ label: m.label, value: tl(m), color: m.color,
+                      sub: U.fmtPrice(tl(m), "TRY", 0) + (m.cur === "USD" ? ` · ${U.fmtPrice(m.value, "USD", 0)}` : "") }))} />
+                ) : <p className="kp-note">Dolar kuru gelince ₺ karşılıklı dağılım gösterilir.</p>}
+              </K.Card>
+              <div className="kp-col">
+                <h2 className="kp-card__title">Kıyas · aynı tarihlerde, ₺ bazında</h2>
+                {kiyas.length ? (
+                  <div className="kp-grid kp-g-2">
+                    {kiyas.map((b) => <K.CompareCard key={b.ad} label={b.ad} value={b.yuzde ?? 0} mine={d.kiyas.portfoy_yuzde ?? 0} note={b.not || undefined} />)}
+                  </div>
+                ) : <p className="kp-note">Kıyas için alış tarihi girilmiş pozisyon gerekli. Telegram: /duzelt ID tarih=2025-03-01</p>}
+                {kiyas.length > 0 && <p className="kp-note">Senin getirin ₺ bazında {d.kiyas.portfoy_yuzde >= 0 ? "+" : "−"}%{U.fmtNum(Math.abs(d.kiyas.portfoy_yuzde), 1)}; her pozisyon kendi alış tarihinden kıyaslanır.</p>}
+              </div>
+            </div>
+          </div>
+        );
+      }}
+    </DataView>
   );
 }

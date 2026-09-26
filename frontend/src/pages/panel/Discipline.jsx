@@ -1,168 +1,110 @@
-import { PageHeader } from "@/components/PanelLayout";
+import { K, U } from "@/ds";
 import { useData, LIVE } from "@/lib/useData";
-import { DataView, StatCard, Panel } from "@/components/DataView";
+import { DataView } from "@/components/DataView";
 import { EmptyState } from "@/components/states";
-import { formatNumber, formatPct, formatTime } from "@/lib/format";
-import { money, qty } from "@/lib/portfolio";
-import { cn } from "@/lib/utils";
-import { MarketTag } from "@/components/bits";
-import { ShieldCheck, ShieldOff, Flame, Ban, CheckCircle2 } from "lucide-react";
+import { relDay, curOf, logo, splitAi } from "@/lib/dsmap";
+import { sendAction } from "@/lib/actions";
 
-// Korku & açgözlülük 0–100 yarım daire göstergesi
-function Gauge({ value, label }) {
-  const v = Math.max(0, Math.min(100, Number(value) || 0));
-  const angle = Math.PI * (1 - v / 100);
-  const x = 60 + 48 * Math.cos(angle);
-  const y = 60 - 48 * Math.sin(angle);
-  const tone = v >= 75 ? "text-down" : v >= 55 ? "text-wait" : v <= 25 ? "text-info" : "text-t-1";
-  return (
-    <div className="flex flex-col items-center">
-      <svg viewBox="0 0 120 70" className="w-48">
-        <defs>
-          <linearGradient id="fg" x1="0" x2="1">
-            <stop offset="0%" stopColor="rgb(var(--c-info))" />
-            <stop offset="50%" stopColor="rgb(var(--c-t3))" />
-            <stop offset="75%" stopColor="rgb(var(--c-wait))" />
-            <stop offset="100%" stopColor="rgb(var(--c-down))" />
-          </linearGradient>
-        </defs>
-        <path d="M12 60 A48 48 0 0 1 108 60" fill="none" stroke="url(#fg)" strokeWidth="9" strokeLinecap="round" />
-        <circle cx={x} cy={y} r="6" fill="rgb(var(--c-t1))" stroke="rgb(var(--c-surface))" strokeWidth="2" />
-      </svg>
-      <div className={cn("num -mt-2 text-3xl font-semibold", tone)}>{v}</div>
-      <div className="text-sm text-t-2">{label}</div>
-    </div>
-  );
-}
-
-function ShadowCard({ cur, o }) {
-  const shadow = (o.net || 0) + (o.acik_net || 0);
-  const real = o.gercek_net || 0;
-  const max = Math.max(Math.abs(shadow), Math.abs(real), 1);
-  const Bar = ({ label, v }) => (
-    <div>
-      <div className="mb-1 flex justify-between text-xs text-t-2"><span>{label}</span><span className={cn("num font-semibold", v >= 0 ? "text-up" : "text-down")}>{formatNumber(v, { decimals: 2, sign: true })} {cur}</span></div>
-      <div className="h-2 rounded-full bg-raised">
-        <div className={cn("h-2 rounded-full", v >= 0 ? "bg-up" : "bg-down")} style={{ width: `${(Math.abs(v) / max) * 100}%` }} />
-      </div>
-    </div>
-  );
-  return (
-    <div className="space-y-3 rounded-lg border border-hairline p-4">
-      <div className="flex items-center justify-between">
-        <MarketTag m={cur === "TL" ? "BIST" : "KRIPTO"} className="font-semibold text-t-1" />
-        <span className="text-xs text-t-3">{o.sinyal} sinyal · {o.kapanan} kapandı ({o.kazanan} kazanan) · {o.acik} açık</span>
-      </div>
-      <Bar label="Botun her ŞİMDİ AL'ını alsaydın" v={shadow} />
-      <Bar label={`Senin gerçek sonucun (${o.aldigin} alım)`} v={real} />
-    </div>
-  );
-}
+const code = (s) => String(s || "").split("/")[0].replace(/\.(IS|US)$/i, "");
+const MK = [["KRIPTO", "Kripto"], ["BIST", "BIST"], ["ABD", "ABD"]];
 
 export default function Discipline() {
   const q = useData("extras", "/extras", LIVE);
+  const rq = useData("report", "/report");
   return (
-    <div>
-      <PageHeader title="Disiplin ve günlük"
-        subtitle="Tilt koruması, gölge portföy, işlem günlüğü ve birikim planları." testid="page-discipline" />
-      <DataView query={q} loadingText="Disiplin verisi yükleniyor...">
-        {(d) => {
-          if (!d.guncelleme) return <EmptyState text="Bot henüz bu verileri göndermedi (15 dakikada bir gönderir)." />;
-          const disc = d.disiplin || {};
-          const j = d.gunluk || {};
-          const golge = Object.entries(d.golge || {});
-          const events = Object.entries(disc.olaylar || {});
-          const fg = d.duygu?.korku_acgozluluk;
-          return (
-            <div className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Disiplin kalkanı" value={disc.aktif ? "Açık" : "Kapalı"} tone={disc.aktif ? "up" : "down"} glow
-                  icon={disc.aktif ? ShieldCheck : ShieldOff} sub={disc.aktif ? "kurallar devrede" : "Telegram: /disiplin"} />
-                <StatCard label="Zarar serisi" value={formatNumber(disc.seri ?? 0, { decimals: 0 })} icon={Flame}
-                  tone={disc.bekleme_bitis ? "down" : undefined}
-                  sub={disc.bekleme_bitis ? `bekleme ${formatTime(disc.bekleme_bitis)}'e kadar` : "yeni giriş serbest"} />
-                {["KRIPTO", "BIST"].map((m) => {
-                  const p = disc.piyasa?.[m] || {};
-                  return (
-                    <StatCard key={m} label={<MarketTag m={m} label={`${m === "KRIPTO" ? "Kripto" : "BIST"} bugün`} />}
-                      value={money(-(p.gunluk_zarar || 0), m === "KRIPTO" ? "USD" : "TL")}
-                      tone={p.engel ? "down" : undefined} icon={p.engel ? Ban : CheckCircle2}
-                      sub={p.engel ? "Günlük zarar sınırı doldu: yeni giriş yok" : "Yeni giriş serbest"} />
-                  );
-                })}
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-2">
-                <Panel title="Gölge portföy (son 30 gün)" testid="dc-shadow">
-                  {!golge.length ? <p className="text-sm text-t-2">Henüz kapıdan geçmiş ŞİMDİ AL sinyali yok.</p> : (
-                    <div className="space-y-3">{golge.map(([cur, o]) => <ShadowCard key={cur} cur={cur} o={o} />)}</div>
-                  )}
-                </Panel>
-
-                <Panel title="İşlem günlüğü (son 30 gün)" testid="dc-journal">
-                  <div className="grid grid-cols-2 gap-3">
-                    <StatCard label="Kapanan işlem" value={formatNumber(j.islem || 0, { decimals: 0 })} />
-                    <StatCard label="En sık hata" value={j.en_sik_hata ? j.en_sik_hata.sayi : "—"}
-                      sub={j.en_sik_hata ? j.en_sik_hata.hata : "tekrarlayan hata yok"} tone={j.en_sik_hata ? "wait" : "up"} />
-                  </div>
-                  <div className="mt-4 space-y-2 text-sm text-t-2">
-                    {j.plan_uyumu && (
-                      <p>Plana uyum: stop uygulandı <b className="text-t-1">{j.plan_uyumu.stop_uygulandi}</b> · hedefte <b className="text-t-1">{j.plan_uyumu.hedef}</b> · arada <b className="text-t-1">{j.plan_uyumu.arada}</b>
-                        {j.plan_uyumu.gec_stop ? <span className="text-wait"> · geç stop {j.plan_uyumu.gec_stop}</span> : null}</p>
-                    )}
-                    {j.satis_sonrasi?.n ? (
-                      <p>Satıştan 5 gün sonra ortalama <b className="num text-t-1">{formatPct(j.satis_sonrasi.ort_5g)}</b> · erken satış {j.satis_sonrasi.erken} · iyi çıkış {j.satis_sonrasi.iyi}</p>
-                    ) : null}
-                    {events.length > 0 && (
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {events.map(([k, v]) => <span key={k} className="rounded-md bg-wait/15 px-2 py-0.5 text-xs font-semibold text-wait">{k}: {v}</span>)}
-                      </div>
-                    )}
-                    <p className="text-xs text-t-3">Neden aldım / sattım notları: Telegram /gunluk</p>
-                  </div>
-                </Panel>
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-3">
-                <Panel title="Birikim planları" testid="dc-dca" className="lg:col-span-2">
-                  {!d.birikim?.length ? <p className="text-sm text-t-2">Birikim planı yok. Telegram: /birikim ekle BTC 50 gun=5</p> : (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {d.birikim.map((b) => (
-                        <div key={b.id} className="rounded-lg border border-hairline p-4">
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-t-1">{b.varlik}</span>
-                            <span className="text-xs text-t-3">#{b.id}</span>
-                          </div>
-                          <p className="mt-1 text-sm text-t-2">Her ayın {b.gun}'i <b className="num text-t-1">{money(b.tutar, b.para)}</b></p>
-                          <p className="mt-1 text-xs text-t-3">{b.adet ? `${qty(b.adet)} adet · ort. ${formatNumber(b.ortalama, { decimals: 2 })}` : "henüz alım yok"}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="mt-4 border-t border-hairline pt-4">
-                    <p className="mb-2 text-xs font-semibold text-t-2">Plan listesi</p>
-                    {d.plan_listesi?.length ? (
-                      <div className="flex flex-wrap gap-2">{d.plan_listesi.map((p) => <span key={p} className="rounded-md border border-hairline bg-raised px-2 py-1 text-xs font-semibold text-t-1">{p}</span>)}</div>
-                    ) : <p className="text-sm text-t-2">Boş (tüm planlar izlenir). Telegram: /plan ekle BTC THYAO</p>}
-                  </div>
-                </Panel>
-
-                <Panel title="Kripto piyasa duygusu" testid="dc-sentiment">
-                  {fg?.deger === undefined ? <p className="text-sm text-t-2">Veri yok.</p> : (
-                    <>
-                      <Gauge value={fg.deger} label={fg.etiket} />
-                      {d.duygu?.piyasa?.btc_dominans ? (
-                        <p className="mt-4 text-center text-xs text-t-2">BTC dominansı <span className="num text-t-1">{formatPct(d.duygu.piyasa.btc_dominans, { sign: false })}</span></p>
-                      ) : null}
-                      <p className="mt-2 text-center text-xs text-t-3">Aşırı açgözlülükte bot yeni girişte daha seçici olur.</p>
-                    </>
-                  )}
-                </Panel>
-              </div>
+    <DataView query={q} loadingText="Disiplin verisi yükleniyor...">
+      {(d) => {
+        if (!d.guncelleme) return <EmptyState text="Bot henüz bu verileri göndermedi (15 dakikada bir gönderir)." />;
+        const disc = d.disiplin || {};
+        const markets = disc.piyasa || {};
+        const blocked = MK.find(([m]) => markets[m]?.engel);
+        const state = !disc.aktif ? "kapali" : disc.bekleme_bitis || blocked ? "engel" : disc.seri >= 1 ? "uyari" : "acik";
+        const limitStreak = disc.seri_sinir ?? 2;
+        const detail = !disc.aktif ? "Kurallar kapalı. Açmak için Telegram: /disiplin ac"
+          : disc.bekleme_bitis ? `Üst üste ${disc.seri} zarar: ${relDay(disc.bekleme_bitis)}'e kadar yeni AL gösterilmez (tilt koruması).`
+          : blocked ? markets[blocked[0]].engel
+          : disc.seri >= 1 ? `Üst üste ${disc.seri} zarar. Seri ${limitStreak}'ye ulaşırsa ${disc.bekleme_saat ?? 24} saat boyunca yeni AL gösterilmez.`
+          : "Zarar serisi yok; yeni girişler serbest.";
+        const trades = rq.data?.trades || [];
+        const last10 = trades.slice(0, 10).reverse();
+        const g = Object.entries(d.golge || {});
+        const j = d.gunluk || {};
+        const events = Object.entries(disc.olaylar || {});
+        const fg = d.duygu?.korku_acgozluluk;
+        return (
+          <div className="kp-page">
+            <K.PageHeader controls={false} title="Disiplin" subtitle="Kurallar kodda. Bot hatırlatır, işlem yapmaz." />
+            <K.ShieldStatus state={state} detail={detail} />
+            <K.Card title="Haftanın dersi" actions={<K.Button variant="ghost" onClick={() => sendAction("lesson.request", {}, "Haftalık ders hazırlanıyor.")}>Şimdi hazırla</K.Button>}>
+              {d.ders ? (() => {
+                const ai = splitAi(d.ders.metin);
+                return (
+                  <K.AiNote model={ai.model || "Yapay zekâ"} time={relDay(d.ders.zaman)} title="Bu haftadan ders" footnote="Sayıları kod hesapladı; model yalnız yorumladı. Öneri değildir.">
+                    {ai.body.split(/\n{2,}/).map((t, i) => <p key={i} style={{ whiteSpace: "pre-wrap" }}>{t}</p>)}
+                  </K.AiNote>
+                );
+              })() : <p className="kp-note">Her pazar 20:10'da hangi kuralın işe yaradığını, pas geçip kaçırdığın ya da iyi ki pas geçtiğin sinyalleri ve en sık hatayı 5 cümlede yazarım. Beklemek istemezsen “Şimdi hazırla”.</p>}
+            </K.Card>
+            <div className="kp-grid kp-g-3">
+              <K.Card title="Zarar serisi">
+                {last10.length ? <K.StreakStrip results={last10.map((t) => ({ r: t.r, symbol: code(t.symbol), date: relDay(t.closed_at) }))} />
+                  : <p className="kp-note">Henüz kapanmış işlem yok.</p>}
+                <p className="kp-note">Son {last10.length} kapanış, eskiden yeniye. Şu an seri {disc.seri ?? 0} · sınır {limitStreak}.</p>
+              </K.Card>
+              <K.Card title="Günlük zarar sınırı">
+                <div className="kp-col">
+                  {MK.filter(([m]) => markets[m]).map(([m, label]) => {
+                    const p = markets[m];
+                    return p.gunluk_sinir
+                      ? <K.LimitMeter key={m} label={label} used={Math.max(0, p.gunluk_zarar || 0)} limit={p.gunluk_sinir} cur={curOf(p.para)} note={`bütçenin %${U.fmtNum(disc.gunluk_zarar_yuzde ?? 3, 0)}'ü`} />
+                      : <p key={m} className="kp-note">{label}: bütçe girilmediği için sınır yok (Telegram: /{m === "ABD" ? "abd" : m === "BIST" ? "bist" : "bakiye"} ...)</p>;
+                  })}
+                </div>
+                <p className="kp-note">Sınır aşılırsa o piyasada gün sonuna kadar yeni giriş yok. Gerçekleşen zarar sayılır.</p>
+              </K.Card>
+              <K.Card title="Korku-açgözlülük">
+                {fg?.deger != null ? <K.FearGreedGauge value={fg.deger}
+                  note={`Kripto kapısında yalnız ilk kademenin boyutunu etkiler; giriş nedeni değildir.${d.duygu?.piyasa?.btc_dominans ? ` BTC dominansı %${U.fmtNum(d.duygu.piyasa.btc_dominans, 1)}.` : ""}`} />
+                  : <p className="kp-note">Veri yok.</p>}
+              </K.Card>
             </div>
-          );
-        }}
-      </DataView>
-    </div>
+
+            <h2 className="kp-card__title" style={{ marginTop: "0.5rem" }}>Gölge portföy · son 30 gün</h2>
+            {g.length ? g.map(([cur, o]) => {
+              const c = curOf(cur);
+              const shadow = (o.net || 0) + (o.acik_net || 0);
+              const real = o.gercek_net || 0;
+              return (
+                <div key={cur} className="kp-grid kp-g-4">
+                  <K.StatCard label={`${c === "TRY" ? "BIST" : "Kripto"} · botun AL sinyali`} value={String(o.sinyal)} sub={`${o.kapanan} kapandı · ${o.acik} açık`} />
+                  <K.StatCard label="Botun her AL'ı (gölge)" value={U.fmtSignedMoney(shadow, c)} tone={shadow >= 0 ? "up" : "down"} sub={`${o.kazanan} kazanan`} />
+                  <K.StatCard label="Benim sonucum" value={U.fmtSignedMoney(real, c)} tone={real >= 0 ? "up" : "down"} sub={`${o.aldigin} alım`} />
+                  <K.StatCard label="Fark" value={U.fmtSignedMoney(real - shadow, c)} tone={real - shadow >= 0 ? "up" : "down"} sub={real - shadow >= 0 ? "botun önündesin" : "botun gerisindesin"} />
+                </div>
+              );
+            }) : <p className="kp-note">Henüz kapıdan geçmiş AL sinyali yok.</p>}
+            <p className="kp-note">Gölge portföy: botun her AL'ı sinyal kapanışından alınmış, iptal ve hedefi kapanışlarla uygulanmış sayılır.</p>
+
+            <K.Card title="İşlem günlüğü">
+              {events.length > 0 && <K.Callout tone="warn" title={`Son 7 günde ${events.reduce((a, [, v]) => a + v, 0)} kural olayı`}>{events.map(([k, v]) => `${k}: ${v}`).join(" · ")}</K.Callout>}
+              {j.en_sik_hata && <K.Callout tone="info" title="En sık hata">{j.en_sik_hata.hata} ({j.en_sik_hata.sayi} kez)</K.Callout>}
+              {trades.length ? (
+                <div style={{ marginTop: "1rem" }}>
+                  <K.DataTable rows={trades.slice(0, 20)} mobileEnd={(r) => <span className={r.r >= 0 ? "kp-num-up" : "kp-num-down"}>{(r.r >= 0 ? "+" : "−") + U.fmtNum(Math.abs(r.r), 1)} R</span>}
+                    columns={[
+                      { key: "symbol", label: "Kod", render: (r) => <K.Ticker symbol={code(r.symbol)} logo={logo(code(r.symbol), r.market)} /> },
+                      { key: "closed_at", label: "Kapanış", render: (r) => relDay(r.closed_at) },
+                      { key: "entry", label: "Giriş", num: true, render: (r) => U.fmtPrice(r.entry, curOf(r.currency)) },
+                      { key: "exit", label: "Çıkış", num: true, strong: true, render: (r) => U.fmtPrice(r.exit, curOf(r.currency)) },
+                      { key: "r", label: "Sonuç", num: true, mobile: false, render: (r) => <span className={r.r >= 0 ? "kp-num-up" : "kp-num-down"}>{(r.r >= 0 ? "+" : "−") + U.fmtNum(Math.abs(r.r), 1)} R</span> },
+                    ]} />
+                </div>
+              ) : <p className="kp-note">Son 30 günde kapanan işlem yok. Neden aldım / sattım notları: Telegram /gunluk</p>}
+              {j.plan_uyumu && <p className="kp-note">Plana uyum: stop uygulandı {j.plan_uyumu.stop_uygulandi} · hedefte {j.plan_uyumu.hedef} · arada {j.plan_uyumu.arada}{j.plan_uyumu.gec_stop ? ` · geç stop ${j.plan_uyumu.gec_stop}` : ""}</p>}
+            </K.Card>
+          </div>
+        );
+      }}
+    </DataView>
   );
 }

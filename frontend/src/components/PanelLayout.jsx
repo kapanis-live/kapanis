@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate, Link } from "react-router-dom";
-import { LogoMark } from "@/components/Logo";
+import { K } from "@/ds";
 import { Disclaimer } from "@/components/Disclaimer";
 import { useAuth } from "@/context/AuthContext";
 import { useData, usePendingCommands } from "@/lib/useData";
@@ -9,7 +9,7 @@ import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid, Bell, Activity, Wallet, FileBarChart, Globe2, Receipt, LineChart, FlaskConical,
-  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart,
+  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target,
 } from "lucide-react";
 
 const NAV = [
@@ -26,6 +26,7 @@ const NAV = [
     group: "Sinyaller",
     items: [
       { to: "/app/sinyaller", label: "Sinyaller & Analiz", icon: Activity },
+      { to: "/app/planlar", label: "Planlar & Fırsatlar", icon: Target },
       { to: "/app/alarmlar", label: "Alarmlar", icon: Bell },
     ],
   },
@@ -197,9 +198,8 @@ function SideNav({ onClick }) {
 
 function Brand() {
   return (
-    <Link to="/app" className="flex items-center gap-3" data-testid="brand-logo">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand/15 text-brand"><LogoMark size={18} /></span>
-      <span className="text-sm font-extrabold tracking-[0.22em] text-t-1">KAPANIŞ</span>
+    <Link to="/app" data-testid="brand-logo" aria-label="Kapanış · Genel bakış">
+      <K.BrandMark size="md" />
     </Link>
   );
 }
@@ -256,7 +256,7 @@ export function PanelLayout({ children }) {
           <TopActions onLogout={handleLogout} />
         </header>
 
-        <main key={loc.pathname} className="mx-auto max-w-[1400px] px-4 pb-24 pt-7 animate-fade-in md:px-7 lg:px-10 lg:pb-10">
+        <main key={loc.pathname} className="kp-main mx-auto max-w-[1400px] px-4 pb-24 pt-7 animate-fade-in md:px-7 lg:px-10 lg:pb-10">
           {children}
           <Disclaimer />
         </main>

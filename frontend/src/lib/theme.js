@@ -46,6 +46,7 @@ export function ThemeProvider({ children }) {
   const [size, setSize] = useState(readSize);
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light");
+    document.documentElement.setAttribute("data-theme", theme); // tasarım sistemi değişkenleri
     try {
       localStorage.setItem(KEY, theme);
     } catch {

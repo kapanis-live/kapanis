@@ -10,7 +10,61 @@ import { Segmented, Chip, SearchField, KButton, ChangeBadge, Trend, RsiMeter, Ra
 import { formatPct, formatTime } from "@/lib/format";
 import { MARKET_LABEL, px, baseCode } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
-import { Copy, Plus } from "lucide-react";
+import { Copy, Plus, Sparkles } from "lucide-react";
+import { K, U } from "@/ds";
+import { sendAction } from "@/lib/actions";
+import { AiPanel } from "@/pages/panel/Chart";
+
+const RULE_FIELDS = [
+  ["destek_yakin", "Desteğe yaklaşınca (%)", "Fiyat desteğe bu yüzdeden yakınsa"],
+  ["rsi_alti", "RSI altına inince", "Çok satılmış bölge"],
+  ["rsi_ustu", "RSI üstüne çıkınca", "Isınmış bölge"],
+  ["hacim_kat", "Hacim ortalamanın kaç katı", "Olağandışı hacim"],
+];
+
+// Takip listesi koşulları: bot 30 dakikada bir kontrol eder, her kod+kural için günde en fazla bir kez yazar
+function RulesCard({ rules }) {
+  const r = rules || {};
+  const [edit, setEdit] = useState(false);
+  const [form, setForm] = useState(() => Object.fromEntries(RULE_FIELDS.map(([k]) => [k, String(r[k] ?? "")])));
+  const save = async () => {
+    const payload = Object.fromEntries(RULE_FIELDS.map(([k]) => [k, U.parseTr(form[k])]));
+    if (Object.values(payload).some((v) => !Number.isFinite(v) || v < 0)) {
+      toast.error("Değerler sayı olmalı (0 = o kural kapalı).");
+      return;
+    }
+    if (await sendAction("watch.rules", payload, "Takip kuralları kaydediliyor.")) setEdit(false);
+  };
+  const toggle = () => sendAction("watch.rules", { aktif: !r.aktif }, r.aktif ? "Takip uyarıları kapatılıyor." : "Takip uyarıları açılıyor.");
+  return (
+    <K.Card title="Takip uyarıları" actions={
+      <div className="flex gap-2">
+        <K.Button variant="ghost" onClick={toggle}>{r.aktif ? "Kapat" : "Aç"}</K.Button>
+        <K.Button variant="ghost" onClick={() => setEdit(!edit)}>{edit ? "Vazgeç" : "Değiştir"}</K.Button>
+      </div>}>
+      {edit ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {RULE_FIELDS.map(([k, label]) => (
+            <K.Field key={k} label={label}>
+              <K.TextInput inputMode="decimal" value={form[k]} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
+            </K.Field>
+          ))}
+          <div className="flex items-end"><K.Button variant="primary" onClick={save}>Kaydet</K.Button></div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <span className={cn("kp-alarm__status", r.aktif ? "is-up" : "is-flat")}>{r.aktif ? "Açık" : "Kapalı"}</span>
+          {RULE_FIELDS.map(([k, label]) => (
+            <span key={k} className="rounded-lg border border-hairline px-3 py-1 text-[0.9375rem] text-t-2">
+              {label}: <b className="num text-t-1">{r[k] != null ? U.fmtNum(r[k], k === "rsi_alti" || k === "rsi_ustu" ? 0 : 1) : "—"}</b>
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="kp-note">Bot 30 dakikada bir listeni kontrol eder; bir koşul olursa Telegram'a yazar (her kod ve kural için günde en fazla bir kez). Bu bir AL sinyali değildir. Telegram: /takip kural</p>
+    </K.Card>
+  );
+}
 
 const MARKETS = ["KRIPTO", "BIST", "ABD"];
 const UNIT = { KRIPTO: "$", BIST: "₺", ABD: "$" };
@@ -67,6 +121,7 @@ export default function Watchlist() {
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState([]);
   const [picked, setPicked] = useState([]);
+  const [asked, setAsked] = useState(null);
   const toggleFilter = (k) => setFilters((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
   const togglePick = (k) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
   const held = useMemo(() => new Set((q.data?.portfoy || []).map((g) => baseCode(g.ad))), [q.data]);
@@ -89,8 +144,9 @@ export default function Watchlist() {
           rows = sortRows(rows, sort);
           return (
             <div className="space-y-4">
+              <RulesCard key={JSON.stringify(d.takip_kurallari || {})} rules={d.takip_kurallari} />
               <div className="flex flex-wrap items-center gap-3">
-                <Segmented ariaLabel="Piyasa" value={tab} onChange={(m) => { setTab(m); setPicked([]); }}
+                <Segmented ariaLabel="Piyasa" value={tab} onChange={(m) => { setTab(m); setPicked([]); setAsked(null); }}
                   options={MARKETS.map((m) => ({ value: m, label: `${MARKET_LABEL[m]} ${(tl.piyasalar[m] || []).length}` }))} />
                 <SearchField value={search} onChange={setSearch} />
                 <label className="inline-flex h-11 items-center rounded-[10px] border border-hairline bg-ink px-3">
@@ -192,13 +248,19 @@ export default function Watchlist() {
                 </>
               )}
 
+              {asked && <AiPanel key={asked.join(",")} code={asked[0]} codes={asked} market={tab} auto />}
+
               {picked.length > 0 && (
                 <div className="sticky bottom-20 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-strong bg-surface p-4 lg:bottom-4">
                   <span className="text-base text-t-1"><b>{picked.length}</b> kod seçili: <span className="text-t-2">{picked.join(", ")}</span></span>
                   <div className="flex gap-2">
                     <KButton variant="ghost" onClick={() => setPicked([])}>Temizle</KButton>
-                    <KButton variant="primary" icon={<Copy className="h-4 w-4" />} onClick={() => copy(`/takip ${picked.join(" ")}`, "Komut")}>
-                      Telegram'da analiz et
+                    <KButton variant="ghost" icon={<Copy className="h-4 w-4" />} onClick={() => copy(`/takip ${picked.join(" ")}`, "Komut")}>
+                      Komutu kopyala
+                    </KButton>
+                    <KButton variant="primary" icon={<Sparkles className="h-4 w-4" />} disabled={picked.length > 10}
+                      onClick={() => { setAsked(picked); setPicked([]); }}>
+                      {picked.length > 10 ? "En fazla 10 kod" : "Yapay zekâ analizi"}
                     </KButton>
                   </div>
                 </div>

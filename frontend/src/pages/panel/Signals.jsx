@@ -1,288 +1,163 @@
-import { useState, useEffect } from "react";
-import { PageHeader } from "@/components/PanelLayout";
-import { useData } from "@/lib/useData";
-import { DataView, Panel } from "@/components/DataView";
-import { EmptyState } from "@/components/states";
-import { RRPill } from "@/components/bits";
-import { QueuedBadge } from "@/components/QueuedBadge";
-import { PriceChart, SmaLegend } from "@/components/PriceChart";
-import { Button } from "@/components/ui/button";
-import api, { formatApiErrorDetail } from "@/lib/api";
-import { formatPrice, relativeTime } from "@/lib/format";
-import { TEXTS } from "@/lib/texts";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Check, X, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { K, U } from "@/ds";
+import { useData } from "@/lib/useData";
+import { DataView } from "@/components/DataView";
+import { EmptyState } from "@/components/states";
+import { chartHref } from "@/components/AssetLogo";
+import api, { formatApiErrorDetail } from "@/lib/api";
+import { curOf, logo, MARKET_UI, relDay, splitAi, priceFmt } from "@/lib/dsmap";
 
-const VERDICT_CLS = { AL: "bg-up/15 text-up", "ŞİMDİ AL": "bg-up/15 text-up", TUT: "bg-info/15 text-info", BEKLE: "bg-wait/15 text-wait", PAS: "bg-down/15 text-down" };
+const code = (s) => String(s || "").split("/")[0].replace(/\.(IS|US)$/i, "");
+const num = (id) => String(id || "").replace(/^(sig|dec)_/, "");
+const DECISION = (v) => {
+  const s = String(v || "").toUpperCase();
+  if (s.includes("AL")) return "AL";
+  if (s.includes("BEKLE")) return "BEKLE";
+  if (s.includes("TUT")) return "TUT";
+  return "PAS";
+};
 
-function ScoreChip({ score }) {
-  const up = score > 0, down = score < 0;
-  const Icon = up ? TrendingUp : down ? TrendingDown : Minus;
-  return (
-    <span className={cn("num inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold", up ? "bg-up/12 text-up" : down ? "bg-down/12 text-down" : "bg-t-3/20 text-t-2")}>
-      <Icon className="h-3 w-3" />{score > 0 ? "+" : ""}{score}
-    </span>
-  );
+// Botun kapı kuralları: yeni kayıtlar {kural, durum, detay}, eskiler "✅ Kural: detay" metni
+function gateItems(gate) {
+  const rules = gate?.kurallar || [];
+  return rules.map((r) => {
+    if (typeof r === "string") {
+      const status = r.startsWith("✅") ? "gecti" : r.startsWith("❌") ? "kaldi" : "uyari";
+      const body = r.replace(/^\S+\s*/, "");
+      const [rule, ...rest] = body.split(":");
+      return { status, rule: rule.trim(), detail: rest.join(":").trim() };
+    }
+    return { status: r.durum || "uyari", rule: r.kural, detail: r.detay, blocking: r.durum === "uyari" ? false : undefined };
+  });
 }
 
-function PendingDecisions({ decisions }) {
-  const [queued, setQueued] = useState({});
-  const pending = (decisions || []).filter((d) => d.status === "pending");
-  if (pending.length === 0) return null;
+const OUTCOME = { hedef: ["Hedefe gitti", "up"], stop: ["İptal seviyesine gitti", "down"], "açık": ["Henüz sonuçlanmadı"], "veri yok": ["Veri yok"] };
 
-  const act = async (id, verdict) => {
-    setQueued((s) => ({ ...s, [id]: verdict }));
+export default function Signals() {
+  const navigate = useNavigate();
+  const sq = useData("signals", "/signals");
+  const dq = useData("decisions", "/decisions");
+  const [sel, setSel] = useState(null);
+  const [filter, setFilter] = useState("Tümü");
+  const [done, setDone] = useState({});
+
+  const items = useMemo(() => {
+    const decs = Object.fromEntries((dq.data || []).map((d) => [num(d.id), d]));
+    return (sq.data || []).map((s) => {
+      const d = decs[num(s.id)];
+      const a = s.analysis || {};
+      const gate = gateItems(a.gate);
+      const passed = gate.filter((g) => g.status === "gecti").length;
+      const verdict = d?.verdict || a.user_action;
+      const state = done[num(s.id)] || (d?.status === "pending" ? "bekliyor" : verdict === "Aldım" ? "aldim" : verdict === "Pas" ? "pas"
+        : a.gate && (a.gate.ok === false || a.gate.gecti === false) ? "kapi" : d ? "doldu" : "izleniyor");
+      return {
+        id: s.id, symbol: code(s.symbol), name: MARKET_UI[s.market]?.label || s.market, logo: logo(code(s.symbol), s.market),
+        decision: DECISION(a.bot_decision?.verdict), time: relDay(s.created_at), score: gate.length ? `${passed}/${gate.length}` : "—",
+        state, raw: s, dec: d, gate, cur: curOf(s.currency),
+      };
+    });
+  }, [sq.data, dq.data, done]);
+
+  useEffect(() => {
+    if (!sel && items.length) setSel((items.find((i) => i.state === "bekliyor") || items[0]).id);
+  }, [items, sel]);
+
+  const pendingCount = items.filter((i) => i.state === "bekliyor").length;
+  const shown = items.filter((i) => filter === "Tümü" || (filter === "Bekleyen" ? i.state === "bekliyor" : filter === "Aldım" ? i.state === "aldim" : i.state === "pas"));
+  const cur = items.find((i) => i.id === sel);
+
+  const act = async (item, verdict) => {
+    if (verdict === "Aldım" && item.decision !== "AL" && !window.confirm(`Bot bu sinyalde ${item.decision} dedi. Gerçekten aldın mı?`)) return;
+    setDone((s) => ({ ...s, [num(item.id)]: verdict === "Aldım" ? "aldim" : "pas" }));
     try {
-      await api.post(`/decisions/${id}/action`, { verdict });
-      toast.success(`"${verdict}" kararı bota iletildi.`);
+      await api.post(`/decisions/${item.dec.id}/action`, { verdict });
+      toast.success(`"${verdict}" kaydı bota iletildi.`);
     } catch (err) {
-      setQueued((s) => { const n = { ...s }; delete n[id]; return n; });
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Karar iletilemedi.");
+      setDone((s) => { const n = { ...s }; delete n[num(item.id)]; return n; });
+      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Kaydedilemedi.");
     }
   };
 
   return (
-    <Panel title="Bekleyen kararlar" testid="pending-decisions" className="mb-6">
-      <div className="space-y-3">
-        {pending.map((d) => (
-          <div key={d.id} className="rounded-lg border border-wait/30 bg-wait/5 p-4" data-testid={`decision-${d.id}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center rounded bg-t-1 px-1.5 py-0.5 text-[11px] font-bold text-black">KARAR</span>
-                <span className="font-semibold text-t-1">{d.symbol}</span>
-                {d.market === "BIST" && <span className="rounded bg-info/15 px-1.5 py-0.5 text-[11px] text-info">BIST · TL</span>}
+    <DataView query={sq} loadingText="Sinyaller yükleniyor...">
+      {() => (
+        <div className="kp-page">
+          <K.PageHeader controls={false} title="Sinyaller"
+            subtitle={`${pendingCount ? `${pendingCount} karar bekliyor` : "Bekleyen karar yok"} · son ${items.length} sinyal`} />
+          {!items.length ? <EmptyState text="Henüz sinyal yok. Alarmlar kapanışla tetiklenince burada görünür." /> : (
+            <>
+              <K.Segmented ariaLabel="Sinyal filtresi" value={filter} onChange={setFilter}
+                options={[{ value: "Tümü", label: "Tümü" }, { value: "Bekleyen", label: `Bekleyen (${pendingCount})` }, { value: "Aldım", label: "Aldım" }, { value: "Pas", label: "Pas" }]} />
+              <div className="kp-grid kp-split-l">
+                {shown.length ? <K.SignalList items={shown} value={sel} onSelect={setSel} /> : <p className="kp-note">Bu filtrede sinyal yok.</p>}
+                {cur && <Detail item={cur} onAct={act} onChart={() => navigate(chartHref(cur.symbol, cur.raw.market))} />}
               </div>
-              <RRPill rr={d.rr} />
-            </div>
-            <div className="num mt-2 grid grid-cols-3 gap-2 text-sm">
-              <div><span className="text-t-3 text-xs block">Giriş</span>{formatPrice(d.entry)}</div>
-              <div><span className="text-t-3 text-xs block">Stop</span><span className="text-down">{formatPrice(d.stop)}</span></div>
-              <div><span className="text-t-3 text-xs block">Hedef</span><span className="text-up">{formatPrice(d.target)}</span></div>
-            </div>
-            <p className="mt-2 text-xs text-t-2">{d.chart_note}</p>
-            {queued[d.id] ? (
-              <div className="mt-3"><QueuedBadge label={`"${queued[d.id]}" iletildi`} /></div>
-            ) : (
-              <div className="mt-3 flex gap-2">
-                <Button size="sm" onClick={() => act(d.id, "Aldım")} className="flex-1 bg-up text-black hover:bg-up/90" data-testid={`decision-aldim-${d.id}`}>
-                  <Check className="h-4 w-4" /> Aldım
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => act(d.id, "Pas")} className="flex-1 border-down/40 text-down hover:bg-down/10" data-testid={`decision-pas-${d.id}`}>
-                  <X className="h-4 w-4" /> Pas
-                </Button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-const RULE_STYLE = {
-  gecti: { icon: "✓", cls: "text-up" },
-  kaldi: { icon: "✕", cls: "text-down" },
-  uyari: { icon: "!", cls: "text-wait" },
-};
-const OUTCOME_TEXT = {
-  hedef: { label: "Hedefe gitti", cls: "text-up" },
-  stop: { label: "Stopa gitti", cls: "text-down" },
-  "açık": { label: "Henüz sonuçlanmadı", cls: "text-t-2" },
-  "veri yok": { label: "Veri yok", cls: "text-t-3" },
-};
-
-// "Neden AL / BEKLE / PAS?" — the code gate's rules, the candle it used, and what happened after.
-function WhyPanel({ analysis, currency }) {
-  const gate = analysis?.gate;
-  const outcome = analysis?.outcome;
-  if (!gate && !outcome) return null;
-  const o = outcome ? OUTCOME_TEXT[outcome.sonuc] || { label: outcome.sonuc, cls: "text-t-2" } : null;
-  return (
-    <div className="rounded-lg border border-hairline bg-ink p-4" data-testid="why-panel">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-t-3">Neden? — kod kapısı</span>
-        {gate && (
-          <span className={cn("rounded px-1.5 py-0.5 text-[11px] font-bold", gate.ok ? "bg-up/15 text-up" : "bg-down/15 text-down")}>
-            {gate.ok ? "GEÇTİ" : "KALDI"}
-          </span>
-        )}
-      </div>
-      {gate?.mum && (
-        <p className="num mt-2 text-xs text-t-2">
-          Kullanılan mum: {gate.mum.zaman_dilimi} · {gate.mum.acilis_utc} UTC · kapanış {formatPrice(gate.mum.kapanis)}
-        </p>
-      )}
-      {gate?.kurallar && (
-        <ul className="mt-3 space-y-1.5">
-          {gate.kurallar.map((r) => {
-            const st = RULE_STYLE[r.durum] || RULE_STYLE.uyari;
-            return (
-              <li key={r.kural} className="flex items-start gap-2 text-xs">
-                <span className={cn("num w-3 shrink-0 font-bold", st.cls)}>{st.icon}</span>
-                <span className="text-t-1 font-medium shrink-0">{r.kural}</span>
-                <span className="text-t-2">{r.detay}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {gate && (
-        <p className="num mt-3 text-xs text-t-2">
-          R/R {gate.rr ?? "—"} · ilk kademe {currency === "TL" ? `${gate.lot ?? 0} lot / ${gate.kademe_tl ?? 0} TL` : `${gate.kademe_usd ?? 0} USD`}{gate.risk_off ? " · risk azaltıldı" : ""}
-        </p>
-      )}
-      {o && (
-        <div className="mt-3 border-t border-hairline pt-3 text-xs">
-          <span className="text-t-3">Sonradan ne oldu (kapanışla): </span>
-          <span className={cn("font-semibold", o.cls)}>{o.label}</span>
-          {outcome.R != null && <span className="num text-t-2"> · {outcome.R > 0 ? "+" : ""}{outcome.R}R · {outcome.mum} mum</span>}
-        </div>
-      )}
-      {analysis?.user_action && <p className="mt-1.5 text-xs text-t-3">Senin kararın: {analysis.user_action}</p>}
-    </div>
-  );
-}
-
-function AnalysisDetail({ signal }) {
-  const symbolId = signal.symbol.replace("/", "-");
-  const cq = useData(["candles", symbolId], `/candles/${symbolId}`, { retry: false, enabled: signal.market !== "BIST" });
-  const bot = signal.analysis?.bot_decision;
-
-  return (
-    <div className="space-y-4" data-testid="analysis-detail">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-base font-semibold text-t-1">{signal.symbol}</h3>
-            <span className="text-xs text-t-3">{signal.timeframe} · {signal.type}</span>
-          </div>
-          <p className="mt-0.5 text-xs text-t-3">{relativeTime(signal.created_at)}</p>
-        </div>
-        <ScoreChip score={signal.score} />
-      </div>
-
-      {/* Grafik */}
-      {signal.market === "BIST" ? (
-        <div className="flex h-[120px] items-center justify-center rounded-lg border border-hairline bg-ink text-xs text-t-3">
-          BIST grafiği panelde yok. Sinyal ve fiyat verisi gecikmeli; fiyatı aracı kurumdan doğrula.
-        </div>
-      ) : cq.isSuccess ? (
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-xs text-t-2">Fiyat & hareketli ortalamalar</span>
-            <SmaLegend />
-          </div>
-          <PriceChart data={cq.data.candles} sma20={cq.data.sma20} sma50={cq.data.sma50} sma200={cq.data.sma200} />
-        </div>
-      ) : cq.isLoading ? (
-        <div className="h-[280px] rounded-lg bg-ink animate-pulse" />
-      ) : (
-        <div className="flex h-[120px] items-center justify-center rounded-lg border border-hairline bg-ink text-xs text-t-3">
-          Bu sembol için grafik verisi yok.
-        </div>
-      )}
-
-      {/* 4 panel */}
-      <div className="grid grid-cols-2 gap-3" data-testid="analysis-panels">
-        {signal.analysis?.panels?.map((p) => (
-          <div key={p.key} className="rounded-lg border border-hairline bg-ink p-3">
-            <div className="text-xs text-t-3">{p.title}</div>
-            <div className="mt-0.5 text-sm font-semibold text-t-1">{p.value}</div>
-            <p className="mt-1 text-xs text-t-2">{p.detail}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Bot kararı */}
-      {bot && (
-        <div className="rounded-lg border border-hairline bg-ink p-4" data-testid="bot-decision">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-t-3">Bot kararı</span>
-            <span className={cn("rounded-md px-2 py-0.5 text-sm font-bold", VERDICT_CLS[bot.verdict] || "bg-t-3/15 text-t-1")}>{bot.verdict}</span>
-          </div>
-          {bot.confidence != null && (
-            <div className="mt-2 h-1.5 rounded-full bg-surface overflow-hidden">
-              <div className="h-full bg-t-1" style={{ width: `${Math.round(bot.confidence * 100)}%` }} />
-            </div>
+            </>
           )}
-          <div className="mt-1.5 flex items-center justify-between text-xs text-t-2">
-            <span>{bot.reason}</span>
-            {bot.confidence != null && <span className="num">%{Math.round(bot.confidence * 100)}</span>}
-          </div>
         </div>
       )}
-
-      <WhyPanel analysis={signal.analysis} currency={signal.currency} />
-
-      {/* Botun tam analiz metni */}
-      {signal.analysis?.text && (
-        <div className="rounded-lg border border-hairline bg-ink p-4" data-testid="analysis-text">
-          <div className="mb-2 text-xs text-t-3">Analiz metni</div>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-t-1">{signal.analysis.text}</p>
-        </div>
-      )}
-    </div>
+    </DataView>
   );
 }
 
-export default function Signals() {
-  const sq = useData("signals", "/signals");
-  const dq = useData("decisions", "/decisions");
-  const [selected, setSelected] = useState(null);
-
-  useEffect(() => {
-    if (sq.data && sq.data.length && !selected) setSelected(sq.data[0]);
-  }, [sq.data, selected]);
-
+function Detail({ item, onAct, onChart }) {
+  const s = item.raw;
+  const a = s.analysis || {};
+  const d = item.dec || {};
+  const out = a.outcome;
+  const ai = splitAi(a.text);
+  const levels = [
+    ["Giriş (sinyal kapanışı)", d.entry], ["İptal seviyesi", d.stop], ["Hedef", d.target],
+  ];
+  const oc = out ? OUTCOME[out.sonuc] || [out.sonuc] : null;
   return (
-    <div>
-      <PageHeader eyebrow="Sinyaller / Analiz" title="Sinyaller & Analiz" subtitle="Sinyal akışı, 4 panelli analiz ve bot kararı." testid="page-signals" />
-
-      {dq.isSuccess && <PendingDecisions decisions={dq.data} />}
-
-      <div className="grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-2">
-          <Panel title="Sinyal akışı" testid="signal-feed">
-            <DataView query={sq} loadingText={TEXTS.loading.signals}>
-              {(signals) =>
-                !signals || signals.length === 0 ? (
-                  <EmptyState text={TEXTS.empty.signals} testid="signals-empty" />
-                ) : (
-                  <div className="space-y-2">
-                    {signals.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => setSelected(s)}
-                        data-testid={`signal-item-${s.id}`}
-                        className={cn(
-                          "w-full rounded-lg border p-3 text-left transition-colors duration-150",
-                          selected?.id === s.id ? "border-t-2/50 bg-ink" : "border-hairline bg-ink hover:border-t-3"
-                        )}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-t-1">{s.symbol}</span>
-                          <ScoreChip score={s.score} />
-                        </div>
-                        <div className="mt-0.5 text-xs text-t-3">{s.timeframe} · {s.type} · {relativeTime(s.created_at)}</div>
-                        <p className="mt-1.5 text-xs text-t-2">{s.summary}</p>
-                      </button>
-                    ))}
-                  </div>
-                )
-              }
-            </DataView>
-          </Panel>
+    <div className="kp-col">
+      <K.Card>
+        <div className="kp-sighead">
+          <div className="kp-sighead__id">
+            <K.Ticker symbol={item.symbol} name={item.name} logo={item.logo} size="lg" />
+          </div>
+          <K.DecisionBadge decision={item.decision} size="lg" />
         </div>
-
-        <div className="lg:col-span-3">
-          <Panel title="Analiz detayı" testid="analysis-panel">
-            {selected ? <AnalysisDetail signal={selected} /> : (
-              <EmptyState text="Detayı görmek için soldan bir sinyal seç." />
-            )}
-          </Panel>
+        <p className="kp-note" style={{ margin: "0.75rem 0 1.25rem" }}>{item.time} · {s.timeframe} mum kapanışı · {s.type}</p>
+        <div className="kp-levels">
+          {levels.map(([label, v]) => (
+            <div key={label} className="kp-tile"><span className="kp-tile__label">{label}</span><span className="kp-tile__val">{v == null ? "—" : priceFmt(v, item.cur)}</span></div>
+          ))}
+          <div className="kp-tile"><span className="kp-tile__label">R/R</span><span className="kp-tile__val">{d.rr == null ? "—" : U.fmtNum(d.rr, 2)}</span></div>
         </div>
-      </div>
+      </K.Card>
+      {item.state === "bekliyor" && (
+        <K.Card>
+          <div className="kp-actions">
+            <span className="kp-actions__note">Karar senin. Kendi yaptığın işlemi kaydet; bot işlem yapmaz.</span>
+            <K.Button variant="secondary" onClick={() => onAct(item, "Pas")}>Pas</K.Button>
+            <K.Button variant="primary" onClick={() => onAct(item, "Aldım")}>Aldım</K.Button>
+          </div>
+        </K.Card>
+      )}
+      {item.gate.length > 0 && (
+        <K.Card title="Kod kapısı" actions={<K.Button variant="ghost" onClick={onChart}>Grafiği aç</K.Button>}>
+          <K.GateList items={item.gate} />
+          <p className="kp-note">Her kural kodda kontrol edilir. Engelleyici bir kural kalırsa karar AL olamaz; eksik ya da eski veri “doğrulanamadı” sayılır ve kalır.</p>
+        </K.Card>
+      )}
+      {out && (
+        <K.OutcomeBox rows={[
+          { label: "Sonuç", value: oc[0], tone: oc[1] },
+          ...(out.cikis != null ? [{ label: "Çıkış (kapanış)", value: priceFmt(out.cikis, item.cur) }] : []),
+          ...(out.mum != null ? [{ label: "Süre", value: `${out.mum} mum` }] : []),
+          ...(out.R != null ? [{ label: "Sonuç (R)", value: `${out.R >= 0 ? "+" : "−"}${U.fmtNum(Math.abs(out.R), 2)} R`, tone: out.R >= 0 ? "up" : "down" }] : []),
+        ]} note="Kapanışlarla hesaplanır: iğne (fitil) sayılmaz." />
+      )}
+      {ai.body && (
+        <K.AiNote model={ai.model || "Yapay zekâ"} time={item.time}>
+          {ai.body.split(/\n{2,}/).map((p, i) => <p key={i} style={{ whiteSpace: "pre-wrap" }}>{p}</p>)}
+        </K.AiNote>
+      )}
     </div>
   );
 }

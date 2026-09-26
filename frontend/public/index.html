@@ -3,7 +3,14 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#000000" />
+        <meta name="theme-color" content="#0e1116" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Kapanış" />
         <meta name="description" content="Kapanış — dokunma değil, kapanış. Kapanış onaylı kripto alarmları, bot kararı ve pozisyon takibi. Yatırım tavsiyesi değildir." />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,5 +20,10 @@
     <body>
         <noscript>Kapanış'ı kullanmak için JavaScript'i açın.</noscript>
         <div id="root"></div>
+        <script>
+            if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+                window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js").catch(function () {}); });
+            }
+        </script>
     </body>
 </html>

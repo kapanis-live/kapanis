@@ -299,8 +299,8 @@ class AlertBody(BaseModel):
     symbol: str
     side: str
     entry: float
-    stop: float
-    target: float
+    stop: Optional[float] = None    # "altına inerse" alarmında iptal/hedef yok
+    target: Optional[float] = None
     note: Optional[str] = ""
     timeframe: Optional[str] = "15m"
     cooldown: Optional[str] = "1h"
@@ -371,6 +371,39 @@ async def decision_action(decision_id: str, body: DecisionBody, user: dict = Dep
     return {"queued": True, "command": cmd}
 
 
+# Panel actions the bot applies with its own functions (same rules as Telegram). Only these types are accepted.
+ACTION_TYPES = {"analysis.request", "plan.add", "plan.remove", "firsat.run", "target.set", "watch.rules",
+                "paper.open", "paper.close", "lesson.request"}
+
+
+class ActionBody(BaseModel):
+    type: str
+    payload: dict = {}
+
+
+@api.post("/actions")
+async def panel_action(body: ActionBody, user: dict = Depends(get_current_user)):
+    if body.type not in ACTION_TYPES:
+        raise HTTPException(status_code=400, detail="Bilinmeyen işlem.")
+    if body.type == "analysis.request":
+        codes = body.payload.get("kodlar") or [body.payload.get("kod")]
+        if not any(codes) or len(codes) > 10:
+            raise HTTPException(status_code=400, detail="1–10 kod seç.")
+    cmd = await _queue_command(body.type, body.payload)
+    return {"queued": True, "command": cmd}
+
+
+@api.get("/analyses")
+async def get_analyses(kod: Optional[str] = None, user: dict = Depends(get_current_user)):
+    q = {"kodlar": kod.upper()} if kod else {}
+    return await db.analyses.find(q, {"_id": 0}).sort("zaman", -1).to_list(30)
+
+
+@api.get("/firsat")
+async def get_firsat(user: dict = Depends(get_current_user)):
+    return await _one("firsat") or {"id": "firsat", "zaman": None}
+
+
 @api.get("/commands")
 async def list_commands(user: dict = Depends(get_current_user)):
     return await db.commands.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
@@ -378,7 +411,7 @@ async def list_commands(user: dict = Depends(get_current_user)):
 
 # ---------------- Bot endpoints (X-Bot-Key) ----------------
 INGEST_COLLECTIONS = {"alerts", "positions", "decisions", "macro", "derivatives", "usage", "candles",
-                      "signals", "report", "backtest", "overview", "settings", "extras"}
+                      "signals", "report", "backtest", "overview", "settings", "extras", "analyses", "firsat"}
 
 
 @api.post("/ingest/{collection}")
@@ -437,6 +470,10 @@ if FRONTEND_BUILD.is_dir():
     from fastapi.staticfiles import StaticFiles
 
     app.mount("/static", StaticFiles(directory=FRONTEND_BUILD / "static"), name="static")
+    # Kullanıcının kendi logoları (frontend/public/logos/KOD.png): yeniden derleme gerekmeden okunur
+    LOGO_DIR = ROOT_DIR.parent / "frontend" / "public" / "logos"
+    LOGO_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/logos", StaticFiles(directory=LOGO_DIR), name="logos")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa(full_path: str):

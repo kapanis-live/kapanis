@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { createChart, CandlestickSeries, LineSeries, HistogramSeries, CrosshairMode } from "lightweight-charts";
+import { createChart, createSeriesMarkers, CandlestickSeries, LineSeries, HistogramSeries, CrosshairMode } from "lightweight-charts";
+import { K } from "@/ds";
+import { sendAction } from "@/lib/actions";
+import { splitAi, relDay } from "@/lib/dsmap";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData, LIVE } from "@/lib/useData";
 import { LoadingState, ErrorState } from "@/components/states";
@@ -15,7 +18,8 @@ import { cn } from "@/lib/utils";
 const TFS = [["15m", "15 dk"], ["1h", "1 saat"], ["4h", "4 saat"], ["1d", "Günlük"], ["1w", "Haftalık"]];
 const MARKETS = ["KRIPTO", "BIST", "ABD"];
 const LINES = [["sma20", "SMA 20"], ["sma50", "SMA 50"], ["sma200", "SMA 200"], ["vwap", "VWAP"]];
-const DEFAULT_ON = { sma20: true, sma50: true, sma200: true, vwap: false };
+const DEFAULT_ON = { sma20: true, sma50: true, sma200: true, vwap: false, seviye: true, bolge: true, sinyal: true };
+const OVERLAYS = [["seviye", "Alış + plan"], ["bolge", "Destek / direnç"], ["sinyal", "Bot sinyalleri"]];
 
 function precisionFor(p) {
   const a = Math.abs(p || 0);
@@ -31,7 +35,7 @@ const trTime = (t, withTime) =>
   });
 
 // Fiyat %65 · hacim %17 · RSI %18; fareyle üzerine gelince açılış/yüksek/düşük/kapanış ve gösterge değerleri
-function CandleChart({ data, on }) {
+function CandleChart({ data, on, overlay }) {
   const ref = useRef(null);
   const [hover, setHover] = useState(null);
   const { colors: c, theme } = useTheme();
@@ -54,6 +58,32 @@ function CandleChart({ data, on }) {
       upColor: c.up, downColor: c.down, wickUpColor: c.up, wickDownColor: c.down, borderVisible: false, priceFormat: fmt,
     });
     candles.setData(data.candles.map((k) => ({ time: k.t, open: k.o, high: k.h, low: k.l, close: k.c })));
+    // Seviyeler: alış ortalaman, planın tetik / iptal / hedef çizgileri
+    const level = (price, color, title, style = 2) =>
+      price && candles.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title });
+    if (on.seviye && overlay) {
+      level(overlay.entry, c.info, "Alış ort.", 0);
+      level(overlay.plan?.tetik, c.wait, "Tetik");
+      level(overlay.plan?.iptal, c.down, "İptal");
+      level(overlay.plan?.hedef, c.up, "Hedef");
+    }
+    if (on.bolge && data.zones) {
+      data.zones.destek.forEach((z) => level(z.orta, `${c.up}b0`, `Destek (${z.dokunma})`, 1));
+      data.zones.direnc.forEach((z) => level(z.orta, `${c.down}b0`, `Direnç (${z.dokunma})`, 1));
+    }
+    // Bot sinyalleri: sinyalin geldiği mumun üstünde/altında işaret
+    if (on.sinyal && overlay?.signals?.length) {
+      const times = data.candles.map((k) => k.t);
+      const marks = overlay.signals.map((sg) => {
+        let t = null;
+        for (const x of times) { if (x <= sg.t) t = x; else break; }
+        if (t == null) return null;
+        const buy = sg.verdict === "AL";
+        return { time: t, position: buy ? "belowBar" : "aboveBar", shape: buy ? "arrowUp" : "circle",
+          color: buy ? c.up : sg.verdict === "PAS" ? c.axis : c.wait, text: sg.verdict };
+      }).filter(Boolean).sort((a, b) => a.time - b.time);
+      if (marks.length) createSeriesMarkers(candles, marks);
+    }
     const line = (key, color, pane = 0, width = 2) => {
       const s = chart.addSeries(LineSeries, { color, lineWidth: width, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
         ...(pane ? {} : { priceFormat: fmt }) }, pane);
@@ -80,7 +110,7 @@ function CandleChart({ data, on }) {
       setHover(i === undefined ? null : i);
     });
     return () => chart.remove();
-  }, [data, on, c, theme]);
+  }, [data, on, c, theme, overlay]);
 
   const i = hover ?? data.candles.length - 1;
   const k = data.candles[i];
@@ -144,6 +174,34 @@ function readings(d) {
   return out;
 }
 
+// Panelden yapay zekâ analizi: bot analiz eder, cevap Telegram'a ve buraya gelir
+export function AiPanel({ code, market, codes, auto = false }) {
+  const list = codes && codes.length ? codes : [code];
+  const q = useData(["analyses", list[0]], `/analyses?kod=${encodeURIComponent(list[0])}`, LIVE);
+  const [asked, setAsked] = useState(null);
+  const latest = (q.data || [])[0];
+  const waiting = asked && (!latest || new Date(latest.zaman).getTime() < asked);
+  const ask = async () => {
+    if (await sendAction("analysis.request", { kodlar: list, piyasa: market }, `${list.join(", ")} için analiz istendi.`)) setAsked(Date.now());
+  };
+  const started = useRef(false);
+  useEffect(() => {
+    // Takip listesinden "Yapay zekâ analizi" ile açılınca isteği hemen gönder (bir kez)
+    if (auto && !started.current) { started.current = true; ask(); }
+  }, [auto]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ai = latest ? splitAi(latest.metin) : null;
+  return (
+    <K.Card title="Yapay zekâ analizi" actions={<K.Button variant="primary" onClick={ask} disabled={!!waiting}>{waiting ? "Hazırlanıyor…" : "Analiz et"}</K.Button>}>
+      {waiting && <p className="kp-note">Bot analizi hazırlıyor (genelde 20–60 sn). Sonuç Telegram'a da gelir.</p>}
+      {ai ? (
+        <K.AiNote model={ai.model || "Yapay zekâ"} time={relDay(latest.zaman)} title={latest.kodlar?.length > 1 ? `Karşılaştırma: ${latest.kodlar.join(", ")}` : "Son analiz"}>
+          {ai.body.split(/\n{2,}/).map((t, i) => <p key={i} style={{ whiteSpace: "pre-wrap" }}>{t}</p>)}
+        </K.AiNote>
+      ) : !waiting && <p className="kp-note">Bu kod için panelden istenmiş analiz yok. “Analiz et”e bas; kararı yine kod kapısı verir.</p>}
+    </K.Card>
+  );
+}
+
 export default function ChartPage() {
   const [params, setParams] = useSearchParams();
   const code = (params.get("kod") || "BTC").toUpperCase();
@@ -173,6 +231,18 @@ export default function ChartPage() {
     if (c2) set({ kod: c2 });
   };
   const d = q.data;
+  const sigQ = useData("signals", "/signals");
+  const overlay = useMemo(() => {
+    const ex = extras.data || {};
+    const g = (ex.portfoy || []).find((x) => baseCode(x.ad) === code && x.piyasa === market);
+    const plan = (ex.planlar || []).find((x) => x.kod === code && x.piyasa === market && x.plan);
+    const signals = (sigQ.data || []).filter((s) => baseCode(s.symbol) === code && (s.market || "KRIPTO") === market)
+      .map((s) => {
+        const v = String(s.analysis?.bot_decision?.verdict || "").toUpperCase();
+        return { t: Math.floor(new Date(s.created_at).getTime() / 1000), verdict: v.includes("AL") ? "AL" : v.includes("BEKLE") ? "BEKLE" : v.includes("TUT") ? "TUT" : "PAS" };
+      });
+    return { entry: g && g.adet ? g.maliyet / g.adet : null, plan, signals };
+  }, [extras.data, sigQ.data, code, market]);
 
   return (
     <div>
@@ -225,8 +295,12 @@ export default function ChartPage() {
                 {LINES.map(([k, label]) => (
                   <Chip key={k} color={c[k]} active={on[k]} onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}>{label}</Chip>
                 ))}
+                <span className="mx-1 w-px self-stretch bg-hairline" />
+                {OVERLAYS.map(([k, label]) => (
+                  <Chip key={k} active={on[k]} onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}>{label}</Chip>
+                ))}
               </div>
-              <CandleChart data={d} on={on} />
+              <CandleChart data={d} on={on} overlay={overlay} />
               <p className="m-0 text-sm text-t-3">
                 Saatler İstanbul saati. {d.note} VWAP: {d.vwap_note}. Alt bölmeler: hacim (20'lik ortalama ince çizgi) ve RSI 14 (70 kırmızı, 30 yeşil kesikli çizgi).
               </p>
@@ -234,6 +308,7 @@ export default function ChartPage() {
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))" }}>
               {readings(d).map((r) => <SignalCard key={r.title} {...r} />)}
             </div>
+            <AiPanel code={code} market={market} />
           </>
         )}
       </div>

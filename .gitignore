@@ -93,3 +93,11 @@ node_modules/
 __pycache__/
 *.pyc
 frontend/node_modules/.cache/default-development/14.pack
+
+# Windows reserved file names (git on Windows cannot index them)
+frontend/public/logos/**/CON.png
+frontend/public/logos/**/PRN.png
+frontend/public/logos/**/AUX.png
+frontend/public/logos/**/NUL.png
+frontend/public/logos/**/COM[0-9].png
+frontend/public/logos/**/LPT[0-9].png

@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/PanelLayout";
-import { useData } from "@/lib/useData";
+import { useData, LIVE } from "@/lib/useData";
+import { K, U } from "@/ds";
+import { sendAction } from "@/lib/actions";
 import { DataView } from "@/components/DataView";
 import { EmptyState } from "@/components/states";
 import { QueuedBadge } from "@/components/QueuedBadge";
@@ -32,7 +34,7 @@ function PositionCard({ p, queued, onQueued }) {
   const go = () => navigate(chartHref(p.symbol, p.market));
 
   const save = async () => {
-    const n = Number(String(price).replace(",", "."));
+    const n = U.parseTr(price); // tr-TR sayı: "1.045,00" da doğru okunur
     if (!Number.isFinite(n) || n <= 0) {
       toast.error("Sattığın fiyatı yaz.");
       return;
@@ -105,6 +107,57 @@ function PositionCard({ p, queued, onQueued }) {
   );
 }
 
+// Sanal işlemler: gerçek para yok, gerçek portföyde sayılmaz; bot canlı fiyatla takip eder
+function PaperSection() {
+  const q = useData("extras", "/extras", LIVE);
+  const [form, setForm] = useState({ kod: "", piyasa: "BIST", fiyat: "", tutar: "" });
+  const rows = q.data?.sanal || [];
+  const open = async () => {
+    const fiyat = U.parseTr(form.fiyat); // tr-TR: "84.500,50", "500.000", "0.5" hepsi doğru okunur
+    const tutar = U.parseTr(form.tutar);
+    if (!form.kod || !(fiyat > 0) || !(tutar > 0)) {
+      toast.error("Kod, fiyat ve tutar gir.");
+      return;
+    }
+    if (await sendAction("paper.open", { kod: form.kod.toUpperCase(), piyasa: form.piyasa, fiyat, tutar }, `${form.kod.toUpperCase()} sanal alım iletildi.`)) {
+      setForm({ ...form, kod: "", fiyat: "", tutar: "" });
+    }
+  };
+  const unit = form.piyasa === "BIST" ? "₺" : "$";
+  return (
+    <div className="space-y-4">
+      <K.Card title="Yeni sanal alım" actions={<span className="kp-alarm__status is-flat">Gerçek para yok</span>}>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <K.Field label="Piyasa">
+            <K.Select value={form.piyasa} onChange={(e) => setForm({ ...form, piyasa: e.target.value })}
+              options={[{ value: "BIST", label: "BIST" }, { value: "KRIPTO", label: "Kripto" }, { value: "ABD", label: "ABD" }]} />
+          </K.Field>
+          <K.Field label="Kod"><K.TextInput value={form.kod} placeholder="THYAO, BTC, NVDA" onChange={(e) => setForm({ ...form, kod: e.target.value })} /></K.Field>
+          <K.Field label="Alış fiyatı"><K.TextInput prefix={unit} inputMode="decimal" value={form.fiyat} placeholder="0,00" onChange={(e) => setForm({ ...form, fiyat: e.target.value })} /></K.Field>
+          <K.Field label="Tutar"><K.TextInput prefix={unit} inputMode="decimal" value={form.tutar} placeholder="5.000" onChange={(e) => setForm({ ...form, tutar: e.target.value })} /></K.Field>
+          <div className="flex items-end"><K.Button variant="primary" onClick={open}>Sanal al</K.Button></div>
+        </div>
+        <p className="kp-note">Yeni bir stratejiyi önce böyle dene. Sanal işlemler bakiyede, disiplin sınırında ve raporlarda sayılmaz. Telegram: /sanal</p>
+      </K.Card>
+      {!rows.length ? <EmptyState text="Sanal işlem yok." /> : (
+        <K.Card title={`Sanal işlemler (${rows.length})`}>
+          <K.DataTable rows={[...rows].reverse()} mobileEnd={(r) => r.kz == null ? "—" : <span className={r.kz >= 0 ? "kp-num-up" : "kp-num-down"}>{U.fmtSignedMoney(r.kz, r.para === "TL" ? "TRY" : "USD")}</span>}
+            columns={[
+              { key: "kod", label: "Kod", render: (r) => <K.Ticker symbol={r.kod} name={`#${r.id} · ${r.piyasa === "KRIPTO" ? "Kripto" : r.piyasa}`} logo={{ code: r.kod, market: r.piyasa }} /> },
+              { key: "adet", label: "Adet", num: true, render: (r) => qty(r.adet) },
+              { key: "giris", label: "Alış", num: true, render: (r) => px(r.giris) },
+              { key: "fiyat", label: "Şimdi", num: true, strong: true, render: (r) => (r.durum === "acik" ? px(r.fiyat) : `${px(r.cikis)} (satıldı)`) },
+              { key: "kz", label: "K/Z", num: true, mobile: false, render: (r) => r.kz == null ? "—" : <span className={r.kz >= 0 ? "kp-num-up" : "kp-num-down"}>{U.fmtSignedMoney(r.kz, r.para === "TL" ? "TRY" : "USD")} ({ChangeText(r.kz_yuzde)})</span> },
+              { key: "x", label: "", render: (r) => r.durum === "acik" && <K.Button variant="ghost" onClick={() => sendAction("paper.close", { id: r.id }, `#${r.id} sanal satış iletildi (şu anki fiyattan).`)}>Sattım</K.Button> },
+            ]} />
+        </K.Card>
+      )}
+    </div>
+  );
+}
+
+const ChangeText = (v) => (v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}%${U.fmtNum(Math.abs(v), 2)}`);
+
 export default function Positions() {
   const q = useData("positions", "/positions");
   const [queued, setQueued] = useState({});
@@ -121,8 +174,8 @@ export default function Positions() {
           return (
             <div className="space-y-4">
               <Segmented ariaLabel="Pozisyonlar" value={tab} onChange={setTab}
-                options={[{ value: "open", label: `Açık ${count("open")}` }, { value: "closed", label: `Kapananlar ${count("closed")}` }]} />
-              {!list.length ? <EmptyState text={TEXTS.empty.positions} testid="positions-empty" /> : (
+                options={[{ value: "open", label: `Açık ${count("open")}` }, { value: "closed", label: `Kapananlar ${count("closed")}` }, { value: "sanal", label: "Sanal" }]} />
+              {tab === "sanal" ? <PaperSection /> : !list.length ? <EmptyState text={TEXTS.empty.positions} testid="positions-empty" /> : (
                 <div className="grid gap-4 lg:grid-cols-2">
                   {list.map((p) => (
                     <PositionCard key={p.id} p={p} queued={!!queued[p.id]} onQueued={(id) => setQueued((s) => ({ ...s, [id]: true }))} />

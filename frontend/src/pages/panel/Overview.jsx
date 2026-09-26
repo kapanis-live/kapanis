@@ -1,191 +1,134 @@
-import { Link } from "react-router-dom";
-import { PageHeader } from "@/components/PanelLayout";
+import { useNavigate } from "react-router-dom";
+import { K, U } from "@/ds";
 import { useData, LIVE } from "@/lib/useData";
-import { DataView, StatCard, Panel } from "@/components/DataView";
-import { RegimeScale } from "@/pages/panel/Macro";
-import { PriceChart } from "@/components/PriceChart";
-import { PctBadge, MarketTag } from "@/components/bits";
-import { formatCurrency, formatPct, formatNumber, relativeTime } from "@/lib/format";
-import { MARKET_LABEL, MARKET_ORDER, px, money, dayLabel, marketTotals } from "@/lib/portfolio";
-import { ArrowUpRight, Bell, Wallet, GitCommitVertical, Zap, Target, AlertTriangle } from "lucide-react";
+import { DataView } from "@/components/DataView";
+import { chartHref } from "@/components/AssetLogo";
+import { marketRows, istTime, MARKET_UI, logo } from "@/lib/dsmap";
+import { dayLabel } from "@/lib/portfolio";
 
-const TONE_DOT = { up: "bg-up", down: "bg-down", info: "bg-info", wait: "bg-wait" };
-const TONE_LINE = { up: "border-up", down: "border-down", info: "border-info", wait: "border-wait" };
-const FRESH = {
-  "güncel": { dot: "bg-up", label: "Güncel" },
-  "eski": { dot: "bg-wait", label: "Eski" },
-  "bayat": { dot: "bg-down", label: "Bayat" },
-  yok: { dot: "bg-t-3", label: "Yok" },
-};
-
-function FreshnessPanel({ rows }) {
-  if (!rows || rows.length === 0) return null;
-  // Only sources the decision gate uses can block an AL; the rest are informational.
-  const bad = rows.filter((r) => r.kapiyi_etkiler && (r.durum === "bayat" || r.durum === "yok"));
-  return (
-    <Panel title="Veri güncelliği" testid="overview-freshness"
-      action={<span className={bad.length ? "text-xs text-down" : "text-xs text-up"}>{bad.length ? `Karar kapısı: ${bad.length} sorunlu kaynak` : "Karar verileri güncel"}</span>}>
-      <ul className="divide-y divide-hairline">
-        {rows.map((r) => {
-          const f = FRESH[r.durum] || FRESH.yok;
-          return (
-            <li key={r.kaynak} className="flex items-center justify-between gap-3 py-2 text-sm">
-              <span className="flex items-center gap-2 text-t-1">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${f.dot}`} aria-hidden />
-                {r.kaynak}
-              </span>
-              <span className="text-right text-xs text-t-2">
-                <span className="num">{r.yas}</span> · {f.label}
-                {r.not ? <span className="block text-t-3">{r.not}</span> : null}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      {bad.length > 0 && <p className="mt-3 text-xs text-t-3">Bayat ya da eksik veriyle karar kapısı AL vermez.</p>}
-    </Panel>
-  );
+const TONE = { up: "up", down: "down", wait: "warn", info: "info" };
+function feedKind(text) {
+  if (/karar/i.test(text)) return "Sinyal";
+  if (/kapı/i.test(text)) return "Kapı";
+  if (/BIST aday/i.test(text)) return "Aday";
+  if (/veri|TR$/i.test(text)) return "Takvim";
+  return "Not";
 }
 
-function PortfolioPulse({ extras }) {
-  const rows = extras?.portfoy || [];
-  if (!rows.length) return null;
-  const totals = marketTotals(rows);
-  return (
-    <Panel title="Portföy nabzı" testid="overview-portfolio"
-      action={<Link to="/app/portfoy" className="inline-flex items-center gap-1 text-xs text-t-2 hover:text-t-1">Portföy <ArrowUpRight className="h-3 w-3" /></Link>}>
-      <div className="divide-y divide-hairline">
-        {MARKET_ORDER.filter((m) => totals[m]).map((m) => {
-          const t = totals[m];
-          return (
-            <div key={m} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
-              <div>
-                <div className="text-xs text-t-2"><MarketTag m={m} label={`${MARKET_LABEL[m]} · ${t.adet} varlık`} /></div>
-                <div className="num text-xl font-semibold text-t-1">{money(t.deger, t.para)}</div>
-              </div>
-              <div className="space-y-1 text-right text-xs text-t-2">
-                <div>{dayLabel(m)} <PctBadge value={t.gun_yuzde} /></div>
-                <div>Toplam <PctBadge value={t.kz_yuzde} /></div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Panel>
-  );
-}
-
-function Movers({ extras }) {
-  const tl = extras?.takip_listesi?.piyasalar;
-  if (!tl) return null;
-  const all = Object.entries(tl).flatMap(([m, rs]) => rs.filter((r) => !r.hata && r.gun_yuzde != null).map((r) => ({ ...r, m })));
-  if (!all.length) return null;
-  const sorted = [...all].sort((a, b) => b.gun_yuzde - a.gun_yuzde);
-  const Row = ({ r }) => (
-    <li className="flex items-center justify-between gap-2 py-1.5 text-sm">
-      <span className="text-t-1">
-        <MarketTag m={r.m} label={<b>{r.kod}</b>} /> <span className="num text-xs text-t-3">{px(r.fiyat)}</span>
-      </span>
-      <PctBadge value={r.gun_yuzde} />
-    </li>
-  );
-  return (
-    <Panel title="Takip: hareket edenler" testid="overview-movers"
-      action={<Link to="/app/takip" className="inline-flex items-center gap-1 text-xs text-t-2 hover:text-t-1">Tümü <ArrowUpRight className="h-3 w-3" /></Link>}>
-      <p className="eyebrow mb-1 text-[10px] text-up">En çok yükselen</p>
-      <ul>{sorted.slice(0, 3).map((r) => <Row key={r.m + r.kod} r={r} />)}</ul>
-      <p className="eyebrow mb-1 mt-3 text-[10px] text-down">En çok düşen</p>
-      <ul>{sorted.slice(-3).reverse().map((r) => <Row key={r.m + r.kod} r={r} />)}</ul>
-    </Panel>
-  );
-}
-
-function BtcChart() {
+function BtcCard() {
+  const navigate = useNavigate();
   const q = useData(["candles", "BTC-USDT"], "/candles/BTC-USDT", { retry: false, refetchInterval: 60_000 });
-  const c = q.data?.candles;
-  if (!c?.length) return null;
+  const c = (q.data?.candles || []).slice(-48).map((k) => ({ t: new Date(k.t).getTime(), o: k.o, h: k.h, l: k.l, c: k.c, v: k.v }));
+  if (c.length < 2) return null;
   const last = c[c.length - 1].c;
-  const first = c[0].c;
+  const ref = c.length > 24 ? c[c.length - 25].c : c[0].c;
   return (
-    <Panel title="BTC / USDT · 1 saatlik" testid="overview-btc"
-      action={<span className="flex items-center gap-2"><span className="num text-sm font-semibold text-t-1">{px(last)}</span><PctBadge value={((last - first) / first) * 100} /></span>}>
-      <PriceChart data={c} sma20={q.data.sma20} sma50={q.data.sma50} sma200={q.data.sma200} height={220} />
-      <p className="mt-2 text-[11px] text-t-3">Son {c.length} mum; değişim bu aralığın başından.</p>
-    </Panel>
+    <K.Card title="BTC · 1 saat" actions={<K.Button variant="ghost" onClick={() => navigate(chartHref("BTC", "KRIPTO"))}>Grafiği aç</K.Button>}>
+      <div className="kp-sighead" style={{ marginBottom: "0.75rem" }}>
+        <span style={{ fontSize: "1.875rem", fontWeight: 700 }}>{U.fmtPrice(last, "USD", 2)}</span>
+        <K.ChangeBadge value={(last / ref - 1) * 100} label="24 sa" />
+      </div>
+      <K.MiniChart candles={c} height={150} symbol="BTC" />
+      <p className="kp-note">Son {c.length} mum · İstanbul saati. Son mum kapanmamış olabilir.</p>
+    </K.Card>
   );
 }
-
-const linkCls = "inline-flex items-center gap-1.5 rounded-lg border border-hairline px-3 py-1.5 text-xs text-t-1 transition-colors duration-150 hover:bg-raised";
 
 export default function Overview() {
+  const navigate = useNavigate();
   const q = useData("overview", "/overview");
   const extras = useData("extras", "/extras", LIVE);
-  const today = new Date().toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", weekday: "long" });
+  const macro = useData("macro", "/macro");
+  const today = new Date().toLocaleString("tr-TR", { timeZone: "Europe/Istanbul", weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   return (
-    <div>
-      <PageHeader title="Genel bakış" subtitle={`${today} · kapanıştan önce bakman gerekenler, tek sakin ekranda.`} testid="page-overview" />
-      <DataView query={q} loadingText="Panel özeti hazırlanıyor…">
-        {(d) => {
-          const gateBad = (d.veri_durumu || []).filter((r) => r.kapiyi_etkiler && (r.durum === "bayat" || r.durum === "yok"));
-          return (
-            <div className="space-y-6">
-              {gateBad.length > 0 && (
-                <div className="flex items-start gap-3 rounded-xl border border-down/50 bg-down/10 p-4 text-sm text-t-1" data-testid="overview-gate-banner">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" />
-                  <span><b className="text-down">Karar kapısını etkileyen veri eski</b> ({gateBad.map((r) => r.kaynak).join(", ")}). Veri tazelenene kadar yeni AL verilmez.</span>
-                </div>
-              )}
-
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                <StatCard label={<MarketTag m="KRIPTO" label={`Kripto · ${dayLabel("KRIPTO")}`} />} value={formatCurrency(d.day_pnl)} sub={formatPct(d.day_pnl_pct)}
-                  tone={d.day_pnl >= 0 ? "up" : "down"} glow testid="stat-day-pnl" />
-                <StatCard label={<MarketTag m="BIST" label={`BIST · ${dayLabel("BIST").toLowerCase()}`} />} value={`${formatNumber(d.bist_day_pnl ?? 0, { decimals: 2, sign: true })} TL`}
-                  sub={formatPct(d.bist_day_pnl_pct ?? 0)} tone={(d.bist_day_pnl ?? 0) >= 0 ? "up" : "down"} glow testid="stat-bist-pnl" />
-                <StatCard label="Açık risk" value={`${formatNumber(d.open_r, { decimals: 2 })}R`} sub={`${d.open_positions} açık pozisyon`} icon={Target} testid="stat-open-r" />
-                <StatCard label="Kurulu alarm" value={formatNumber(d.armed_alerts, { decimals: 0 })} sub="kapanış bekliyor" tone="info" icon={Bell} testid="stat-alerts" />
-                <StatCard label="Bekleyen karar" value={formatNumber(d.pending_decisions, { decimals: 0 })} icon={Zap}
-                  sub={d.pending_decisions ? <Link to="/app/sinyaller" className="text-wait hover:underline">Aldım / Pas →</Link> : "yok"}
-                  tone={d.pending_decisions ? "wait" : undefined} glow={!!d.pending_decisions} testid="stat-decisions" />
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-3">
-                <div className="lg:col-span-2"><PortfolioPulse extras={extras.data} /></div>
-                <Movers extras={extras.data} />
-              </div>
-
-              <div className="grid gap-6 lg:grid-cols-3">
-                <div className="lg:col-span-2">
-                  <Panel title="Öne çıkanlar" testid="overview-highlights">
-                    <ul className="space-y-2.5">
-                      {d.highlights?.map((h, i) => (
-                        <li key={i} className={`flex items-start gap-3 rounded-r-lg border-l-[3px] bg-raised/40 py-2 pl-3 pr-2 text-sm text-t-1 ${TONE_LINE[h.tone] || "border-t-3"}`}>
-                          <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${TONE_DOT[h.tone] || "bg-t-3"}`} />
-                          {h.text}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <Link to="/app/alarmlar" className={linkCls}><Bell className="h-3.5 w-3.5" /> Alarmlar</Link>
-                      <Link to="/app/pozisyonlar" className={linkCls}><Wallet className="h-3.5 w-3.5" /> Pozisyonlar</Link>
-                      <Link to="/app/sinyaller" className={linkCls}><GitCommitVertical className="h-3.5 w-3.5" /> Sinyaller</Link>
+    <DataView query={q} loadingText="Panel özeti hazırlanıyor…">
+      {(d) => {
+        const ex = extras.data || {};
+        const markets = marketRows(ex.portfoy);
+        const usd = ex.usdtry;
+        const totalTl = usd ? markets.reduce((a, m) => a + (m.cur === "TRY" ? m.value : m.value * usd), 0) : null;
+        const tl = ex.takip_listesi?.piyasalar || {};
+        const movers = Object.entries(tl).flatMap(([m, rs]) => rs.filter((r) => !r.hata && r.gun_yuzde != null)
+          .map((r) => ({ symbol: r.kod, price: r.fiyat, cur: m === "BIST" ? "TRY" : "USD", change: r.gun_yuzde, market: m })))
+          .sort((a, b) => b.change - a.change);
+        const moverItems = (list) => list.map((r) => ({ ...r, name: MARKET_UI[r.market]?.label, logo: logo(r.symbol, r.market) }));
+        const m = Array.isArray(macro.data) ? macro.data[0] : macro.data;
+        const fresh = (d.veri_durumu || []).map((r) => ({ source: r.kaynak, status: r.durum, age: r.yas, note: r.not, gate: r.kapiyi_etkiler }));
+        const gateBad = fresh.filter((r) => r.gate && (r.status === "bayat" || r.status === "yok"));
+        return (
+          <div className="kp-page">
+            <K.PageHeader controls={false} title="Genel bakış" subtitle={`${today} (İstanbul)`} />
+            {gateBad.length > 0 && (
+              <K.Callout tone="down" title="Karar kapısını etkileyen veri eski">
+                {gateBad.map((r) => r.source).join(", ")}: veri tazelenene kadar yeni AL verilmez.
+              </K.Callout>
+            )}
+            <div className="kp-grid kp-g-5">
+              <K.StatCard label={`Kripto · ${dayLabel("KRIPTO")} K/Z`} value={U.fmtSignedMoney(d.day_pnl || 0, "USD")}
+                tone={d.day_pnl >= 0 ? "up" : "down"} change={d.day_pnl_pct} sub={`${markets.find((x) => x.key === "KRIPTO")?.count || 0} coin`} />
+              <K.StatCard label={`BIST · ${dayLabel("BIST").toLowerCase()} K/Z`} value={U.fmtSignedMoney(d.bist_day_pnl || 0, "TRY")}
+                tone={(d.bist_day_pnl || 0) >= 0 ? "up" : "down"} change={d.bist_day_pnl_pct} sub={`${markets.find((x) => x.key === "BIST")?.count || 0} hisse`} />
+              <K.StatCard label="Açık risk" value={`${U.fmtNum(d.open_r || 0, 1)} R`} sub={`${d.open_positions} pozisyon`} />
+              <K.StatCard label="Kurulu alarm" value={String(d.armed_alerts)} sub="kapanış bekliyor" />
+              <K.StatCard label="Bekleyen karar" value={String(d.pending_decisions)} sub={d.pending_decisions ? "Sinyaller sayfasında" : "yok"} />
+            </div>
+            <div className="kp-grid kp-split">
+              <div className="kp-col">
+                {markets.length > 0 && (
+                  <K.Card title="Portföy nabzı" actions={<K.Button variant="ghost" onClick={() => navigate("/app/portfoy")}>Portföye git</K.Button>}>
+                    <K.PulseList items={markets} />
+                    <p className="kp-note">
+                      {totalTl != null ? `Toplam ₺ karşılığı ${U.fmtPrice(totalTl, "TRY", 0)} · 1 $ = ₺${U.fmtNum(usd, 2)}` : "Rakamları bot kodla hesaplar."}
+                    </p>
+                  </K.Card>
+                )}
+                {movers.length > 0 && (
+                  <K.Card title="Takip listesi" actions={<K.Button variant="ghost" onClick={() => navigate("/app/takip")}>Tümü</K.Button>}>
+                    <div className="kp-grid kp-g-2">
+                      <div><p className="kp-sub">En çok yükselen 3</p>
+                        <K.MoverList items={moverItems(movers.slice(0, 3))} onOpen={(i) => navigate(chartHref(i.symbol, i.market))} /></div>
+                      <div><p className="kp-sub">En çok düşen 3</p>
+                        <K.MoverList items={moverItems(movers.slice(-3).reverse())} onOpen={(i) => navigate(chartHref(i.symbol, i.market))} /></div>
                     </div>
-                  </Panel>
-                </div>
-                <Panel title="Makro rejim" testid="overview-regime"
-                  action={<Link to="/app/makro" className="inline-flex items-center gap-1 text-xs text-t-2 hover:text-t-1">Detay <ArrowUpRight className="h-3 w-3" /></Link>}>
-                  <RegimeScale score={d.regime_score} label={d.regime_label} />
-                  <p className="mt-4 text-xs text-t-3">Güncellendi {relativeTime(d.updated_at)}</p>
-                </Panel>
+                  </K.Card>
+                )}
+                <K.Card title="Öne çıkanlar">
+                  <K.FeedList items={(d.highlights || []).map((h) => ({ time: istTime(d.updated_at), kind: feedKind(h.text), tone: TONE[h.tone] || "flat", title: h.text }))} />
+                </K.Card>
               </div>
-
-              <div className="grid gap-6 lg:grid-cols-3">
-                <div className="lg:col-span-2"><BtcChart /></div>
-                <FreshnessPanel rows={d.veri_durumu} />
+              <div className="kp-col">
+                <BtcCard />
+                {m && (
+                  <K.Card title="Makro rejim">
+                    <K.RegimeGauge score={m.regime_score ?? d.regime_score} label={m.regime_label}
+                      components={(m.components || []).map((c) => ({ name: c.name, value: Math.max(-1, Math.min(1, Math.round(c.score || 0))), detail: c.value }))}
+                      note="Rüzgârı anlatır, tahmin değildir. Kaynak: FRED." />
+                  </K.Card>
+                )}
+                {(ex.takvim || []).length > 0 && (
+                  <K.Card title="Yaklaşan şirket olayları">
+                    <K.FeedList items={ex.takvim.slice(0, 8).map((i) => ({
+                      time: `${i.tarih.slice(8, 10)}.${i.tarih.slice(5, 7)}`, kind: i.etiket, tone: i.tur === "bilanco" ? "warn" : "info",
+                      symbol: i.kod, title: i.portfoyde ? "Portföyünde" : "Takip listende",
+                      detail: i.tur === "bilanco" ? "Bilanço günü fiyat sert oynayabilir." : undefined,
+                    }))} />
+                    <p className="kp-note">Tarihler Yahoo'dan; kesin tarih için KAP / şirket. Bir gün önce Telegram'dan hatırlatırım.</p>
+                  </K.Card>
+                )}
+                <K.Card title="KAP bildirimleri">
+                  {(ex.kap || []).length ? (
+                    <K.FeedList items={ex.kap.slice(0, 6).map((k) => ({
+                      time: String(k.zaman || "").slice(11, 16), kind: "KAP", tone: "info", symbol: (k.kodlar || []).join(", "),
+                      title: k.konu, detail: k.ozet,
+                    }))} />
+                  ) : <p className="kp-note">Bugün portföyündeki hisseler için KAP bildirimi yok. Yeni bildirim gelince 15 dk içinde Telegram'dan haber veririm.</p>}
+                </K.Card>
+                {fresh.length > 0 && <K.Card title="Veri güncelliği"><K.FreshnessList items={fresh} /></K.Card>}
               </div>
             </div>
-          );
-        }}
-      </DataView>
-    </div>
+          </div>
+        );
+      }}
+    </DataView>
   );
 }

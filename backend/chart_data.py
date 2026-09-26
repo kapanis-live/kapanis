@@ -139,6 +139,35 @@ def vwap(rows: list[dict], intraday: bool, window: int = 20) -> list[float | Non
     return out
 
 
+def zones(rows: list[dict], price: float, lookback: int = 200, top: int = 3) -> dict:
+    """Support/resistance zones from swing highs/lows (3 candles each side) of CLOSED candles, clustered by
+    ~1.2 x average true range. Nearest `top` below and above the last price, with how many swings touched each."""
+    r = rows[-lookback - 1:-1]  # the last candle may still be open
+    if len(r) < 10:
+        return {"destek": [], "direnc": []}
+    tr = [max(k["h"] - k["l"], abs(k["h"] - p["c"]), abs(k["l"] - p["c"])) for p, k in zip(r, r[1:])]
+    band = max(sum(tr[-14:]) / min(14, len(tr)) * 1.2, price * 0.004)
+    pts = []
+    for i in range(3, len(r) - 3):
+        win = r[i - 3:i + 4]
+        if r[i]["h"] == max(k["h"] for k in win):
+            pts.append(r[i]["h"])
+        if r[i]["l"] == min(k["l"] for k in win):
+            pts.append(r[i]["l"])
+    pts.sort()
+    clusters = []
+    for v in pts:
+        if clusters and v - clusters[-1][0] <= band:  # compare with the zone start: no chaining
+            clusters[-1].append(v)
+        else:
+            clusters.append([v])
+    zs = [{"alt": min(c), "ust": max(c), "orta": sum(c) / len(c), "dokunma": len(c)} for c in clusters]
+    fmt = lambda z: {k: (_round(v) if k != "dokunma" else v) for k, v in z.items()}
+    below = sorted((z for z in zs if z["orta"] < price), key=lambda z: -z["orta"])[:top]
+    above = sorted((z for z in zs if z["orta"] >= price), key=lambda z: z["orta"])[:top]
+    return {"destek": [fmt(z) for z in below], "direnc": [fmt(z) for z in above]}
+
+
 def _round(v):
     if v is None:
         return None
@@ -180,6 +209,7 @@ async def chart(symbol: str, tf: str = "1d", market: str | None = None) -> dict:
                  "sma200": _round(series["sma200"][-1]), "vwap": _round(series["vwap"][-1]),
                  "volume": last["v"], "vol_ma": _round(series["vol_ma"][-1])},
         "vwap_note": "seans VWAP (her gün sıfırlanır)" if tf in ("15m", "1h", "4h") else "20 mumluk hareketli VWAP",
+        "zones": zones(rows, last["c"]),
         "note": "Son mum henüz kapanmamış olabilir; botun kuralları yalnız kapanmış mumu sayar.",
     }
     _cache[key] = (time.time(), doc)

@@ -101,3 +101,6 @@ frontend/public/logos/**/AUX.png
 frontend/public/logos/**/NUL.png
 frontend/public/logos/**/COM[0-9].png
 frontend/public/logos/**/LPT[0-9].png
+
+# API logs (hidden start)
+backend/api.*.log

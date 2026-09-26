@@ -373,7 +373,8 @@ async def decision_action(decision_id: str, body: DecisionBody, user: dict = Dep
 
 # Panel actions the bot applies with its own functions (same rules as Telegram). Only these types are accepted.
 ACTION_TYPES = {"analysis.request", "plan.add", "plan.remove", "firsat.run", "target.set", "watch.rules",
-                "paper.open", "paper.close", "lesson.request"}
+                "paper.open", "paper.close", "lesson.request", "check.request", "ind.create", "ind.delete",
+                "compare.request", "dividend.refresh"}
 
 
 class ActionBody(BaseModel):
@@ -389,6 +390,8 @@ async def panel_action(body: ActionBody, user: dict = Depends(get_current_user))
         codes = body.payload.get("kodlar") or [body.payload.get("kod")]
         if not any(codes) or len(codes) > 10:
             raise HTTPException(status_code=400, detail="1–10 kod seç.")
+    if body.type == "compare.request" and not 2 <= len(body.payload.get("kodlar") or []) <= 4:
+        raise HTTPException(status_code=400, detail="2–4 hisse seç.")
     cmd = await _queue_command(body.type, body.payload)
     return {"queued": True, "command": cmd}
 
@@ -397,6 +400,12 @@ async def panel_action(body: ActionBody, user: dict = Depends(get_current_user))
 async def get_analyses(kod: Optional[str] = None, user: dict = Depends(get_current_user)):
     q = {"kodlar": kod.upper()} if kod else {}
     return await db.analyses.find(q, {"_id": 0}).sort("zaman", -1).to_list(30)
+
+
+@api.get("/sonuclar/{tur}")
+async def get_result(tur: str, user: dict = Depends(get_current_user)):
+    """Latest result of a panel tool (kontrol, karsilastirma), pushed by the bot."""
+    return await db.sonuclar.find_one({"id": tur}, {"_id": 0}) or {"id": tur, "zaman": None}
 
 
 @api.get("/firsat")
@@ -410,7 +419,7 @@ async def list_commands(user: dict = Depends(get_current_user)):
 
 
 # ---------------- Bot endpoints (X-Bot-Key) ----------------
-INGEST_COLLECTIONS = {"alerts", "positions", "decisions", "macro", "derivatives", "usage", "candles",
+INGEST_COLLECTIONS = {"sonuclar", "alerts", "positions", "decisions", "macro", "derivatives", "usage", "candles",
                       "signals", "report", "backtest", "overview", "settings", "extras", "analyses", "firsat"}
 
 

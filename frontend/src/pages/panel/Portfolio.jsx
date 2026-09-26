@@ -54,6 +54,52 @@ function HistoryCard({ rows }) {
   );
 }
 
+const MONTH_SHORT = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+
+// Temettü gelir planı: geçen 12 ayın ödemeleri x bugünkü adet (brüt tahmin), ay ay
+function DividendCard({ plan }) {
+  if (!plan?.satirlar?.length) return null;
+  const tl = plan.toplam?.TL || {};
+  const usd = plan.toplam?.USD || {};
+  const cal = plan.takvim || [];
+  const max = Math.max(1, ...cal.map((c) => c.TL));
+  const payers = plan.satirlar.filter((r) => !r.hata && r.son12 > 0).sort((a, b) => b.son12 - a.son12);
+  const none = plan.satirlar.filter((r) => !r.hata && !r.son12).map((r) => r.kod);
+  return (
+    <K.Card title="Temettü gelir planı" actions={<K.Button variant="ghost" onClick={() => sendAction("dividend.refresh", {}, "Temettü planı yenileniyor.")}>Yenile</K.Button>}>
+      <div className="kp-grid kp-g-3">
+        <K.StatCard label="Yıllık tahmini (₺, brüt)" value={U.fmtPrice(tl.son12 || 0, "TRY", 2)}
+          sub={tl.degisim != null ? `önceki 12 aya göre ${tl.degisim >= 0 ? "+" : "−"}%${U.fmtNum(Math.abs(tl.degisim), 1)}` : "önceki yıl verisi yok"} />
+        <K.StatCard label="Temettü verimi (BIST)" value={tl.verim != null ? `%${U.fmtNum(tl.verim, 2)}` : "—"} sub={`hisselerin değeri ${U.fmtPrice(tl.deger || 0, "TRY", 0)}`} />
+        <K.StatCard label="ABD (USD, brüt)" value={usd.son12 ? U.fmtPrice(usd.son12, "USD", 2) : "—"} sub={usd.verim != null ? `verim %${U.fmtNum(usd.verim, 2)}` : "ABD hissesi ya da temettü yok"} />
+      </div>
+      <div className="mt-5 flex h-32 items-end gap-1.5" aria-label="Ay ay tahmini temettü">
+        {cal.map((c) => {
+          const v = c.TL;
+          const [y, m] = c.ay.split("-");
+          return (
+            <div key={c.ay} className="flex flex-1 flex-col items-center gap-1" title={`${MONTH_SHORT[+m - 1]} ${y}: ${c.TL ? U.fmtPrice(c.TL, "TRY", 2) : ""}${c.USD ? ` ${U.fmtPrice(c.USD, "USD", 2)}` : ""}`}>
+              <span className="num text-[0.6875rem] text-t-3">{c.TL ? U.fmtNum(c.TL, 0) : ""}</span>
+              <span className="w-full rounded-t bg-up/70" style={{ height: `${Math.max(v ? 4 : 1, (v / max) * 88)}px`, opacity: v ? 1 : 0.25 }} />
+              <span className="text-[0.6875rem] text-t-3">{MONTH_SHORT[+m - 1]}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {payers.map((r) => (
+          <span key={r.kod} className="rounded-lg border border-hairline px-3 py-1 text-[0.9375rem] text-t-2">
+            <b className="text-t-1">{r.kod}</b> {U.fmtPrice(r.son12, r.para === "TL" ? "TRY" : "USD", 2)}/yıl{r.verim != null ? ` · %${U.fmtNum(r.verim, 2)}` : ""}
+          </span>
+        ))}
+      </div>
+      <p className="kp-note">
+        {plan.not}{none.length ? ` Son 12 ayda temettü yok: ${none.join(", ")}.` : ""} Telegram: /temettu gelir
+      </p>
+    </K.Card>
+  );
+}
+
 function TargetCard({ dagilim, hedef }) {
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState(() => ({ BIST: 50, KRIPTO: 20, ABD: 20, NAKIT: 10, tolerans: 5, ...(hedef || {}) }));
@@ -156,6 +202,7 @@ export default function Portfolio() {
             </K.Card>
             <HistoryCard rows={d.geriye?.satirlar} />
             <TargetCard dagilim={d.dagilim} hedef={d.hedef} />
+            <DividendCard plan={d.temettu_plani} />
             <div className="kp-grid kp-split-l">
               <K.Card title="Dağılım">
                 {totalTl != null ? (

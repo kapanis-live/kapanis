@@ -30,6 +30,7 @@ import Watchlist from "@/pages/panel/Watchlist";
 import Discipline from "@/pages/panel/Discipline";
 import ChartPage from "@/pages/panel/Chart";
 import Plans from "@/pages/panel/Plans";
+import Tools from "@/pages/panel/Tools";
 
 const pub = (el) => <PublicLayout>{el}</PublicLayout>;
 const panel = (el) => (
@@ -66,6 +67,7 @@ function App() {
           <Route path="/app/disiplin" element={panel(<Discipline />)} />
           <Route path="/app/grafik" element={panel(<ChartPage />)} />
           <Route path="/app/planlar" element={panel(<Plans />)} />
+          <Route path="/app/kontrol" element={panel(<Tools />)} />
           <Route path="/app/rapor" element={panel(<Report />)} />
           <Route path="/app/makro" element={panel(<Macro />)} />
           <Route path="/app/maliyet" element={panel(<Cost />)} />

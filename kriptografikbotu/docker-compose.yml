@@ -1,0 +1,14 @@
+services:
+  bot:
+    build: .
+    container_name: kripto-bot
+    restart: always
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+      # Ollama runs on the Windows host, not in the container
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data

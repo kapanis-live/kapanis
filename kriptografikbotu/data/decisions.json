@@ -1,0 +1,1861 @@
+[
+  {
+    "id": 1,
+    "zaman": "2026-09-25T15:30:54+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 120.17,
+    "mum_ms": 1790338500000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "PAS",
+    "kademe_usd": null,
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.3,
+      "mum": 32,
+      "R": 0.9,
+      "kontrol_ts": 1790370663.232685
+    }
+  },
+  {
+    "id": 2,
+    "zaman": "2026-09-25T17:00:45+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 119.5,
+    "mum_ms": 1790343900000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "BEKLE",
+    "kademe_usd": 25.0,
+    "kapi": {
+      "ok": false,
+      "rr": 1.65,
+      "kademe_usd": 25.0,
+      "kademe_notlari": [],
+      "risk_off": false,
+      "hacim_ok": true,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.1 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "gecti",
+          "detay": "R/R 1.65, eşik 1",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 1.7 ≥ 1×ATR 0.9841",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "gecti",
+          "detay": "kırılım mumu hacmi x1.65 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "kaldi",
+          "detay": "BTC 15m kapanış 83923.7 SMA50 84360.8 altında",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 25 USD",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "BTC kapı"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-25 13:45",
+        "zaman_dilimi": "15m",
+        "kapanis": 119.51,
+        "hacim": 138163.118,
+        "hacim_ort20": 83881.54699999999
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T14:00:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-23T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T07:55:26.223080+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T13:48:57+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T13:58:44+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T13:59:27.871925+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: BEKLE — SOL tetik geldi (119.5 > 119.3) ve R/R 1.65 iyi, ama BTC kapısı kapalı: BTC 15m kapanış 83923.7, SMA50 (84360.8) altında. BTC kapısı açılmadan SOL'da yeni giriş yok.\n\nŞU AN: BEKLE / WATCH — SOL 119.5'te tutunuyor, hacim 138k vs ort 84k, ATR stop riski düşük. Ama BTC 15m RSI 36.7, düşüş eğilimi. BTC 84290 üstü 15dk kapanış olmadan SOL'da AL deme.\n\nTetik: BTC 84290 üstü 15dk kapanış + SOL 119.5 üstü tutunma (SOL için zaten tetik geldi, BTC kapısı şart).\nTeyit: SOL sonraki mum 118.90 altında kapanmadan tutunma.\nİptal: SOL 117.80 altı 15dk kapanış (veya BTC 83500 altı 15dk kapanış kapıyı kapatır).\nHedef: 122.30 (R/R: 1.65)\n\n- Güncel R/R: 119.5 → 117.80 risk %1.42, 119.5 → 122.30 ödül %2.34, oran 1.65. Kademe 25 USD olur, risk ~0.36$.\n- BTC kapısı: 15m kapanış 83923.7, SMA20 84548, SMA50 84361, SMA200 84291 altında. Kapı kapalı. BTC ancak 84290 üstü 15dk kapanışla toparlanır.\n- 48 saat içinde makro olay yok, rejim NÖTR. KelpDAO/Polymarket haberleri genel risk iştahını etkileyebilir ama SOL planını değiştirmez.\n\nAlarm sistemi bu planı takip ediyor. BTC kapısı açılırsa SOL'da giriş tetiklenir; yoksa beklemeye devam.",
+    "uyarilar": [],
+    "gostergeler": {
+      "close": 119.51,
+      "sma20": 119.647,
+      "sma50": 117.932,
+      "sma200": 115.992,
+      "rsi14": 53.327,
+      "atr14": 0.984121,
+      "volume": 138163.0,
+      "vol_avg20": 83881.5,
+      "vwap": 118.995
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.3,
+      "mum": 26,
+      "R": 1.65,
+      "kontrol_ts": 1790370663.232685
+    }
+  },
+  {
+    "id": 3,
+    "zaman": "2026-09-25T18:01:41+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 120.44,
+    "mum_ms": 1790347500000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "PAS",
+    "kademe_usd": 15,
+    "kapi": {
+      "ok": false,
+      "rr": 0.7,
+      "kademe_usd": 15,
+      "kademe_notlari": [
+        "hacim teyidi yok"
+      ],
+      "risk_off": false,
+      "hacim_ok": false,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.1 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R 0.70, eşik 1",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 2.64 ≥ 1×ATR 1.046",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "kaldi",
+          "detay": "kırılım mumu hacmi x0.65 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "kaldi",
+          "detay": "BTC 15m kapanış 84016 SMA50 84286.9 altında",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 15 USD (hacim teyidi yok)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R",
+        "hacim",
+        "BTC kapı"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-25 14:45",
+        "zaman_dilimi": "15m",
+        "kapanis": 120.44,
+        "hacim": 58180.821,
+        "hacim_ort20": 90059.7996
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-23T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T07:55:26.223080+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T14:41:53+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T14:00:44+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T14:59:23.404549+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R 0.70 (1'in altında), hacim teyidi yok ve BTC kapısı kapalı. \n\nŞU AN: BEKLE / WATCH — SOL 120.44'te tetik geldi ama kovalamak yok: kapanıştan stopa risk 2.64, hedefe 1.86; oran 0.70. BTC 15m kapanış 84016, SMA50 84286.9 altında; kapı açılmadan giriş yok.\n\nTetik: BTC 84290 üstü 15dk kapanış + SOL 122.35 üstü 15dk kapanış (yeni tepe, hacim MA20 üstü). Alternatif: SOL 118.90-119.20 bölgesine çekilip 15dk kapanış 119.30 üstü (R/R düzelir).\nTeyit: Sonraki mum 121.80 (kırılım) / 118.90 (retest) altında kapanmadan tutunma.\nİptal: 117.80 altı 15dk kapanış (veya BTC 83500 altı 15dk kapanış).\nHedef: 122.30 (R/R: 0.7) — bu kapanıştan girişte yetersiz; yeni tetik gelene kadar PAS.\n\n- Kademe 15 USD (hacim teyidi yok). Stop mesafesi 2.64, 15m ATR 1.046'nın 2.5 katı → gürültü riski düşük ama hacim şartı sağlanmadı.\n- BTC kapısı: 15m SMA50 84286.9 altında; ancak 84290 üstü 15dk kapanışla toparlanır. Alt destek 83500.\n- 48 saatlik makro olay yok, rejim NÖTR. Hack haberleri genel risk iştahını etkileyebilir, SOL'a doğrudan katalizör yok.\n\nAlarm sistemi bu planı takip ediyor. Yeni giriş için yukarıdaki tetiklerden birini bekle.",
+    "uyarilar": [
+      "hacim teyidi yok, doğrulanamadı (hacim 58180.8 ≤ MA20 90059.8)"
+    ],
+    "gostergeler": {
+      "close": 120.44,
+      "sma20": 119.994,
+      "sma50": 118.098,
+      "sma200": 116.05,
+      "rsi14": 61.5245,
+      "atr14": 1.04622,
+      "volume": 58180.8,
+      "vol_avg20": 90059.8,
+      "vwap": 119.07
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.3,
+      "mum": 22,
+      "R": 0.7,
+      "kontrol_ts": 1790370603.211736
+    }
+  },
+  {
+    "id": 4,
+    "zaman": "2026-09-25T19:15:36+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 120.8,
+    "mum_ms": 1790352000000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "PAS",
+    "kademe_usd": 10,
+    "kapi": {
+      "ok": false,
+      "rr": 0.5,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "hacim teyidi yok",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": false,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.0 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R 0.50, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 3 ≥ 1×ATR 1.066",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "kaldi",
+          "detay": "kırılım mumu hacmi x0.75 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "kaldi",
+          "detay": "BTC 15m kapanış 84010.5 SMA50 84241.4 altında",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); hacim teyidi yok; açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R",
+        "hacim",
+        "BTC kapı"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-25 16:00",
+        "zaman_dilimi": "15m",
+        "kapanis": 120.8,
+        "hacim": 58483.445,
+        "hacim_ort20": 78039.02415
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T16:15:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-23T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T07:55:26.223080+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T16:06:23+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T16:03:43+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T16:14:39.651325+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R 0.50 (RİSK-OFF eşiği 1.5'in altı), kırılım mumu hacmi MA20'nin altında ve BTC kapısı kapalı. Üstüne SOL'da 15 USD açık pozisyonun var; bu sinyal ekleme değil.\n\nŞU AN: BEKLE / WATCH — SOL tetik üstünde (120.8) ama kovalamak yok. Açık pozisyon geçerli: giriş 120.7, stop 117.8, hedef 122.3. Stop ve hedef yerinde.\n\nTetik: 119.3 (gerçekleşti) — ancak yeni giriş için hacim MA20 üstü + BTC 84290 üstü 15dk kapanış şarttı, ikisi de sağlanmadı.\nTeyit: Hacim MA20 üstü + BTC 84290 üstü 15dk kapanış olmalıydı; yok.\nİptal: 117.8 altı 15dk kapanış (açık pozisyon stopu; BTC 83500 altı da kapıyı kapatır).\nHedef: 122.3 (R/R: 0.5)\n\nNotlar:\n- BTC 15m kapanış 84010.5, SMA50 84241.4 altında → kapı kapalı. BTC toparlanmadan SOL'da ekleme yapma.\n- Hacim teyidi yok: sinyal mumu 58483.4, MA20 78039 (x0.75). Kod uyarısı doğru.\n- Açık pozisyon riski: 15 USD, stop %2.4 → risk ~0.36 USD. RİSK-OFF'ta ek kademe 10 USD limitli ama kapi.gecti false olduğu için AL yok.\n- 48 saatlik makro olay yok, rejim RİSK-OFF. Hack haberleri genel risk iştahını baskılıyor.\n\nAlarm sistemi bu planı takip ediyor. Pozisyon açık, stop 117.8; hedefe yaklaşırsan 122.3'te kâr al.",
+    "uyarilar": [
+      "hacim teyidi yok, doğrulanamadı (hacim 58483.4 ≤ MA20 78039)"
+    ],
+    "gostergeler": {
+      "close": 120.8,
+      "sma20": 120.234,
+      "sma50": 118.437,
+      "sma200": 116.151,
+      "rsi14": 58.9772,
+      "atr14": 1.06588,
+      "volume": 58483.4,
+      "vol_avg20": 78039.0,
+      "vwap": 119.187
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.3,
+      "mum": 17,
+      "R": 0.5,
+      "kontrol_ts": 1790370603.211736
+    }
+  },
+  {
+    "id": 5,
+    "zaman": "2026-09-25T20:15:27+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 121.37,
+    "mum_ms": 1790355600000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "PAS",
+    "kademe_usd": 10,
+    "kapi": {
+      "ok": false,
+      "rr": 0.26,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "hacim teyidi yok",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": false,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.0 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R 0.26, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 3.57 ≥ 1×ATR 1.011",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "kaldi",
+          "detay": "kırılım mumu hacmi x0.59 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "kaldi",
+          "detay": "BTC 15m kapanış 83959.9 SMA50 84219 altında",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); hacim teyidi yok; açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R",
+        "hacim",
+        "BTC kapı"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-25 17:00",
+        "zaman_dilimi": "15m",
+        "kapanis": 121.37,
+        "hacim": 43136.64,
+        "hacim_ort20": 73396.77685
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T17:15:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-23T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T07:55:26.223080+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T16:34:16+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T16:47:46+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T17:14:54.788716+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R 0.26 (RİSK-OFF eşiği 1.5'in altında), hacim teyidi yok, BTC kapısı kapalı. Ayrıca SOL'da zaten 15 USD açık pozisyonun var; bu kapanış ekleme değil.\n\nŞU AN: BEKLE / WATCH — Mevcut SOL pozisyonu geçerli: giriş 120.7, stop 117.8, hedef 122.3. Fiyat 121.37, hedefe 0.93 puan kaldı. Yeni giriş yok.\n\nTetik: 119.3 (gerçekleşti) — ama yeni giriş için hacim MA20 üstü + BTC 84219 üstü 15dk kapanış şarttı, ikisi de sağlanmadı.\nTeyit: Mevcut pozisyonda 118.9 altı kapanış olmadan tutunma izleniyor.\nİptal: 117.8 altı 15dk kapanış (pozisyon stopu; BTC 83500 altı da kapıyı kapatır).\nHedef: 122.3 (R/R: 0.26)\n\nNotlar:\n- BTC 15m kapanış 83959.9, SMA50 84219 altında → kapı kapalı. BTC toparlanmadan SOL'da ekleme yok.\n- Hacim teyidi yok: sinyal mumu 43136.6 vs MA20 73396.8 (x0.59). Kod uyarısı geçerli.\n- Açık pozisyon riski: 15 USD, stop %2.9 → risk ~0.44 USD. Hedefe yaklaştın; 122.3'e gelirse kâr al.\n- RİSK-OFF'ta ek kademe limiti 10 USD ama kapi.gecti false olduğu için AL yok.\n- 48 saatlik makro olay yok. KelpDAO ve Magic Eden hack haberleri genel risk iştahını baskılıyor, SOL'a doğrudan katalizör yok.\n\nAlarm sistemi bu planı takip ediyor. Pozisyon açık: stop 117.8, hedef 122.3. Stop ve hedefi değiştirmiyorum.",
+    "uyarilar": [
+      "hacim teyidi yok, doğrulanamadı (hacim 43136.6 ≤ MA20 73396.8)"
+    ],
+    "gostergeler": {
+      "close": 121.37,
+      "sma20": 120.353,
+      "sma50": 118.796,
+      "sma200": 116.282,
+      "rsi14": 60.3581,
+      "atr14": 1.01083,
+      "volume": 43136.6,
+      "vol_avg20": 73396.8,
+      "vwap": 119.342
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.3,
+      "mum": 13,
+      "R": 0.26,
+      "kontrol_ts": 1790370603.211736
+    }
+  },
+  {
+    "id": 6,
+    "zaman": "2026-09-25T21:45:31+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 122.17,
+    "mum_ms": 1790361000000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "PAS",
+    "kademe_usd": 10,
+    "kapi": {
+      "ok": false,
+      "rr": 0.03,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "hacim teyidi yok",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": false,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.0 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R 0.03, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 4.37 ≥ 1×ATR 0.9728",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "kaldi",
+          "detay": "kırılım mumu hacmi x0.49 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "kaldi",
+          "detay": "BTC 15m kapanış 83980.5 SMA50 84180.6 altında",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); hacim teyidi yok; açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R",
+        "hacim",
+        "BTC kapı"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-25 18:30",
+        "zaman_dilimi": "15m",
+        "kapanis": 122.17,
+        "hacim": 31448.439,
+        "hacim_ort20": 64361.59705
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T18:45:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-23T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T07:55:26.223080+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T18:33:49+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T17:15:27+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T18:44:53.529539+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R 0.03 (RİSK-OFF eşiği 1.5'in çok altında), hacim teyidi yok, BTC kapısı kapalı. Yeni giriş yok. Mevcut SOL pozisyonu hedefe 0.13 puan kaldı; 122.3'e gelirse kâr al.\n\nŞU AN: BEKLE / WATCH — SOL 122.17'de, hedef 122.3 çok yakın. Ama bu kapanış ekleme sinyali değil: hacim x0.49 MA20, BTC 15m SMA50 altında.\n\nTetik: 119.3 (gerçekleşti) — yeni giriş için hacim MA20 üstü + BTC 84180 üstü 15dk kapanış şartı sağlanmadı.\nTeyit: Yok — hacim ve BTC kapısı başarısız.\nİptal: 117.8 altı 15dk kapanış (mevcut pozisyon stopu; BTC 83500 altı da kapıyı kapatır).\nHedef: 122.3 (R/R: 0.03)\n\nNotlar:\n- SOL açık pozisyonun: giriş 120.7, stop 117.8, hedef 122.3. Fiyat hedefe neredeyse geldi, stopu yukarı çekmiyorum, hedefte kâr al.\n- BTC 15m kapanış 83980.5, SMA50 84180.6 altında → kapı kapalı. BTC toparlanmadan SOL'da ekleme yok.\n- Kod kapısı ❌: R/R 0.03, hacim x0.49, BTC kapı kapalı. Uyarılar doğru.\n- RİSK-OFF: ek kademe limiti 10 USD ama kapi.gecti false olduğu için AL yok.\n- 48 saatlik makro olay yok. Bitget/Magic Eden hack haberleri genel risk iştahını baskılıyor.\n\nAlarm sistemi bu planı takip ediyor. Pozisyon açık: stop 117.8, hedef 122.3. Hedefe yaklaştın, kâr al.",
+    "uyarilar": [
+      "hacim teyidi yok, doğrulanamadı (hacim 31448.4 ≤ MA20 64361.6)"
+    ],
+    "gostergeler": {
+      "close": 122.17,
+      "sma20": 120.693,
+      "sma50": 119.394,
+      "sma200": 116.485,
+      "rsi14": 62.6055,
+      "atr14": 0.972842,
+      "volume": 31448.4,
+      "vol_avg20": 64361.6,
+      "vwap": 119.504
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.3,
+      "mum": 7,
+      "R": 0.03,
+      "kontrol_ts": 1790370603.211736
+    }
+  },
+  {
+    "id": 7,
+    "zaman": "2026-09-25T22:45:28+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 121.61,
+    "mum_ms": 1790364600000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "PAS",
+    "kademe_usd": 10,
+    "kapi": {
+      "ok": false,
+      "rr": 0.18,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "hacim teyidi yok",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": false,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.0 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R 0.18, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 3.81 ≥ 1×ATR 0.8574",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "kaldi",
+          "detay": "kırılım mumu hacmi x0.52 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "kaldi",
+          "detay": "BTC 15m kapanış 83986.5 SMA50 84181.1 altında",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); hacim teyidi yok; açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R",
+        "hacim",
+        "BTC kapı"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-25 19:30",
+        "zaman_dilimi": "15m",
+        "kapanis": 121.61,
+        "hacim": 25258.57,
+        "hacim_ort20": 48144.06665
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T19:45:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-23T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T07:55:26.223080+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T19:16:04+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T18:45:31+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T19:44:53.679345+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R 0.18 (RİSK-OFF eşiği 1.5'in çok altında), hacim teyidi yok, BTC kapısı kapalı. Yeni giriş yok.\n\nŞU AN: BEKLE / WATCH — SOL 121.61, açık pozisyon hedef 122.3'e 0.69 puan kaldı. Ekleme yok; hedefe gelirse kâr al.\n\nTetik: 119.3 (gerçekleşti) — ama yeni giriş için hacim MA20 üstü + BTC 84290 üstü 15dk kapanış şartı sağlanmadı.\nTeyit: Yok — hacim x0.52 MA20, BTC 15m SMA50 altında.\nİptal: 117.8 altı 15dk kapanış (açık pozisyon stopu; BTC 83500 altı 15dk kapanış da kapıyı kapatır).\nHedef: 122.3 (R/R: 0.18)\n\nNotlar:\n- SOL açık pozisyon: giriş 120.7, stop 117.8, hedef 122.3. Fiyat hedefe yaklaştı, stopu yukarı çekmiyorum; 122.3'e gelirse kâr al.\n- Hacim teyidi yok: sinyal mumu 25258.6, MA20 48144.1 → x0.52. Kod uyarısı geçerli.\n- BTC 15m kapanış 83986.5, SMA50 84181.1 altında → kapı kapalı. BTC toparlanmadan SOL'da ekleme yok.\n- RİSK-OFF: ek kademe 10 USD limitli ama kapi.gecti false olduğu için AL yok.\n- 48 saatlik makro olay yok. Bitget hack haberleri genel risk iştahını baskılıyor, SOL'a doğrudan katalizör yok.\n\nAlarm sistemi bu planı takip ediyor. Pozisyon açık: stop 117.8, hedef 122.3. Hedefte kâr al.",
+    "uyarilar": [
+      "hacim teyidi yok, doğrulanamadı (hacim 25258.6 ≤ MA20 48144.1)"
+    ],
+    "gostergeler": {
+      "close": 121.61,
+      "sma20": 121.153,
+      "sma50": 119.844,
+      "sma200": 116.639,
+      "rsi14": 56.4629,
+      "atr14": 0.857371,
+      "volume": 25258.6,
+      "vol_avg20": 48144.1,
+      "vwap": 119.572
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.3,
+      "mum": 3,
+      "R": 0.18,
+      "kontrol_ts": 1790370603.211736
+    }
+  },
+  {
+    "id": 8,
+    "zaman": "2026-09-26T00:15:41+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 121.16,
+    "mum_ms": 1790370000000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "PAS",
+    "kademe_usd": 10,
+    "kapi": {
+      "ok": false,
+      "rr": 0.34,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "hacim teyidi yok",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": false,
+      "acgozluluk": null,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.0 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R 0.34, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 3.36 ≥ 1×ATR 0.8188",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "kaldi",
+          "detay": "kırılım mumu hacmi x0.79 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "kaldi",
+          "detay": "BTC 15m kapanış 83696.5 SMA50 84158.7 altında",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "duygu",
+          "durum": "gecti",
+          "detay": "Korku & Açgözlülük 71 (açgözlülük, 7g +15)",
+          "engelleyici": false
+        },
+        {
+          "kural": "disiplin",
+          "durum": "gecti",
+          "detay": "zarar serisi 0/2, bugün +0.00/-3.00 USD",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); hacim teyidi yok; açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R",
+        "hacim",
+        "BTC kapı"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-25 21:00",
+        "zaman_dilimi": "15m",
+        "kapanis": 121.15,
+        "hacim": 31379.71,
+        "hacim_ort20": 39741.302500000005
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T21:15:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-23T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-22T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T21:10:04.463846+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T20:37:21+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T19:45:28+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T21:14:07.175009+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R 0.34, RİSK-OFF eşiği 1.5 altı; hacim teyidi yok ve BTC kapısı kapalı. SOL'da açık pozisyonun var, bu ekleme sinyali değil.\n\nŞU AN: BEKLE / WATCH — SOL 121.15, açık pozisyon hedefi 122.3'e yaklaşmış, sonra 121.15'e dönmüş. Stop 117.8, hedef 122.3 yerinde. Yeni giriş yok.\n\nTetik: 119.3 (gerçekleşti) — ama yeni giriş için hacim MA20 üstü + BTC 84290 üstü 15dk kapanış şarttı, ikisi de sağlanmadı.\nTeyit: Yok — hacim x0.79 MA20, BTC 15m SMA50 altında.\nİptal: 117.8 altı 15dk kapanış (açık pozisyon stopu; BTC 83500 altı 15dk kapanış da kapıyı kapatır).\nHedef: 122.3 (R/R: 0.34)\n\nNotlar:\n- SOL açık pozisyon: giriş 120.7, stop 117.8, hedef 122.3. Hedef 20:15'te kapanışla görülmüş, sonra fiyat geri çekilmiş. Hedefteki kârı kaçırdıysan stopu 122.3'e çekmiyorum; stop 117.8 altı kapanış izleniyor.\n- BTC kapısı: 15m kapanış 83696.5, SMA50 84158.7 altında, kapı kapalı. Alt destek 83500, devam hedefi 82875.\n- Kod kapısı ❌: R/R 0.34, hacim x0.79, BTC kapı kapalı. Uyarılar doğru.\n- RİSK-OFF: kademe 10 USD limitli ama kapi.gecti false olduğu için AL yok.\n- 48 saatlik makro olay yok. Bitget hack haberleri genel risk iştahını baskılıyor.",
+    "uyarilar": [
+      "hacim teyidi yok, doğrulanamadı (hacim 31379.7 ≤ MA20 39741.3)"
+    ],
+    "gostergeler": {
+      "close": 121.15,
+      "sma20": 121.603,
+      "sma50": 120.464,
+      "sma200": 116.866,
+      "rsi14": 49.3253,
+      "atr14": 0.818832,
+      "volume": 31379.7,
+      "vol_avg20": 39741.3,
+      "vwap": 119.682
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.43,
+      "mum": 6,
+      "R": 0.38,
+      "kontrol_ts": 1790376576.284699
+    }
+  },
+  {
+    "id": 9,
+    "zaman": "2026-09-26T01:30:30+03:00",
+    "aksiyon": "pas",
+    "pair": "SOL/USDT",
+    "symbol": "SOLUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 121.78,
+    "mum_ms": 1790374500000,
+    "iptal": 117.8,
+    "hedef": 122.3,
+    "karar": "PAS",
+    "kademe_usd": 10,
+    "kapi": {
+      "ok": false,
+      "rr": 0.13,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "hacim teyidi yok",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": false,
+      "acgozluluk": null,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.0 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R 0.13, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 3.98 ≥ 1×ATR 0.7068",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "kaldi",
+          "detay": "kırılım mumu hacmi x0.65 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "kaldi",
+          "detay": "BTC 15m kapanış 83906 SMA50 84082.5 altında",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "duygu",
+          "durum": "gecti",
+          "detay": "Korku & Açgözlülük 71 (açgözlülük, 7g +15)",
+          "engelleyici": false
+        },
+        {
+          "kural": "disiplin",
+          "durum": "gecti",
+          "detay": "zarar serisi 0/2, bugün +0.00/-3.00 USD",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); hacim teyidi yok; açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R",
+        "hacim",
+        "BTC kapı"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-25 22:15",
+        "zaman_dilimi": "15m",
+        "kapanis": 121.78,
+        "hacim": 19343.881,
+        "hacim_ort20": 29907.18715
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T22:30:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-24T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-22T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T21:10:04.463846+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T22:17:38+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T22:30:00+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T22:29:18.458638+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R 0.13 (RİSK-OFF eşiği 1.5'in çok altında), hacim teyidi yok, BTC kapısı kapalı. Yeni giriş yok. SOL'daki açık pozisyonun hedefe 0.52 puan kaldı.\n\nŞU AN: BEKLE / WATCH — SOL 121.78'de. Açık pozisyon geçerli: giriş 120.7, stop 117.8, hedef 122.3. Hedef daha önce 122.3-122.6 görülmüş, pozisyon hâlâ açık. Stop ve hedefi değiştirmiyorum.\n\nTetik: 119.3 (gerçekleşti) — ama yeni giriş için hacim MA20 üstü + BTC 84290 üstü 15dk kapanış şarttı, ikisi de sağlanmadı.\nTeyit: Yok — hacim x0.65 MA20, BTC 15m SMA50 altında.\nİptal: 117.8 altı 15dk kapanış (pozisyon stopu; BTC 83500 altı 15dk kapanış da kapıyı kapatır).\nHedef: 122.3 (R/R: 0.13)\n\nNotlar:\n- SOL açık pozisyon: giriş 120.7, stop 117.8, hedef 122.3. Fiyat hedefe çok yakın; 122.3'e gelirse kâr al. Hedefe ulaşıp geri çekildiysen stopu 117.8'in üstüne çekmiyorum.\n- Hacim teyidi yok: sinyal mumu 19343.9, MA20 29907.2 → x0.65. Kod uyarısı doğru.\n- BTC kapısı: 15m kapanış 83906, SMA50 84082.5 altında → kapalı. BTC 84290 üstü 15dk kapanış olmadan SOL'da ekleme yok.\n- Kademe: kod 10 USD hesaplamış (RİSK-OFF + hacim yok + açık pozisyon 15 USD korelasyon limiti 25) ama kapi.gecti false olduğu için AL yok.\n- 48 saatlik makro olay yok. RİSK-OFF (-2), kalabalık long ve hack haberleri genel risk iştahını baskılıyor.\n\nAlarm sistemi bu planı takip ediyor. Pozisyon açık: stop 117.8, hedef 122.3. Hedefe gelirse kâr al.",
+    "uyarilar": [
+      "hacim teyidi yok, doğrulanamadı (hacim 19343.9 ≤ MA20 29907.2)"
+    ],
+    "gostergeler": {
+      "close": 121.78,
+      "sma20": 121.657,
+      "sma50": 120.802,
+      "sma200": 117.04,
+      "rsi14": 55.1555,
+      "atr14": 0.706849,
+      "volume": 19343.9,
+      "vol_avg20": 29907.2,
+      "vwap": 119.717
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 122.43,
+      "mum": 1,
+      "R": 0.16,
+      "kontrol_ts": 1790376431.673519
+    }
+  },
+  {
+    "id": 10,
+    "zaman": "2026-09-26T02:00:22+03:00",
+    "aksiyon": "aldi",
+    "pair": "HYPE/USDT",
+    "symbol": "HYPEUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 0,
+    "kapanis": 92.73,
+    "mum_ms": 1790376322446,
+    "iptal": 91.4,
+    "hedef": 94.85,
+    "karar": "AL",
+    "kademe_usd": 15.0,
+    "analiz": "🟢 ŞİMDİ AL — HYPE/USDT\nKapanış 92.73 | iptal 91.4 | hedef 94.85\n\n✅ yön: yükseliş kırılımı (spot alım)\n✅ mum güncelliği: sinyal mumu 0.3 dk önce kapandı\n✅ R/R: R/R 1.59, eşik 1.5 (RİSK-OFF/doğrulanamadı)\n✅ ATR stop: stop mesafesi 1.33 ≥ 1×ATR 0.3712\n✅ hacim: sinyal anındaki hacim teyidi vardı\n✅ BTC kapı: BTC 15m kapanış 84083.1 SMA50 84061.3 üstünde\n✅ makro: 2 saat içinde makro veri yok\n✅ duygu: Korku & Açgözlülük 71 (açgözlülük, 7g +15)\n✅ disiplin: zarar serisi 0/2, bugün +0.00/-3.00 USD\n✅ bütçe: ilk kademe 15 USD (RİSK-OFF (veya makro doğrulanamadı))\n\nİlk kademe 15 USD (risk ≈ 0.22 USD). Ekleme: sonraki 15m kapanış da tetiğin üstündeyse.\nKademe küçültüldü: RİSK-OFF (veya makro doğrulanamadı)",
+    "uyarilar": [],
+    "kapi": {
+      "ok": true,
+      "rr": 1.59,
+      "kademe_usd": 15,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)"
+      ],
+      "risk_off": true,
+      "hacim_ok": true,
+      "acgozluluk": null,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.3 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "gecti",
+          "detay": "R/R 1.59, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 1.33 ≥ 1×ATR 0.3712",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "gecti",
+          "detay": "sinyal anındaki hacim teyidi vardı",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "gecti",
+          "detay": "BTC 15m kapanış 84083.1 SMA50 84061.3 üstünde",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "duygu",
+          "durum": "gecti",
+          "detay": "Korku & Açgözlülük 71 (açgözlülük, 7g +15)",
+          "engelleyici": false
+        },
+        {
+          "kural": "disiplin",
+          "durum": "gecti",
+          "detay": "zarar serisi 0/2, bugün +0.00/-3.00 USD",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 15 USD (RİSK-OFF (veya makro doğrulanamadı))",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [],
+      "mum": {
+        "acilis_utc": "2026-09-25 22:45",
+        "zaman_dilimi": "15m",
+        "kapanis": 92.73,
+        "hacim": 1779.291,
+        "hacim_ort20": 1019.4363999999999
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T23:00:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-24T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-22T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T21:10:04.463846+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T22:17:38+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T22:57:40+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T23:00:13.077603+00:00"
+        }
+      }
+    },
+    "sonuc": {
+      "sonuc": "açık",
+      "cikis": 91.72,
+      "mum": 85,
+      "R": -0.76,
+      "kontrol_ts": 1790455223.82659
+    }
+  },
+  {
+    "id": 11,
+    "zaman": "2026-09-26T11:16:06+03:00",
+    "aksiyon": "pas",
+    "pair": "XRP/USDT",
+    "symbol": "XRPUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 1.5493,
+    "mum_ms": 1790409600000,
+    "iptal": 1.497,
+    "hedef": 1.549,
+    "karar": "PAS",
+    "kademe_usd": 10,
+    "kapi": {
+      "ok": false,
+      "rr": -0.01,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": true,
+      "acgozluluk": null,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.0 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R -0.01, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 0.0523 ≥ 1×ATR 0.00508",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "gecti",
+          "detay": "kırılım mumu hacmi x1.06 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "gecti",
+          "detay": "BTC 15m kapanış 84080.1 SMA50 83977.1 üstünde",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "duygu",
+          "durum": "gecti",
+          "detay": "Korku & Açgözlülük 74 (açgözlülük, 7g +3)",
+          "engelleyici": false
+        },
+        {
+          "kural": "disiplin",
+          "durum": "gecti",
+          "detay": "zarar serisi 0/2, bugün +0.00/-3.00 USD",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-26 08:00",
+        "zaman_dilimi": "15m",
+        "kapanis": 1.5494,
+        "hacim": 1149801.9,
+        "hacim_ort20": 1083805.74
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T08:15:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-24T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-22T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T21:10:04.463846+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T06:59:29+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T08:13:21+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T08:14:44.200081+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R -0.01. XRP hedefi 1.549'a ulaşılmış, kapanış 1.5493 hedefin az üstünde. Buradan giriş kovalama olur, yeni para yok.\n\nŞU AN: BEKLE — XRP planı hedefi gördü. Yeni giriş için yeni plan gerekli; mevcut fiyat giriş bölgesi değil.\n\nTetik: 1.508 (gerçekleşti)\nTeyit: 1.505 (korundu)\nİptal: 1.497\nHedef: 1.549 (ulaşıldı) (R/R: -0.01)\n\n- Kod kapısı ❌: R/R -0.01, RİSK-OFF eşiği 1.5'in çok altında. BTC kapısı, hacim ve ATR geçti ama R/R yok. kapi.gecti false → AL yok.\n- Kademe 10 USD hesaplanmış (RİSK-OFF + açık pozisyon korelasyon limiti), ama AL verilmez.\n- XRP tam 3 dokunmalı güçlü direnç bölgesinin üst sınırında (1.5449–1.5549). Hedef zaten bu bölgede; kopmadan giriş mantıksız.\n- BTC: 15m kapanış 84080.1, SMA50 83977.1 üstünde → kod BTC kapısını geçti. Ama R/R engel, XRP'de yeni giriş yok.\n- HYPE'de 60.98 USD'lik stopsuz pozisyonun hâlâ açık görünüyor; oraya stop koymayı unutma. Korelasyon limiti de dolu.\n- 48 saatlik makro olay yok. XRP Ledger upgrade 9 Ekim'e kaymış (CoinDesk, doğrulanmadı); bugün katalizör zayıf.",
+    "uyarilar": [],
+    "gostergeler": {
+      "close": 1.5494,
+      "sma20": 1.5532,
+      "sma50": 1.56089,
+      "sma200": 1.54066,
+      "rsi14": 40.8355,
+      "atr14": 0.00508016,
+      "volume": 1149800.0,
+      "vol_avg20": 1083810.0,
+      "vwap": 1.5598
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 1.5497,
+      "mum": 1,
+      "R": 0.01,
+      "kontrol_ts": 1790414497.425674
+    }
+  },
+  {
+    "id": 12,
+    "zaman": "2026-09-26T12:32:09+03:00",
+    "aksiyon": "pas",
+    "pair": "XRP/USDT",
+    "symbol": "XRPUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 1,
+    "kapanis": 1.5391,
+    "mum_ms": 1790414100000,
+    "iptal": 1.497,
+    "hedef": 1.549,
+    "karar": "PAS",
+    "model": "glm",
+    "kademe_usd": 10,
+    "kapi": {
+      "ok": false,
+      "rr": 0.24,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": true,
+      "acgozluluk": null,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.0 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "kaldi",
+          "detay": "R/R 0.24, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 0.0421 ≥ 1×ATR 0.005801",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "gecti",
+          "detay": "kırılım mumu hacmi x1.55 MA20",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "gecti",
+          "detay": "BTC 15m kapanış 84031.2 SMA50 83989 üstünde",
+          "engelleyici": true
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "duygu",
+          "durum": "gecti",
+          "detay": "Korku & Açgözlülük 74 (açgözlülük, 7g +3)",
+          "engelleyici": false
+        },
+        {
+          "kural": "disiplin",
+          "durum": "gecti",
+          "detay": "zarar serisi 0/2, bugün +0.00/-3.00 USD",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [
+        "R/R"
+      ],
+      "mum": {
+        "acilis_utc": "2026-09-26 09:15",
+        "zaman_dilimi": "15m",
+        "kapanis": 1.5391,
+        "hacim": 1820698.0,
+        "hacim_ort20": 1175982.6800000002
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T09:30:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-24T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-22T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T09:21:34.048397+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T09:02:22+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T09:23:19+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T09:29:41.966066+00:00"
+        }
+      }
+    },
+    "analiz": "KARAR: PAS — R/R 0.24 (RİSK-OFF eşiği 1.5'in çok altında); kapanış 1.5391'den hedef 1.549'a sadece %0.6 kaldı, iptal %2.7 aşağıda. Kalan kazanç riski karşılamıyor, kapi.gecti false.\n\nŞU AN: BEKLE — XRP güçlü 3 dokunmalı direnç bölgesinden (1.5449–1.5549) aşağı dönmüş; 09:00 mumu x2.47 hacimle 1.5380 dip yaptı, iki mumdur 15m SMA200 (1.5417) altında kapanıyor, RSI 33.6. Eski Plan B hedefini zaten gördü (önceki alarm 1.5493'tü, orada PAS demiştim). Destek retesti bekleniyor.\n\nTetik: 1.508 üstü 15dk kapanış — ama asıl anlamlısı 1.4978–1.5078 destek bölgesine çekilip döndükten sonra. Şu fiyattan (1.5391) tetikteki kapanış kovalamadır.\nTeyit: Sonraki mum 1.505 altında kapanmadan tutunma, hacim MA20 üstü.\nİptal: 1.497 altı 15dk kapanış.\nHedef: 1.549 (3 dokunmalı direnç bölgesi ortası) (R/R: 0.24)\n\nNotlar:\n- Kod kapısı ❌ tek kuralda takıldı: R/R. Hacim (x1.55), ATR ve BTC kapısı (15m 84031, SMA50 üstü) geçti ama R/R tek başına PAS yaptırıyor.\n- Alarm tetiği (1.508) fiyatın altında kaldığı için tekrar tekrar çalabilir; anlamlı tetik destek bölgesine temas sonrası gelecek. Seviyeleri kaydırmıyorum, plan destek dönüşünü bekliyor.\n- Destek 1.4978–1.5078 sadece 1 dokunmalı — zayıf referans, dönüşte hacim teyidi şart.\n- Kademe: kod 10 USD hesapladı (RİSK-OFF + HYPE'de 15 USD açık) ama girişe kapalı.\n- XRP haber: Batch upgrade 9 Ekim'e kaymış (CoinDesk, tek kaynak, doğrulanmadı); katalizör ertelendi, bugün teknik taraf belirleyici.\n- HYPE'deki 60.98 USD'lik pozisyon hâlâ stopsuz; yeni girişten önce oraya 91.4 altı stopu yaz.\n- BTC 84550 tetiği yok, 83750 iptali de yok; BTC şu an sadece filtre.\n\n🧠 GLM 5.3",
+    "uyarilar": [],
+    "gostergeler": {
+      "close": 1.5391,
+      "sma20": 1.55039,
+      "sma50": 1.55876,
+      "sma200": 1.54172,
+      "rsi14": 33.5994,
+      "atr14": 0.00580088,
+      "volume": 1820700.0,
+      "vol_avg20": 1175980.0,
+      "vwap": 1.55733
+    },
+    "sonuc": {
+      "sonuc": "hedef",
+      "cikis": 1.5491,
+      "mum": 5,
+      "R": 0.24,
+      "kontrol_ts": 1790421032.872043
+    }
+  },
+  {
+    "id": 13,
+    "zaman": "2026-09-26T14:30:41+03:00",
+    "aksiyon": "pas",
+    "pair": "AVAX/USDT",
+    "symbol": "AVAXUSDT",
+    "timeframe": "15m",
+    "yon": "ABOVE",
+    "alarm_id": 0,
+    "kapanis": 10.871,
+    "mum_ms": 1790421341709,
+    "iptal": 10.60981131,
+    "hedef": 11.4,
+    "karar": "AL",
+    "kademe_usd": 10.0,
+    "analiz": "🟢 ŞİMDİ AL — AVAX/USDT\nKapanış 10.871 | iptal 10.6098 | hedef 11.4\n\n✅ yön: yükseliş kırılımı (spot alım)\n✅ mum güncelliği: sinyal mumu 0.4 dk önce kapandı\n✅ R/R: R/R 2.03, eşik 1.5 (RİSK-OFF/doğrulanamadı)\n✅ ATR stop: stop mesafesi 0.2612 ≥ 1×ATR 0.06792\n✅ hacim: sinyal anındaki hacim teyidi vardı\n✅ BTC kapı: BTC 15m kapanış 84163.4 SMA50 84026.7 üstünde\n✅ yapı (4h): 4h karışık/yatay\n✅ konfluens: setup kalitesi 71/100 (olasılık değil)\n✅ makro: 2 saat içinde makro veri yok\n✅ duygu: Korku & Açgözlülük 74 (açgözlülük, 7g +3)\n✅ disiplin: zarar serisi 0/2, bugün +0.00/-3.00 USD\n✅ bütçe: ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); açık pozisyonlar 15 USD: korelasyon limiti 25 USD)\n\nİlk kademe 10 USD (risk ≈ 0.24 USD). Ekleme: sonraki 15m kapanış da tetiğin üstündeyse.\nKademe küçültüldü: RİSK-OFF (veya makro doğrulanamadı); açık pozisyonlar 15 USD: korelasyon limiti 25 USD\n⚠️ Açık pozisyon var (HYPE/USDT, HYPE/USDT, ASTOR.IS): korelasyonlu, tek işlem sayılır.",
+    "uyarilar": [],
+    "kapi": {
+      "ok": true,
+      "rr": 2.03,
+      "kademe_usd": 10,
+      "kademe_notlari": [
+        "RİSK-OFF (veya makro doğrulanamadı)",
+        "açık pozisyonlar 15 USD: korelasyon limiti 25 USD"
+      ],
+      "risk_off": true,
+      "hacim_ok": true,
+      "acgozluluk": null,
+      "kurallar": [
+        {
+          "kural": "yön",
+          "durum": "gecti",
+          "detay": "yükseliş kırılımı (spot alım)",
+          "engelleyici": true
+        },
+        {
+          "kural": "mum güncelliği",
+          "durum": "gecti",
+          "detay": "sinyal mumu 0.4 dk önce kapandı",
+          "engelleyici": true
+        },
+        {
+          "kural": "R/R",
+          "durum": "gecti",
+          "detay": "R/R 2.03, eşik 1.5 (RİSK-OFF/doğrulanamadı)",
+          "engelleyici": true
+        },
+        {
+          "kural": "ATR stop",
+          "durum": "gecti",
+          "detay": "stop mesafesi 0.2612 ≥ 1×ATR 0.06792",
+          "engelleyici": false
+        },
+        {
+          "kural": "hacim",
+          "durum": "gecti",
+          "detay": "sinyal anındaki hacim teyidi vardı",
+          "engelleyici": true
+        },
+        {
+          "kural": "BTC kapı",
+          "durum": "gecti",
+          "detay": "BTC 15m kapanış 84163.4 SMA50 84026.7 üstünde",
+          "engelleyici": true
+        },
+        {
+          "kural": "yapı (4h)",
+          "durum": "gecti",
+          "detay": "4h karışık/yatay",
+          "engelleyici": false
+        },
+        {
+          "kural": "konfluens",
+          "durum": "gecti",
+          "detay": "setup kalitesi 71/100 (olasılık değil)",
+          "engelleyici": false
+        },
+        {
+          "kural": "makro",
+          "durum": "gecti",
+          "detay": "2 saat içinde makro veri yok",
+          "engelleyici": true
+        },
+        {
+          "kural": "duygu",
+          "durum": "gecti",
+          "detay": "Korku & Açgözlülük 74 (açgözlülük, 7g +3)",
+          "engelleyici": false
+        },
+        {
+          "kural": "disiplin",
+          "durum": "gecti",
+          "detay": "zarar serisi 0/2, bugün +0.00/-3.00 USD",
+          "engelleyici": true
+        },
+        {
+          "kural": "bütçe",
+          "durum": "gecti",
+          "detay": "ilk kademe 10 USD (RİSK-OFF (veya makro doğrulanamadı); açık pozisyonlar 15 USD: korelasyon limiti 25 USD)",
+          "engelleyici": true
+        }
+      ],
+      "kalan": [],
+      "mum": {
+        "acilis_utc": "2026-09-26 11:15",
+        "zaman_dilimi": "15m",
+        "kapanis": 10.871,
+        "hacim": 32908.18,
+        "hacim_ort20": 28362.996000000003
+      },
+      "veri": {
+        "Binance 15m mum": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T11:30:00+00:00"
+        },
+        "FRED (faiz/dolar/VIX)": {
+          "durum": "güncel",
+          "zaman": "2026-09-24T00:00:00+00:00"
+        },
+        "BLS (CPI/NFP)": {
+          "durum": "güncel",
+          "zaman": "2026-09-15T00:00:00+00:00"
+        },
+        "CFTC COT": {
+          "durum": "güncel",
+          "zaman": "2026-09-22T00:00:00+00:00"
+        },
+        "Veri takvimi": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T09:21:34.048397+00:00"
+        },
+        "Haberler (RSS)": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T09:02:22+00:00"
+        },
+        "BIST 1s mum (Yahoo)": {
+          "durum": "güncel",
+          "zaman": "2026-09-25T15:00:00+00:00"
+        },
+        "DeepSeek son çağrı": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T11:16:08+00:00"
+        },
+        "Panele son gönderim": {
+          "durum": "güncel",
+          "zaman": "2026-09-26T11:29:38.186051+00:00"
+        }
+      }
+    },
+    "sonuc": {
+      "sonuc": "açık",
+      "cikis": 10.732,
+      "mum": 35,
+      "R": -0.53,
+      "kontrol_ts": 1790455223.82659
+    },
+    "konsey": {
+      "kimi": {
+        "karar": "AL",
+        "neden": "Kod kapısı geçti: R/R 2.03, hacim teyitli, BTC kapısı açık, reclaim var; funding kalabalığına rağmen 15m kapanış tetiği doğrulandı."
+      },
+      "deepseek": {
+        "karar": "AL",
+        "neden": "Kapı geçti, R/R 2.03, BTC kapısı açık; funding uçta, ilk kademe 10 USD"
+      },
+      "glm": {
+        "karar": "AL",
+        "neden": "Kapı geçti: 10.748 üstü hacimli kapanış, önceki gün tepesi 10.75 geri alındı, R/R 2.03, BTC kapı açık."
+      }
+    }
+  }
+]

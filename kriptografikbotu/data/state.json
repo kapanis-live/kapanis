@@ -1,0 +1,90 @@
+{
+  "planlar": {
+    "BTC": {
+      "tetik": 84550.0,
+      "teyit": 84250.0,
+      "iptal": 83750.0,
+      "hedef": 85500.0,
+      "not": "Eski 84280 planı teyit başarısız, giriş geçersiz; yeni plan toparlanma kırılımı, R/R zayıf sadece filtre",
+      "guncelleme": 1790344724,
+      "pozisyon": false,
+      "son_mum": 1790340300000,
+      "son_yakinlik": 1790338520,
+      "alarm_id": 1
+    },
+    "SOL": {
+      "tetik": 119.3,
+      "teyit": 118.9,
+      "iptal": 117.8,
+      "hedef": 122.3,
+      "not": "Plan B VWAP retesti; alternatif Plan A 122.35 kırılım, iptal 119.60, hedef 126.0, zayıf R/R",
+      "guncelleme": 1790339193,
+      "pozisyon": false,
+      "alarm_id": 1
+    },
+    "ETH": {
+      "tetik": 2725.0,
+      "teyit": 2710.0,
+      "iptal": 2680.0,
+      "hedef": 2785.0,
+      "not": "Plan A tepe kırılımı; Plan B: tetik 2655, teyit 2645, iptal 2625, hedef 2720, R/R 2.2",
+      "guncelleme": 1790344724,
+      "pozisyon": false,
+      "alarm_id": 1
+    },
+    "AAVE": {
+      "tetik": 146.6,
+      "teyit": 146.0,
+      "iptal": 145.4,
+      "hedef": 149.5,
+      "not": "Plan B destek retesti R/R 2.4, stop ATR dar gürültü riski; kırılım Plan A R/R 0.98 PAS; BTC kapısı kapalı",
+      "guncelleme": 1790350964,
+      "pozisyon": false,
+      "son_mum": 1790350200000,
+      "alarm_id": 1
+    },
+    "THYAO.IS": {
+      "tetik": 285.0,
+      "teyit": 284.0,
+      "iptal": 281.6,
+      "hedef": 291.4,
+      "not": "Endeks kapalı, izlemede; pozisyon yok",
+      "guncelleme": 1790354845,
+      "pozisyon": false
+    },
+    "HYPE": {
+      "tetik": 92.35,
+      "teyit": 92.0,
+      "iptal": 91.4,
+      "hedef": 94.85,
+      "not": "Plan A VWAP üstü kırılım R/R 2.6, hacim MA20 üstü şart; Plan B 91.55 taban dönüşü zayıf destek",
+      "guncelleme": 1790375400,
+      "pozisyon": false,
+      "son_mum": 1790454600000,
+      "son_yakinlik": 1790439320,
+      "bekleyen_teyit": 1790435700000
+    },
+    "XRP": {
+      "tetik": 1.508,
+      "teyit": 1.505,
+      "iptal": 1.497,
+      "hedef": 1.549,
+      "not": "Plan B destek retesti R/R 3.7, destek 1 dokunmalı zayıf; kırılım Plan A R/R 0.35 PAS; BTC kapısı 84550 şart",
+      "guncelleme": 1790410209,
+      "pozisyon": false,
+      "alarm_id": 1
+    },
+    "NEAR": {
+      "tetik": 4.75,
+      "teyit": 4.7,
+      "iptal": 4.68,
+      "hedef": 4.95,
+      "not": "Plan B destek retesti; 4.73-4.75 bölgesi, 15m SMA200/1h SMA50 destek, R/R 2.9. Plan A: tetik 4.92, teyit 4.87, iptal 4.80, hedef 5.05 uste 5.15, R/R zayif-orta",
+      "guncelleme": 1790414599,
+      "pozisyon": false,
+      "son_mum": 1790454600000,
+      "son_yakinlik": 1790455520
+    }
+  },
+  "btc_not": "BTC 15m 83980, SMA50 84032.8 altı; kapı KAPALI, 84550 tetiği uzak, 83750 iptal. Günlük trend yukarı, kısa vade 83395-84337 bandında sıkışma."
+}

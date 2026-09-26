@@ -1,0 +1,126 @@
+# Kapanış — Kripto ve BIST Karar Botu + Web Paneli
+
+Kişisel kripto ve BIST karar destek sistemi. İşlem **açmaz**, uyarır ve kayıt tutar.
+İki parçadan oluşur:
+
+- `bot/` (bu klasör, eski adı `kriptografikbotu`): Python Telegram botu. Asıl beyin.
+- `web/` (eski adı `kapanis`): FastAPI + MongoDB backend ve React panel. Botun verisini gösterir, paneldeki işlemleri bota iletir.
+
+Arayüz dili Türkçe. Kod yorumları İngilizce.
+
+## Değiştirilemez kurallar
+
+Yeni özellik bu kuralları bozmamalı:
+
+1. **Dokunma ≠ kapanış.** Hiçbir sinyal mum içi high/low ile tetiklenmez; sadece kapanmış mumun kapanış fiyatı.
+2. **Goalpost yasağı.** Açık pozisyonda stop aşağı çekilemez. Kodla engellenir (`positions.update`, `conversation_store.apply_update`, web backend 409).
+3. **Spot, kaldıraçsız.** Kripto bütçesi ~100 USD; ilk kademe normalde 25 USD, RİSK-OFF'ta 15 USD. BIST bütçesini kullanıcı Telegram'dan `/bist butce 5000` ile girer; ilk kademe en fazla bütçenin %25'i, planlanan işlem stop riski en fazla %2'sidir. Bütçe girilmeden BIST AL sinyali verilmez.
+4. **Kesinlik dili yok.** "Kesin kazanç" gibi ifade yok; yatırım tavsiyesi değildir.
+5. **Sayılar ve kararın kendisi kodla verilir, LLM hesaplamaz.** `gate.py` KALDI derse DeepSeek AL diyemez; kapının sonucu her analizin altına eklenir. İndikatör, R/R, rejim skoru, destek/direnç, haber etiketi hep Python'da. DeepSeek sadece yorumlar.
+6. **Veri uydurma yok.** Veri yoksa "doğrulanamadı".
+7. **Ücretsiz altyapı.** Ücretli indikatör/haber API'si yok. Tek ücretli servis DeepSeek.
+
+## Bot mimarisi
+
+| Dosya | Görev |
+|---|---|
+| `main.py` | Telegram komutları, butonlar, zamanlanmış işler (15 dk kontrol, sabah brifi 08:30, okul raporu 16:05, veri takvimi uyarıları, web senkronu) |
+| `config.py` | Tüm ayarlar ve `.env` okuma. Veri klasörü `data/` |
+| `market.py` | Binance spot REST, indikatörler (SMA20/50/200, RSI14 Wilder, ATR14 Wilder, Volume MA20, günlük VWAP), destek/direnç bölgeleri, coin özeti |
+| `derivatives.py` | Binance vadeli: funding, açık pozisyon, long/short, baz |
+| `macro.py` | FRED (likidite, dolar, faiz, VIX, rejim skoru), BLS (CPI/NFP), CFTC COT, veri takvimi |
+| `news.py` | Ücretsiz RSS haberleri; kaynak güvenilirliği ile kripto ilgisi **ayrı** ölçülür |
+| `llm.py` | Üç model 15 dakikalık dilimlerle sırayla: Kimi K3 → DeepSeek V4.1 Flash (`deepseek-flash`, .env DEEPSEEK_MODEL ile değişir) → GLM 5.3 (Kimi ve GLM NVIDIA API'den, `NVIDIA_API_KEY`). Biri hata verirse sıradaki cevap verir; cevabın altında 🧠 model adı. Kimi/GLM'e sistem kurallarına ek olarak PROJE.md, uzun sohbet geçmişi ve son kararlar/işlemler gider (büyük bağlam). `/model` ile sabitlenebilir. Cevaptaki `<STATE>` bloğundan planları kaydeder. qwen3 (Ollama) ön filtresi opsiyonel |
+| `system_prompt.py` | Botun kuralları ve üslubu; sonuna `ornek_analizler.md` eklenir (DeepSeek önbelleği için sabit önek) |
+| `gate.py` | Kripto karar kapısı ve "Aldım" yönlendirmesi. BIST kararları `bist_signals.py` kapısından geçer |
+| `scanner.py` | Otomatik tarayıcı: 13 coinde 4h/1d direnç bölgesinin hacimli 15m kapanışla kırılmasını arar, otomatik plan kurar (🤖). Sonraki mum tutarsa `gate.py` karar verir → 🟢 ŞİMDİ AL. Tarama DeepSeek kullanmaz |
+| `bist.py` | Yahoo'dan kapanmış BIST mumları, BIST 100 ve USD/TRY, seans ve tatil takvimi, TL adet/bütçe kuralları |
+| `bist_signals.py` | BIST 30'da hacimli direnç kırılımı ve trend içi geri çekilme; günlük aday, sonraki seansta saatlik teyit, ayrı karar kapısı |
+| `exits.py` | Portföy çıkış/tepe analizi (kripto 4h, BIST günlük): TUT / KISMİ SAT / SAT, olası tepe bölgesi, iz süren stop ve başa baş önerisi (sadece yukarı). DeepSeek kullanmaz |
+| `watcher.py` | 15 dk'da bir plan kontrolü (tetik/teyit/iptal/hedef), "ŞİMDİ AL" kural listesi, pozisyon stop/hedef takibi |
+| `alert_engine.py` | Binance WebSocket; sadece `x: true` kapanmış mumda kapanış alarmı |
+| `alerts_store.py` | `alerts.json`, `settings.json` (sessiz saat, okul modu) |
+| `positions.py` | `positions.json`, `decisions.json` (karar günlüğü), son backtest |
+| `conversation_store.py` | `history.json` (son 15 tur), `state.json` (planlar) |
+| `charts.py` | mplfinance grafik: mum+SMA, RSI, ATR, hacim |
+| `backtest.py` | Kapanış bazlı backtest ve karar sonucu değerlendirme |
+| `costs.py` | DeepSeek token/TL takibi (`usage.jsonl`), yoğun/indirimli tarife |
+| `corporate.py` | BIST bedelsiz/bölünme (açık pozisyon, alarm ve planları otomatik ölçekler), temettü geliri ve geçen yılın tarihlerinden tahmin; USD/TRY ve TÜFE (EVDS, opsiyonel anahtar) ile dolar ve enflasyon bazlı getiri |
+| `discipline.py` | Disiplin kalkanı: üst üste 2 zarar = 24 saat yeni AL yok, günlük zarar bütçenin %3'ünü geçerse o piyasada gün biter. İki kapıda da `disiplin` kuralı |
+| `sentiment.py` | Korku & Açgözlülük (alternative.me), BTC/ETH dominansı ve stablecoin payı (CoinGecko). ≥80'de ilk kademe küçülür; tek başına sinyal değil |
+| `risk.py` | Yoğunlaşma (varlık %40, sektör %50), 30 günlük korelasyon, pozisyonlardan geriye dönük portföy değeri |
+| `journal.py` | İşlem günlüğü: alış/satış nedeni, plana uyum (fiyattan ölçülür), en sık hata |
+| `dca.py` | Birikim planları: aylık hatırlatma, "Aldım" ile kayıt, düşüşte ayda bir ekstra kademe önerisi |
+| `assets.py` | Altın/döviz portföy varlıkları (piyasa `DIGER`, TL): gram altın = GC=F × USD/TRY ÷ 31,1035, dolar, euro. TUT/SAT verilmez. TEFAS desteklenmez (site otomatik isteği engelliyor) |
+| `benchmark.py` | Kıyas: portföy vs BIST 100, BTC, gram altın, dolar, mevduat (`/kiyas faiz 45`), aynı tarihlerle ve TL maliyet ağırlıklı. Satış sonrası 5/20 gün takibi |
+| `shadow.py` | Gölge portföy: kapıdan geçen her ŞİMDİ AL'ı aynen alsaydın (kapanışla, komisyon/kayma düşülmüş), gerçek sonucunla yan yana |
+| `risk_news.py` | Riskli haber alarmı: Binance delist/izleme duyuruları, kripto RSS ve BIST Google News; eldeki/listedeki varlık + risk kelimesi. DeepSeek yok |
+| `eod.py` | BIST gün sonu raporu (18:45): kapanış, hacim, SMA, RSI, destek/direnç, plan ve pozisyon durumu |
+| `model_score.py` | Model karnesi: konsey oyları ve alarm yorumlarını yazan model, kapanışla sonuçlanan kararlara göre puanlanır (`/karne`) |
+| `strength.py` | BIST haftalık güç sıralaması (~200 hisse, haftalık kapanış: 13/26 hafta endekse göre güç, 52h zirveye uzaklık, hacim, trend) ve sektör rotasyonu; cuma 19:00 ve `/guc` |
+| `pf_alarm.py` | Portföy alarmı: piyasa başına bakiye (varlık + nakit) şimdiye göre %X ya da bir seviyeyi geçince bir kez haber verir (`/palarm`, 15 dk) |
+| `watchlist.py` | Takip listesi (kripto/BIST/ABD, `settings.json` → `takip_listesi`). Otomatik analiz YOK: 30 dk'da bir sessizce "bakmak ister misin?" sorar (`/takip`, `/takip aralik`, 08:00 öncesi/sessiz saatte sormaz, cevapsız eski soruyu siler). Tek/çoklu seçim → 📊 kodla hızlı durum (fiyat, gün/hafta %, SMA50/200 trendi, RSI, en yakın destek/direnç) veya 🧠 analiz (tek kod: o piyasanın tam motoru; çoklu: [TAKİP] karşılaştırma). Panel: extras.takip_listesi (30 dk önbellek, `data/takip_durum.json`), Tiingo kotası kullanılmaz |
+| `structure.py` | Kripto karar motoru (kodla): rejim, HH/HL/LH/LL yapı + BOS/CHoCH, likidite (önceki gün/hafta tepe-dip, eşit tepe/dip, süpürme), hacim profili POC/VAH/VAL, MACD, Bollinger sıkışması, RSI uyumsuzluğu, konfluens /100 (kalite, olasılık değil), BIST için Weinstein Stage. `market.snapshot` → `teknik_motor`; kapıda `yapı (4h)`, `konfluens`, `likidite` bloklamayan kurallar |
+| `fundamentals.py` | BIST yatırım motoru: İş Yatırım mali tabloları (ücretsiz), TTM, USD bazlı büyüme, marjlar, FCF, net borç/FAVÖK, faiz karşılama, ROE, F/K, FD/FAVÖK, PD/DD, FCF verimi, bankalara ayrı metrik, kırmızı bayraklar, skor (katalizör/yönetim hariç). `/temel`, `/incele` verisi (`BIST_TEMEL`), `/guc` ilk 10'a skor |
+| `us.py` | ABD hisseleri: fiyat Tiingo (`TIINGO_API_KEY`, günlük 900 istek / saatte 45 sembol sayacı) yoksa Yahoo; NYSE takvimi (2026 tatiller, yarım günler); kapı SPY/QQQ (200G + 50G>200G), VIX, 10Y, DXY; teknik (aylık/haftalık/günlük trend, 50/200G, 10 haftalık, 52h zirve, RS SPY/QQQ/sektör ETF, Stage, volatilite daralması, birikim hacmi, bilanço boşluğu). Semboller `AAPL.US`, piyasa `ABD`, USD |
+| `us_fund.py` | ABD yatırım motoru: SEC EDGAR companyfacts (resmi, ücretsiz; etiket değişimlerini birleştirir, YTD'den çeyrek türetir) + Yahoo quoteSummary (EPS tahmin trendi 30/90g, revizyon sayıları, sürprizler, sonraki bilanço, ileri F/K, PEG, açığa satış, insider, kurumsal). Büyüme/ivme, marjlar, FCF, SBC/seyreltme, geri alım, hissedar getirisi, ROE/ROIC, net nakit, değerleme, Rule of 40, uyarılar, patlama listesi, 100 puan skor + durum. Guidance ücretsiz veride yok |
+| `us_signals.py` | ABD plan takibi ve kapı (günlük kapanış; endeks kapısı, haftalık trend, bilançoya 5 gün kala giriş yok, R/R≥2, disiplin, `/abd butce` kademe/risk), günlük kapanış alarmları, haberler, yapay zekâ verisi |
+| `web_sync.py` | Web panel köprüsü: bot verisini panel şemasına çevirip `/api/ingest` ile gönderir, panel komutlarını uygular |
+
+Veri: `data/` klasöründe JSON dosyaları. Veritabanı yok (bot tarafında).
+
+### Portföy, disiplin ve uzun vade
+
+- Uzun vadeli varlıklar (birikim alımları ve `/portfoy` ile içe aktarılanlar) kısa vade kademe limitine ve disiplin kalkanına girmez (`positions.is_trade`). Birikim alımlarına TUT/SAT uyarısı gönderilmez.
+- Zamanlanmış işler: 09:45 bölünme/temettü kontrolü (başlangıçta da bir kez), 10:15 birikim hatırlatması, pazar 20:00 haftalık özet (metin + grafik + tek DeepSeek yorumu).
+- Stopu aşağı çekme denemesi ve SAT kararına rağmen tutma kural olayı olarak kaydedilir; `/rapor`, `/disiplin` ve haftalık özette görünür.
+- Portföy sihirbazı: ~200 BIST hissesi ve popüler coinler (günde bir Yahoo/Binance ile doğrulanır, `universe.py`), sayfalı ve çoklu seçim. `/bakiye`: piyasa başına ayrı bakiye (varlık + nakit) ve bugün/hafta/toplam K/Z (`balance.py`).
+- Komutlar: `/hesap`, `/grafik`, `/risk`, `/duygu`, `/disiplin`, `/gunluk`, `/haftalik`, `/birikim`, `/temettu`.
+- 📸 Ekran görüntüsü: aracı kurum/borsa portföy ekranı Kimi K3 ile okunur (`llm.read_holdings`, boş cevapta 4 deneme), onayla portföye eklenir. GLM 5.3 NVIDIA'da görsel kabul etmiyor.
+- Konsey: kapıdan geçen her ŞİMDİ AL'da (kripto ve BIST) üç model arka planda oy verir (`llm.council`), oylar karara kaydedilir.
+- ABD: `/abd`, `/abd AAPL`, `/temel AAPL`, `/abd guc` (S&P 100, cumartesi 10:00), `/abd butce`, New York kapanışından sonra (16:20 ET) plan/alarm işi.
+- Ek komutlar: `/golge`, `/kiyas`, `/gunsonu`, `/karne` (kural karnesi: `gate.rule_advice`, kurallar otomatik değişmez). Düz yazıyla kapanış alarmı ("THYAO 300 üstünde kapanırsa haber ver") onay butonuyla kurulur.
+- İçe aktarılan varlıkların alış tarihi bilinmez: `/duzelt ID tarih=2025-03-01` girilene kadar dolar/enflasyon getirisi ve kıyasa girmez.
+- Zamanlanmış işler: 18:45 BIST gün sonu, 19:00 satış sonrası kontrolü, 30 dk'da bir riskli haber, 15 dk'da bir panel `extras` dokümanı (web panelde "Portföy & Disiplin" sayfası, `kapanis/frontend/src/pages/panel/Portfolio.jsx`).
+
+### BIST akışı
+
+- `/bist butce 5000`: BIST'e ayrılan TL bütçesini kalıcı kaydeder/değiştirir; kademe, adet ve stop riski yeni değerden hesaplanır. `/bist`: bütçe, endeks kapısı, aday/pozisyon durumu. `/incele THYAO`: hisse analizi (`/bist THYAO` da çalışır; `/analiz THYAO` BIST'e yönlendirir). `/bist tara`, `/bist kapat`, `/bist ac`: günlük tarayıcı.
+- `/bist backtest THYAO 320 stop=300 hedef=360 gun=90`: son 180 güne kadar kapalı saatlik mumlarda verilen fiyat seviyesini, maliyet sonrası net R ile sınar. Bu test günlük strateji ve BIST 100 kapısının tarihsel performansı değildir.
+- BIST orta/uzun vadedir (`config.BIST_CONFIRM_TF = "1d"`): haftalık kapanış haftalık SMA20 üstünde olmalı, aday sonraki günlerin KESİN günlük kapanışıyla (18:35 işi, `bist_signals.daily_check`) doğrulanır, stop ≥ 1,5 günlük ATR, hedef ≥ %8, net R/R ≥ 2. Çıkış kararı haftalık kapanışla (`exits.frames`), stop/hedef takibi günlük kapanışla (`watcher`). Eski kısa vade modu için `BIST_CONFIRM_TF = "1h"`.
+- Tarama hafta içi 18:35'te kapanmış günlük mumlarla çalışır. Veri yaklaşık 15 dakika gecikebilir; emir fiyatı aracı kurumdan kontrol edilir.
+- Kod kapısı seans, veri güncelliği, günlük trend, BIST 100'e göre 20 günlük güç, hacim, maliyet sonrası R/R ≥ 1,5, tavan/boşluk, BIST 100 yönü, tam adet ve azami %2 stop riskini denetler. BIST 100 kapalıysa AL vermez. DeepSeek yalnız geçen sinyale kısa yorum ekler.
+- `Aldım` işlemi TL ve tam adetle pozisyon açar. Elle gerçek alım `/bist aldim THYAO 320 4 stop=300 hedef=360` ile kaydedilir. Gerçek fiyat veya adet farklıysa `/duzelt ID giris=FIYAT adet=N`. Satış gerçek fiyatla `/sat ID FIYAT`; panelde de gerçekleşen satış fiyatı gerekir.
+- BIST 30 ve tatil listeleri 2026 sonuna kadar geçerlidir. 2027 listesi/takvimi girilene kadar otomatik BIST sinyali durur.
+
+## Web panel mimarisi
+
+- `web/backend/server.py`: FastAPI. JWT giriş (tek admin, kayıt yok). Panel verisi MongoDB'den okunur.
+- Bot → web: `POST /api/ingest/{collection}?replace=true` (`X-Bot-Key` başlığı).
+- Web → bot: paneldeki işlemler veriyi değiştirmez, `commands` kuyruğuna yazılır. Bot `GET /api/commands/pending` ile 15 sn'de bir alır, uygular, `POST /api/commands/{id}/done` der.
+- `web/frontend/src`: React + Tailwind + shadcn. Sayfalar `pages/panel/*` (10 sayfa) ve `pages/public/*` (tanıtım). Veri tipleri `types/index.ts`, API `lib/api.js`.
+- Tasarım: tamamen siyah tema, Inter + JetBrains Mono, renk sadece anlam için (yeşil yükseliş, kırmızı düşüş, sarı bekle).
+
+## Çalıştırma
+
+1. MongoDB yerel servis (`mongodb://127.0.0.1:27017`).
+2. Bot: `bot/.env` doldur (`.env.example`'a bak), `baslat.bat`.
+3. Panel: `web/backend/.env` doldur, `web/baslat-panel.bat` → http://localhost:3000
+
+Python 3.11, Node 24. Bot bağımlılıkları `requirements.txt`, panel `web/backend/requirements.txt` ve `web/frontend/package.json` (`npm install --legacy-peer-deps`).
+
+## Yeni özellik eklerken
+
+- Mevcut kod stiline uy: kısa fonksiyonlar, Türkçe kullanıcı metni, İngilizce yorum.
+- Yeni sayısal kontrol → Python'da hesapla, DeepSeek'e hazır sonuç ver.
+- Yeni Telegram komutu → `main.py` içinde `@authorized` handler + `HELP` metni + gerekirse `BOT_MENU`.
+- Panelde yeni veri → `web_sync.py` içinde `build_*` fonksiyonu + backend `INGEST_COLLECTIONS` + frontend sayfası.
+- `.env`, `data/`, `.venv`, `node_modules` asla paylaşılmaz ve commit edilmez.
+
+
+## Kripto ↔ BIST eşitliği
+- Analiz: `/analiz BTC` ↔ `/incele THYAO` (çoklu zaman dilimi, destek/direnç, haber, makro/endeks kapısı)
+- Alarm: `/new_alert` (Binance websocket, 15m…) ↔ `/bist alarm THYAO ABOVE 300 1h|1d` (Yahoo, kapanış; `.IS` alarmları websocket'e girmez)
+- Tarayıcı + ŞİMDİ AL: `scanner.py` ↔ `bist_signals.daily_scan/hourly_check` (grafik + kod kapısı + Aldım/Pas)
+- Haber: RSS (`/haber`) ↔ Google News TR (`/bist haber`)
+- Portföy ve çıkış: `/portfoy` ortak; `/bist portfoy` sadece BIST. Kısmi satış: `/sat ID FIYAT adet=N|yuzde=50`

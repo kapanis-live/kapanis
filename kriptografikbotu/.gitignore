@@ -1,0 +1,20 @@
+# Secrets: never commit (API keys, Telegram token)
+.env
+.env.*
+!.env.example
+
+# Environments and caches
+.venv/
+.uv-python/
+.uv-cache/
+__pycache__/
+*.pyc
+
+# Logs can contain request URLs with the Telegram bot token
+*.log
+*.log.*
+data/*.log*
+
+# Large / local-only
+*.zip
+ornek

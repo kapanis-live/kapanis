@@ -1,5 +1,5 @@
 {
- "tarih": "2026-09-26",
+ "tarih": "2026-09-27",
  "kalemler": [
   {
    "kod": "META",
@@ -818,5 +818,7 @@
    "portfoyde": false
   }
  ],
- "hatirlatilan": []
+ "hatirlatilan": [
+  "META|temettu_odeme|2026-09-28"
+ ]
 }

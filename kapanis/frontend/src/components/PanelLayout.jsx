@@ -9,7 +9,7 @@ import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid, Bell, Activity, Wallet, FileBarChart, Globe2, Receipt, LineChart, FlaskConical,
-  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target, ClipboardCheck,
+  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target, ClipboardCheck, UserRound, Briefcase,
 } from "lucide-react";
 
 const NAV = [
@@ -52,8 +52,30 @@ const NAV = [
     items: [
       { to: "/app/maliyet", label: "Yapay zekâ maliyeti", icon: Receipt },
       { to: "/app/ayarlar", label: "Ayarlar", icon: SettingsIcon },
+      { to: "/app/hesap", label: "Hesap & Telegram", icon: UserRound },
     ],
   },
+];
+
+// Sistem sahibi olmayan kullanıcı: kendi portföyü, piyasa sayfaları, hesabı (botun kişisel verisi kapalı)
+const USER_NAV = [
+  { group: "Portföy", items: [{ to: "/app/portfoyum", label: "Portföyüm", icon: Briefcase }] },
+  {
+    group: "Piyasa",
+    items: [
+      { to: "/app/grafik", label: "Grafik & Analiz", icon: CandlestickChart },
+      { to: "/app/makro", label: "Makro", icon: Globe2 },
+      { to: "/app/vadeli", label: "Vadeli", icon: LineChart },
+    ],
+  },
+  { group: "Hesap", items: [{ to: "/app/hesap", label: "Hesap & Telegram", icon: UserRound }] },
+];
+
+const USER_MOBILE_NAV = [
+  { to: "/app/portfoyum", label: "Portföy", icon: Briefcase },
+  { to: "/app/grafik", label: "Grafik", icon: CandlestickChart },
+  { to: "/app/makro", label: "Makro", icon: Globe2 },
+  { to: "/app/hesap", label: "Hesap", icon: UserRound },
 ];
 
 const MOBILE_NAV = [
@@ -123,8 +145,8 @@ function StatusStrip() {
 
 function TopActions({ onLogout }) {
   const { theme, toggle, size, setSize } = useTheme();
-  const { user } = useAuth();
-  const overview = useData("overview", "/overview", { refetchInterval: 30_000 });
+  const { user, owner } = useAuth();
+  const overview = useData("overview", "/overview", { refetchInterval: 30_000, enabled: owner });
   const pend = usePendingCommands();
   const decisions = overview.data?.pending_decisions || 0;
   return (
@@ -161,9 +183,10 @@ function TopActions({ onLogout }) {
 }
 
 function SideNav({ onClick }) {
+  const { owner } = useAuth();
   return (
     <nav className="space-y-5">
-      {NAV.map((g) => (
+      {(owner ? NAV : USER_NAV).map((g) => (
         <div key={g.group}>
           <p className="eyebrow mb-2 px-3 text-[10px] text-t-3">{g.group}</p>
           <div className="space-y-0.5">
@@ -215,7 +238,7 @@ function SideFooter() {
 
 export function PanelLayout({ children }) {
   const [open, setOpen] = useState(false);
-  const { logout } = useAuth();
+  const { logout, owner } = useAuth();
   const loc = useLocation();
   const navigate = useNavigate();
 
@@ -264,7 +287,7 @@ export function PanelLayout({ children }) {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-center justify-around border-t border-hairline bg-surface/95 backdrop-blur lg:hidden">
-        {MOBILE_NAV.map((n) => {
+        {(owner ? MOBILE_NAV : USER_MOBILE_NAV).map((n) => {
           const Icon = n.icon;
           return (
             <NavLink key={n.to} to={n.to} end={n.end}

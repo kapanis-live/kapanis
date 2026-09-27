@@ -1,0 +1,73 @@
+# Render Blueprint. Frankfurt: Binance's API refuses requests from US data centres.
+# The bot must run 24/7, so the worker cannot be on a plan that sleeps; Render's free plan has no
+# background workers and free web services sleep after 15 minutes idle (the site then wakes in ~1 min).
+services:
+  - type: web
+    name: kapanis-web
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    dockerCommand: /app/start.sh web
+    healthCheckPath: /api/
+    envVars:
+      - key: AUTH_MODE
+        value: clerk
+      - key: TRUST_PROXY
+        value: "1"
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: kapanis
+      - key: JWT_SECRET
+        generateValue: true
+      - key: BOT_API_KEY
+        sync: false
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_JWKS_URL
+        sync: false
+      - key: CLERK_ISSUER
+        sync: false
+      - key: CLERK_AUTHORIZED_PARTIES
+        sync: false
+      - key: OWNER_EMAIL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        sync: false
+  - type: worker
+    name: kapanis-bot
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    dockerCommand: /app/start.sh worker
+    envVars:
+      - key: WEB_URL
+        sync: false
+      - key: BOT_API_KEY
+        sync: false
+      - key: STATE_MONGO_URL
+        sync: false
+      - key: STATE_DB_NAME
+        value: kapanis
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ALLOWED_CHAT_ID
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: TIINGO_API_KEY
+        sync: false
+      - key: FRED_API_KEY
+        sync: false
+      - key: BLS_API_KEY
+        sync: false
+      - key: CFTC_APP_TOKEN
+        sync: false
+      - key: SEC_USER_AGENT
+        sync: false

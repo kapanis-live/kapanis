@@ -35,10 +35,13 @@
       "iptal": 83750.0,
       "hedef": 85500.0,
       "hacim_sart": true,
-      "durum": "aktif",
-      "son_tetik_zamani": null,
-      "tetikler": [],
-      "olusturulma": "2026-09-25T16:59:20+03:00"
+      "durum": "iptal",
+      "son_tetik_zamani": "2026-09-27T14:15:01+03:00",
+      "tetikler": [
+        "2026-09-27T14:15:01+03:00"
+      ],
+      "olusturulma": "2026-09-25T16:59:20+03:00",
+      "iptal_nedeni": "kullanici"
     },
     {
       "id": 2,

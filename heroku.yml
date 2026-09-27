@@ -1,0 +1,9 @@
+# Heroku (container stack): heroku stack:set container -a APP ; git push heroku main
+# Two dynos from the same image. Scale: heroku ps:scale web=1 worker=1 -a APP
+build:
+  docker:
+    web: Dockerfile
+    worker: Dockerfile
+run:
+  web: /app/start.sh web
+  worker: /app/start.sh worker

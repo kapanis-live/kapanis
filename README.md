@@ -26,4 +26,6 @@ Ayrıntılı yapı: `kriptografikbotu/PROJE_YAPISI.md` · modüller: `kriptograf
 
 Telefon: Tailscale + `kriptografikbotu/mobil-panel.ps1` (panel yalnız kendi Tailscale ağında HTTPS ile açılır).
 
+**Bulut (bilgisayar kapalıyken çalışsın, herkes hesap açabilsin):** `BULUT_KURULUM.md` — Clerk girişi (Google, e-posta + kod), MongoDB Atlas, Heroku/Render/Docker.
+
 Yatırım tavsiyesi değildir.

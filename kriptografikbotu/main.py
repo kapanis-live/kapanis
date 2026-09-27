@@ -50,6 +50,7 @@ import us_signals
 import watchlist
 import features
 import tools
+import cloud_store
 import config
 import conversation_store as store
 import llm
@@ -337,29 +338,33 @@ async def build_market_data(coins: list[str]) -> tuple[dict, list[str]]:
     return data, missing
 
 
-async def run_analysis(bot, chat_id: int, user_text: str, coins: list[str],
+async def run_analysis(bot, chat_id: int | None, user_text: str, coins: list[str],
                        data: dict | None = None, footer: str = "", buttons=plan_alarm_buttons,
-                       allow_state_update: bool = True) -> str | None:
+                       allow_state_update: bool = True, personal: bool = True) -> str | None:
     """DeepSeek analysis. Pass `data` to send prepared market data instead of coin snapshots.
 
     `buttons(reply, plan_coins)` returns the inline keyboard for the reply, or None.
     """
     async with analysis_lock:
-        status = await bot.send_message(chat_id, "⏳ veri çekiliyor, analiz ediliyor...", disable_notification=True)
+        # chat_id None: the answer only goes to the panel (a site user without a Telegram link)
+        status = await bot.send_message(chat_id, "⏳ veri çekiliyor, analiz ediliyor...", disable_notification=True) if chat_id else None
         try:
             if data is None:
                 data, missing = await build_market_data(coins)
                 if missing:
                     user_text += f"\n(Not: {', '.join(missing)} için Binance'te {config.QUOTE} paritesi bulunamadı.)"
             reply, warnings, plan_coins = await llm.analyze(user_text, data,
-                                                            allow_state_update=allow_state_update)
+                                                            allow_state_update=allow_state_update, personal=personal)
         except Exception as e:
             log.exception("Analysis failed")
-            await status.edit_text(f"❌ Hata: {e}")
+            if status:
+                await status.edit_text(f"❌ Hata: {e}")
             return None
-        await status.delete()
-        await send_long(bot, chat_id, "\n\n".join([reply, *warnings, *([footer] if footer else [])]),
-                        reply_markup=buttons(reply, plan_coins) if buttons else None)
+        if status:
+            await status.delete()
+        if chat_id:
+            await send_long(bot, chat_id, "\n\n".join([reply, *warnings, *([footer] if footer else [])]),
+                            reply_markup=buttons(reply, plan_coins) if buttons else None)
         return reply
 
 
@@ -370,8 +375,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Chat id: {chat_id}\n.env dosyasına ALLOWED_CHAT_ID={chat_id} yaz ve botu yeniden başlat.")
         return
     if chat_id != config.ALLOWED_CHAT_ID:
+        if web_sync.enabled():  # a site user: the only thing this chat can do is link their account
+            await update.message.reply_text("Kapanış'a hoş geldin. Hesabını bağlamak için sitede Hesap → "
+                                            "Telegram'ı bağla'ya bas, çıkan kodu buraya yaz: /bagla KP-XXXXXXXX")
         return
     await update.message.reply_text("Hazırım knk.\n\n" + HELP)
+
+
+_link_tries: dict[int, list[float]] = {}
+
+
+def _mask_email(email: str) -> str:
+    name, _, domain = email.partition("@")
+    return (name[:2] + "***@" + domain) if domain else ""
+
+
+async def bagla(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/bagla KP-XXXXXXXX: open to any chat (not @authorized). Binds this chat to a site account so that
+    account's panel analyses also arrive here. Gives this chat no access to the owner's bot."""
+    chat_id = update.effective_chat.id
+    if not web_sync.enabled():
+        return
+    now = time.time()
+    tries = [t for t in _link_tries.get(chat_id, []) if now - t < 3600]
+    if len(tries) >= 5:
+        await update.message.reply_text("Çok fazla deneme. Bir saat sonra tekrar dene.")
+        return
+    _link_tries[chat_id] = tries + [now]
+    if len(context.args) != 1:
+        await update.message.reply_text("Kullanım: /bagla KP-XXXXXXXX (kodu sitede Hesap → Telegram'ı bağla'dan al)")
+        return
+    try:
+        ok, info = await web_sync.link_telegram(context.args[0].strip(), chat_id, update.effective_user.username if update.effective_user else None)
+    except Exception as e:
+        log.warning("Telegram link failed: %s", e)
+        await update.message.reply_text("Şu an bağlanamadı, biraz sonra tekrar dene.")
+        return
+    if ok:
+        _link_tries.pop(chat_id, None)
+        await update.message.reply_text(f"✅ Bağlandı: {_mask_email(info)}\nSiteden istediğin analizler buraya da gelecek. "
+                                        "Bağlantıyı kaldırmak için sitede Hesap → Bağlantıyı kaldır.")
+    else:
+        await update.message.reply_text(f"❌ {info}")
 
 
 @authorized
@@ -4398,9 +4443,13 @@ async def takip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- panel-era features: analysis/plans/opportunity from the panel, targets, calendar, KAP, rules, paper, lesson ---
 
-async def panel_analysis(bot, piyasa: str, kodlar: list[str]) -> str | None:
-    """Analysis asked from the panel: the same engines as Telegram; the answer goes to Telegram AND the panel."""
-    chat = config.ALLOWED_CHAT_ID
+async def panel_analysis(bot, piyasa: str, kodlar: list[str], cmd: dict | None = None) -> str | None:
+    """Analysis asked from the panel: the same engines as Telegram; the answer goes to the asking user's panel,
+    and to Telegram when that user linked one. cmd: the queued command (user_id, role, request_id, telegram_chat_id);
+    None or role "owner" = the owner (personal context, ALLOWED_CHAT_ID)."""
+    owner = not cmd or cmd.get("role", "owner") == "owner"
+    chat = config.ALLOWED_CHAT_ID if owner else cmd.get("telegram_chat_id")
+    extra = {} if owner else {"personal": False, "allow_state_update": False, "buttons": None}
     kodlar = [k.upper() for k in kodlar if k][:10]
     if not kodlar:
         return None
@@ -4408,21 +4457,25 @@ async def panel_analysis(bot, piyasa: str, kodlar: list[str]) -> str | None:
         res = await takip_rows({piyasa: kodlar})
         reply = await run_analysis(bot, chat, f"[TAKİP] Panelden {len(kodlar)} kod için karşılaştırma istendi. Kodla hesaplanmış "
                                    "hızlı durum [PİYASA VERİSİ].TAKIP_LISTESI içinde.", [], data={"TAKIP_LISTESI": res},
-                                   buttons=None, allow_state_update=False)
+                                   **{"buttons": None, "allow_state_update": False, **extra})
     elif piyasa == "KRIPTO":
-        reply = await run_analysis(bot, chat, f"{kodlar[0]} analiz et.", [kodlar[0]])
+        reply = await run_analysis(bot, chat, f"{kodlar[0]} analiz et.", [kodlar[0]], **extra)
     elif piyasa == "BIST":
         async with httpx.AsyncClient() as client:
             data = await bist_market_data(client, kodlar[0])
-        reply = await run_analysis(bot, chat, f"[BIST] {kodlar[0]} analiz et.", [], data=data, buttons=None,
-                                   footer="Fiyat Yahoo'dan, ~15 dk gecikmeli.")
+        reply = await run_analysis(bot, chat, f"[BIST] {kodlar[0]} analiz et.", [], data=data,
+                                   footer="Fiyat Yahoo'dan, ~15 dk gecikmeli.", **{"buttons": None, **extra})
     else:
         data = await us_signals.market_data(kodlar[0])
-        reply = await run_analysis(bot, chat, f"[ABD] {kodlar[0]} analiz et.", [], data=data, buttons=None)
+        reply = await run_analysis(bot, chat, f"[ABD] {kodlar[0]} analiz et.", [], data=data, **{"buttons": None, **extra})
     if reply and web_sync.enabled():
         now = alerts_store.now_tr()
-        await web_sync.push_docs("analyses", [{"id": f"an_{int(now.timestamp())}_{kodlar[0]}", "kodlar": kodlar, "piyasa": piyasa,
-                                               "zaman": now.isoformat(), "metin": reply}])
+        doc = {"id": f"an_{int(now.timestamp())}_{kodlar[0]}", "kodlar": kodlar, "piyasa": piyasa,
+               "zaman": now.isoformat(), "metin": reply}
+        if cmd and cmd.get("user_id"):
+            doc.update(id=f"an_{cmd.get('request_id') or int(now.timestamp())}_{kodlar[0]}", user_id=cmd["user_id"],
+                       request_id=cmd.get("request_id"))
+        await web_sync.push_docs("analyses", [doc])
     return reply
 
 
@@ -4703,6 +4756,13 @@ async def karsilastir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(tools.compare_text(c))
 
 
+async def cloud_state_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await asyncio.to_thread(cloud_store.sync)
+    except Exception as e:
+        log.warning("Cloud state sync failed: %s", e)
+
+
 async def ind_alarm_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         for text in await tools.check_ind_alerts():
@@ -4715,7 +4775,7 @@ def register_panel_actions(bot):
     async def analysis(p):
         piyasa = p.get("piyasa", "KRIPTO")
         kodlar = p.get("kodlar") or [p.get("kod")]
-        await panel_analysis(bot, piyasa, kodlar)
+        await panel_analysis(bot, piyasa, kodlar, p.get("_komut"))
         return f"🧠 Panelden analiz: {', '.join(k for k in kodlar if k)} ({piyasa}) — cevap yukarıda ve panelde."
 
     async def plan_add_(p):
@@ -5400,8 +5460,12 @@ async def web_push_job(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def web_command_job(context: ContextTypes.DEFAULT_TYPE):
-    async def notify(text: str):
-        await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
+    async def notify(text: str, cmd: dict | None = None):
+        """Owner commands report to the owner's chat; another user's result goes only to their own linked chat."""
+        if not cmd or cmd.get("role", "owner") == "owner":
+            await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
+        elif cmd.get("telegram_chat_id"):
+            await context.bot.send_message(cmd["telegram_chat_id"], text, disable_notification=True)
     try:
         if await web_sync.process_commands(engine.refresh, notify):
             await web_sync.push_all()  # show the result in the panel right away
@@ -5428,6 +5492,7 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE):
 def main():
     if not config.TELEGRAM_BOT_TOKEN or not config.DEEPSEEK_API_KEY:
         raise SystemExit(".env içinde TELEGRAM_BOT_TOKEN ve DEEPSEEK_API_KEY olmalı.")
+    cloud_store.restore()  # cloud: bring data/ back from MongoDB before anything reads it (no-op on this PC)
 
     global engine
 
@@ -5444,6 +5509,10 @@ def main():
         task = app.bot_data.get("engine_task")
         if task:
             task.cancel()
+        try:
+            await asyncio.to_thread(cloud_store.sync)
+        except Exception as e:
+            log.warning("Cloud state sync at shutdown failed: %s", e)
 
     request = HTTPXRequest(connection_pool_size=16, connect_timeout=20, read_timeout=30, write_timeout=30, pool_timeout=10)
     bot = RetryBot(token=config.TELEGRAM_BOT_TOKEN, request=request,
@@ -5508,6 +5577,7 @@ def main():
     app.add_handler(CommandHandler("kap", kap))
     app.add_handler(CommandHandler("olaylar", olaylar))
     app.add_handler(CommandHandler("kontrol", kontrol))
+    app.add_handler(CommandHandler("bagla", bagla))
     app.add_handler(CommandHandler("galarm", galarm))
     app.add_handler(CommandHandler("karsilastir", karsilastir))
     app.add_error_handler(on_error)
@@ -5565,6 +5635,8 @@ def main():
         if web_sync.enabled():
             app.job_queue.run_repeating(web_push_job, interval=config.WEB_SYNC_INTERVAL, first=10)
             app.job_queue.run_repeating(web_command_job, interval=config.WEB_COMMAND_INTERVAL, first=20)
+        if cloud_store.enabled():
+            app.job_queue.run_repeating(cloud_state_job, interval=60, first=60, name="bulut_durum")
             log.info("Web panel sync enabled: %s", config.WEB_URL)
     else:
         log.warning("ALLOWED_CHAT_ID empty: send /start to the bot to get your chat id.")

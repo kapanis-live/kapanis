@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { createChart, createSeriesMarkers, CandlestickSeries, LineSeries, HistogramSeries, CrosshairMode } from "lightweight-charts";
 import { K } from "@/ds";
 import { sendAction } from "@/lib/actions";
+import { useAuth } from "@/context/AuthContext";
 import { splitAi, relDay } from "@/lib/dsmap";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData, LIVE } from "@/lib/useData";
@@ -214,7 +215,9 @@ export default function ChartPage() {
 
   const q = useData(["chart", code, market, tf], `/chart/${encodeURIComponent(code)}?tf=${tf}&market=${market}`,
     { retry: false, refetchInterval: 60_000, placeholderData: (prev) => prev });
-  const extras = useData("extras", "/extras", LIVE);
+  const { owner } = useAuth();
+  // botun portföy/plan/sinyal verisi yalnız sistem sahibinde: diğer kullanıcılar sadece grafiği ve kendi analizini görür
+  const extras = useData("extras", "/extras", { ...LIVE, enabled: owner });
   const set = (patch) => setParams((p) => {
     const n = new URLSearchParams(p);
     Object.entries(patch).forEach(([k, v]) => n.set(k, v));
@@ -231,7 +234,7 @@ export default function ChartPage() {
     if (c2) set({ kod: c2 });
   };
   const d = q.data;
-  const sigQ = useData("signals", "/signals");
+  const sigQ = useData("signals", "/signals", { enabled: owner });
   const overlay = useMemo(() => {
     const ex = extras.data || {};
     const g = (ex.portfoy || []).find((x) => baseCode(x.ad) === code && x.piyasa === market);

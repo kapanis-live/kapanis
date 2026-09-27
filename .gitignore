@@ -18,3 +18,7 @@ kapanis/frontend/build/
 __pycache__/
 *.pyc
 *.zip
+
+# docker-compose env files with real keys
+deploy/web.env
+deploy/bot.env

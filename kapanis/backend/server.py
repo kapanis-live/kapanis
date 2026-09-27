@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
+import hmac
 import logging
 import jwt
 import bcrypt
@@ -18,6 +19,8 @@ from bson import ObjectId
 
 import mock_data
 import chart_data
+import identity
+import user_api
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -66,12 +69,28 @@ def set_auth_cookies(response: Response, access: str, refresh: str):
                         max_age=REFRESH_DAYS * 24 * 3600, path="/")
 
 
+def _public_user(user: dict) -> dict:
+    user = dict(user)
+    user["id"] = str(user.pop("_id"))
+    user.pop("password_hash", None)
+    return user
+
+
 async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
+    bearer = request.headers.get("Authorization", "")
+    bearer = bearer[7:] if bearer.startswith("Bearer ") else None
+    # Clerk session tokens are RS256 and arrive as a Bearer header; the legacy cookie token is HS256.
+    if bearer and identity.clerk_enabled():
+        try:
+            if jwt.get_unverified_header(bearer).get("alg") == "RS256":
+                return _public_user(await identity.user_from_clerk(db, bearer))
+        except identity.AuthError as e:
+            raise HTTPException(status_code=401, detail=str(e))
+        except jwt.InvalidTokenError:
+            raise HTTPException(status_code=401, detail="Geçersiz oturum.")
+    if not identity.legacy_enabled():
+        raise HTTPException(status_code=401, detail="Oturum bulunamadı. Lütfen giriş yapın.")
+    token = request.cookies.get("access_token") or bearer
     if not token:
         raise HTTPException(status_code=401, detail="Oturum bulunamadı. Lütfen giriş yapın.")
     try:
@@ -92,9 +111,16 @@ async def get_current_user(request: Request) -> dict:
 
 
 async def require_bot_key(x_bot_key: Optional[str] = Header(None)):
-    if x_bot_key != BOT_API_KEY:
+    if not x_bot_key or not hmac.compare_digest(x_bot_key, BOT_API_KEY):
         raise HTTPException(status_code=401, detail="Geçersiz bot anahtarı.")
     return True
+
+
+async def require_owner(user: dict = Depends(get_current_user)) -> dict:
+    """The bot's own portfolio, signals, alarms and settings belong to its owner only."""
+    if not identity.is_owner(user):
+        raise HTTPException(status_code=403, detail="Bu bölüm yalnız sistem sahibine açık.")
+    return user
 
 
 class LoginBody(BaseModel):
@@ -103,8 +129,19 @@ class LoginBody(BaseModel):
 
 
 # ---------------- Auth endpoints ----------------
+@api.get("/auth/config")
+async def auth_config():
+    """Public: which sign-in the panel should show. The Clerk publishable key is public by design."""
+    return {"mode": identity.AUTH_MODE, "clerk": identity.clerk_enabled(),
+            "clerk_publishable_key": os.environ.get("CLERK_PUBLISHABLE_KEY", "") if identity.clerk_enabled() else "",
+            "legacy": identity.legacy_enabled(),
+            "telegram_bot": os.environ.get("TELEGRAM_BOT_USERNAME", "").lstrip("@")}
+
+
 @api.post("/auth/login")
 async def login(body: LoginBody, request: Request, response: Response):
+    if not identity.legacy_enabled():
+        raise HTTPException(status_code=404, detail="Bu sitede giriş Google ya da e-posta kodu ile yapılır.")
     email = body.email.lower()
     # The client can write X-Forwarded-For itself, so only the entry our own proxy appended
     # (the right-most one) is trusted, and only when TRUST_PROXY=1. Lockout is per e-mail too,
@@ -193,38 +230,38 @@ async def _one(collection: str):
 
 # ---------------- Panel data endpoints (JWT) ----------------
 @api.get("/overview")
-async def get_overview(user: dict = Depends(get_current_user)):
+async def get_overview(user: dict = Depends(require_owner)):
     return await _one("overview")
 
 
 @api.get("/extras")
-async def get_extras(user: dict = Depends(get_current_user)):
+async def get_extras(user: dict = Depends(require_owner)):
     """Portfolio-level features from the bot: benchmark, shadow portfolio, discipline, journal, savings plans."""
     return await _one("extras") or {"id": "extras", "guncelleme": None}
 
 
 @api.get("/alerts")
-async def get_alerts(user: dict = Depends(get_current_user)):
+async def get_alerts(user: dict = Depends(require_owner)):
     return await _list("alerts")
 
 
 @api.get("/positions")
-async def get_positions(user: dict = Depends(get_current_user)):
+async def get_positions(user: dict = Depends(require_owner)):
     return await _list("positions")
 
 
 @api.get("/decisions")
-async def get_decisions(user: dict = Depends(get_current_user)):
+async def get_decisions(user: dict = Depends(require_owner)):
     return await _list("decisions")
 
 
 @api.get("/signals")
-async def get_signals(user: dict = Depends(get_current_user)):
+async def get_signals(user: dict = Depends(require_owner)):
     return await _list("signals")
 
 
 @api.get("/signals/{signal_id}")
-async def get_signal(signal_id: str, user: dict = Depends(get_current_user)):
+async def get_signal(signal_id: str, user: dict = Depends(require_owner)):
     doc = await db.signals.find_one({"id": signal_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Sinyal bulunamadı.")
@@ -242,22 +279,22 @@ async def get_derivatives(user: dict = Depends(get_current_user)):
 
 
 @api.get("/usage")
-async def get_usage(user: dict = Depends(get_current_user)):
+async def get_usage(user: dict = Depends(require_owner)):
     return await _one("usage")
 
 
 @api.get("/report")
-async def get_report(user: dict = Depends(get_current_user)):
+async def get_report(user: dict = Depends(require_owner)):
     return await _one("report")
 
 
 @api.get("/backtest")
-async def get_backtest(user: dict = Depends(get_current_user)):
+async def get_backtest(user: dict = Depends(require_owner)):
     return await _one("backtest")
 
 
 @api.get("/settings")
-async def get_settings(user: dict = Depends(get_current_user)):
+async def get_settings(user: dict = Depends(require_owner)):
     return await _one("settings")
 
 
@@ -282,13 +319,18 @@ async def get_chart(symbol: str, tf: str = "1d", market: Optional[str] = None, u
 
 
 # ---------------- Command creation (panel actions -> queued) ----------------
-async def _queue_command(cmd_type: str, payload: dict) -> dict:
+async def _queue_command(cmd_type: str, payload: dict, user: dict) -> dict:
     cmd = {
         "id": f"cmd_{ObjectId()}",
+        "request_id": f"req_{ObjectId()}",
         "type": cmd_type,
         "payload": payload,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "user_id": user["id"],
+        "role": "owner" if identity.is_owner(user) else "user",
+        # where this user's results may also go; None = site only
+        "telegram_chat_id": user.get("telegram_chat_id"),
     }
     await db.commands.insert_one(dict(cmd))
     cmd.pop("_id", None)
@@ -307,14 +349,14 @@ class AlertBody(BaseModel):
 
 
 @api.post("/alerts")
-async def create_alert(body: AlertBody, user: dict = Depends(get_current_user)):
-    cmd = await _queue_command("alert.create", body.model_dump())
+async def create_alert(body: AlertBody, user: dict = Depends(require_owner)):
+    cmd = await _queue_command("alert.create", body.model_dump(), user)
     return {"queued": True, "command": cmd}
 
 
 @api.delete("/alerts/{alert_id}")
-async def delete_alert(alert_id: str, user: dict = Depends(get_current_user)):
-    cmd = await _queue_command("alert.delete", {"id": alert_id})
+async def delete_alert(alert_id: str, user: dict = Depends(require_owner)):
+    cmd = await _queue_command("alert.delete", {"id": alert_id}, user)
     return {"queued": True, "command": cmd}
 
 
@@ -323,7 +365,7 @@ class StopBody(BaseModel):
 
 
 @api.patch("/positions/{position_id}/stop")
-async def update_stop(position_id: str, body: StopBody, user: dict = Depends(get_current_user)):
+async def update_stop(position_id: str, body: StopBody, user: dict = Depends(require_owner)):
     pos = await db.positions.find_one({"id": position_id}, {"_id": 0})
     if not pos:
         raise HTTPException(status_code=404, detail="Pozisyon bulunamadı.")
@@ -333,7 +375,7 @@ async def update_stop(position_id: str, body: StopBody, user: dict = Depends(get
             raise HTTPException(status_code=409, detail="Goalpost kuralı: açık long pozisyonda stop aşağı çekilemez.")
         if pos["side"] == "short" and body.stop > pos["stop"]:
             raise HTTPException(status_code=409, detail="Goalpost kuralı: açık short pozisyonda stop yukarı çekilemez.")
-    cmd = await _queue_command("position.stop", {"id": position_id, "stop": body.stop})
+    cmd = await _queue_command("position.stop", {"id": position_id, "stop": body.stop}, user)
     return {"queued": True, "command": cmd}
 
 
@@ -343,7 +385,7 @@ class CloseBody(BaseModel):
 
 @api.post("/positions/{position_id}/close")
 async def close_position(position_id: str, body: Optional[CloseBody] = None,
-                         user: dict = Depends(get_current_user)):
+                         user: dict = Depends(require_owner)):
     pos = await db.positions.find_one({"id": position_id}, {"_id": 0})
     if not pos or pos.get("status") != "open":
         raise HTTPException(status_code=404, detail="Açık pozisyon bulunamadı.")
@@ -355,7 +397,7 @@ async def close_position(position_id: str, body: Optional[CloseBody] = None,
         if not 0 < body.price < 1e9:
             raise HTTPException(status_code=400, detail="Satış fiyatı geçersiz.")
         payload["price"] = body.price
-    cmd = await _queue_command("position.close", payload)
+    cmd = await _queue_command("position.close", payload, user)
     return {"queued": True, "command": cmd}
 
 
@@ -364,14 +406,16 @@ class DecisionBody(BaseModel):
 
 
 @api.post("/decisions/{decision_id}/action")
-async def decision_action(decision_id: str, body: DecisionBody, user: dict = Depends(get_current_user)):
+async def decision_action(decision_id: str, body: DecisionBody, user: dict = Depends(require_owner)):
     if body.verdict not in ("Aldım", "Pas"):
         raise HTTPException(status_code=400, detail="Geçersiz karar.")
-    cmd = await _queue_command("decision.action", {"id": decision_id, "verdict": body.verdict})
+    cmd = await _queue_command("decision.action", {"id": decision_id, "verdict": body.verdict}, user)
     return {"queued": True, "command": cmd}
 
 
 # Panel actions the bot applies with its own functions (same rules as Telegram). Only these types are accepted.
+USER_ACTION_TYPES = {"analysis.request"}
+USER_DAILY_ANALYSES = int(os.environ.get("USER_DAILY_ANALYSES", "5"))
 ACTION_TYPES = {"analysis.request", "plan.add", "plan.remove", "firsat.run", "target.set", "watch.rules",
                 "paper.open", "paper.close", "lesson.request", "check.request", "ind.create", "ind.delete",
                 "compare.request", "dividend.refresh"}
@@ -386,36 +430,47 @@ class ActionBody(BaseModel):
 async def panel_action(body: ActionBody, user: dict = Depends(get_current_user)):
     if body.type not in ACTION_TYPES:
         raise HTTPException(status_code=400, detail="Bilinmeyen işlem.")
+    if not identity.is_owner(user):
+        # Everyone else may only ask for an analysis (the bot's portfolio tools use the owner's budgets).
+        if body.type not in USER_ACTION_TYPES:
+            raise HTTPException(status_code=403, detail="Bu işlem yalnız sistem sahibine açık.")
+        since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        used = await db.commands.count_documents({"user_id": user["id"], "type": "analysis.request", "created_at": {"$gte": since}})
+        if used >= USER_DAILY_ANALYSES:
+            raise HTTPException(status_code=429, detail=f"Günlük analiz hakkın doldu ({USER_DAILY_ANALYSES}/gün). Yarın tekrar dene.")
     if body.type == "analysis.request":
         codes = body.payload.get("kodlar") or [body.payload.get("kod")]
         if not any(codes) or len(codes) > 10:
             raise HTTPException(status_code=400, detail="1–10 kod seç.")
     if body.type == "compare.request" and not 2 <= len(body.payload.get("kodlar") or []) <= 4:
         raise HTTPException(status_code=400, detail="2–4 hisse seç.")
-    cmd = await _queue_command(body.type, body.payload)
+    cmd = await _queue_command(body.type, body.payload, user)
     return {"queued": True, "command": cmd}
 
 
 @api.get("/analyses")
 async def get_analyses(kod: Optional[str] = None, user: dict = Depends(get_current_user)):
     q = {"kodlar": kod.upper()} if kod else {}
+    # Each user sees only their own analyses; the owner also sees the ones made before accounts existed.
+    q["$or"] = [{"user_id": user["id"]}] + ([{"user_id": {"$exists": False}}] if identity.is_owner(user) else [])
     return await db.analyses.find(q, {"_id": 0}).sort("zaman", -1).to_list(30)
 
 
 @api.get("/sonuclar/{tur}")
-async def get_result(tur: str, user: dict = Depends(get_current_user)):
+async def get_result(tur: str, user: dict = Depends(require_owner)):
     """Latest result of a panel tool (kontrol, karsilastirma), pushed by the bot."""
     return await db.sonuclar.find_one({"id": tur}, {"_id": 0}) or {"id": tur, "zaman": None}
 
 
 @api.get("/firsat")
-async def get_firsat(user: dict = Depends(get_current_user)):
+async def get_firsat(user: dict = Depends(require_owner)):
     return await _one("firsat") or {"id": "firsat", "zaman": None}
 
 
 @api.get("/commands")
 async def list_commands(user: dict = Depends(get_current_user)):
-    return await db.commands.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    q = {"$or": [{"user_id": user["id"]}, {"user_id": {"$exists": False}}]} if identity.is_owner(user) else {"user_id": user["id"]}
+    return await db.commands.find(q, {"_id": 0, "telegram_chat_id": 0}).sort("created_at", -1).to_list(200)
 
 
 # ---------------- Bot endpoints (X-Bot-Key) ----------------
@@ -470,6 +525,7 @@ async def root():
 
 
 app.include_router(api)
+app.include_router(user_api.build_router(lambda: db, get_current_user, require_bot_key))
 
 # Serve the prebuilt panel (frontend/build) from this same server, so the panel opens in seconds
 # instead of waiting for the React dev server to compile. /api routes above take precedence.
@@ -481,6 +537,8 @@ if FRONTEND_BUILD.is_dir():
     app.mount("/static", StaticFiles(directory=FRONTEND_BUILD / "static"), name="static")
     # Kullanıcının kendi logoları (frontend/public/logos/KOD.png): yeniden derleme gerekmeden okunur
     LOGO_DIR = ROOT_DIR.parent / "frontend" / "public" / "logos"
+    if not LOGO_DIR.is_dir() and (FRONTEND_BUILD / "logos").is_dir():
+        LOGO_DIR = FRONTEND_BUILD / "logos"  # cloud image: only the build is shipped (it contains the logos)
     LOGO_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/logos", StaticFiles(directory=LOGO_DIR), name="logos")
 
@@ -525,9 +583,15 @@ async def seed_mock():
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
+    await db.users.create_index("clerk_id", unique=True, sparse=True)
+    await db.users.create_index("telegram_chat_id", sparse=True)
+    await db.commands.create_index([("user_id", 1), ("type", 1), ("created_at", -1)])
+    await db.analyses.create_index([("user_id", 1), ("zaman", -1)])
+    await user_api.ensure_indexes(db)
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier")
-    await seed_admin()
+    if identity.legacy_enabled():
+        await seed_admin()
     if os.environ.get("SEED_MOCK") == "1":  # real data comes from the bot via /api/ingest
         await seed_mock()
     if os.environ.get("ADMIN_PASSWORD") == "Kapanis2026":

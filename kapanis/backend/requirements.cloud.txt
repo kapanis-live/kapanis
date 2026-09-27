@@ -1,0 +1,13 @@
+# What the backend actually imports (the full requirements.txt came from a generator and includes a
+# package, emergentintegrations, that is not on PyPI, so cloud builds use this file).
+fastapi==0.110.1
+uvicorn[standard]==0.25.0
+motor==3.3.1
+pymongo==4.6.3
+pydantic==2.13.5
+email-validator==2.3.0
+PyJWT[crypto]==2.15.0
+cryptography==50.0.1
+bcrypt==4.1.3
+python-dotenv==1.2.3
+httpx==0.28.1

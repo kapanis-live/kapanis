@@ -39,9 +39,13 @@ def _client(model: str) -> AsyncOpenAI:
     if model not in _clients:
         if model in NVIDIA_MODELS:
             _clients[model] = AsyncOpenAI(api_key=config.KIMI_API_KEY if model == "kimi" else config.GLM_API_KEY,
-                                          base_url=config.NVIDIA_BASE_URL, timeout=config.KIMI_TIMEOUT)
+                                          base_url=config.NVIDIA_BASE_URL, timeout=config.KIMI_TIMEOUT,
+                                          # no silent retries: 3 x 300 s blocked every panel command for 15 min;
+                                          # analyze() already falls back to the next model
+                                          max_retries=0)
         else:
-            _clients[model] = AsyncOpenAI(api_key=config.DEEPSEEK_API_KEY, base_url=config.DEEPSEEK_BASE_URL)
+            _clients[model] = AsyncOpenAI(api_key=config.DEEPSEEK_API_KEY, base_url=config.DEEPSEEK_BASE_URL,
+                                          timeout=180, max_retries=1)
     return _clients[model]
 
 
@@ -110,17 +114,24 @@ def split_state(text: str) -> tuple[str, dict | None]:
         return visible, None
 
 
-async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool = True) -> tuple[str, list[str], list[str]]:
+async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool = True,
+                  personal: bool = True) -> tuple[str, list[str], list[str]]:
     """Send one turn to DeepSeek with history, current state and fresh market data.
 
     Returns the visible reply, state-merge warnings and coins whose plan this reply set
     (tetik + iptal present). History stores only
     the user's text (not the bulky market data) to keep later requests cheap.
     """
-    state = store.load_state()
-    state["acik_pozisyonlar"] = [
-        {k: p[k] for k in ("id", "pair", "giris", "miktar_usd", "stop", "hedef", "acilis")}
-        for p in positions.open_positions()]
+    # personal=False: a panel user who is not the owner. No owner plans, positions, trade history or
+    # conversation go into the prompt, and nothing is written back to the owner's state or history.
+    if personal:
+        state = store.load_state()
+        state["acik_pozisyonlar"] = [
+            {k: p[k] for k in ("id", "pair", "giris", "miktar_usd", "stop", "hedef", "acilis")}
+            for p in positions.open_positions()]
+    else:
+        state = {"not": "Bu istek başka bir kullanıcıdan: kişisel plan, pozisyon ya da geçmiş yok; STATE bloğu yazma."}
+        allow_state_update = False
     try:
         macro_data = await macro.summary()
     except Exception as e:
@@ -138,14 +149,14 @@ async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool
                f"\n\n[MAKRO]\n{json.dumps(macro_data, ensure_ascii=False)}"
                f"\n\n[HABERLER]\n{json.dumps(headlines, ensure_ascii=False)}"
                f"\n\n[PİYASA VERİSİ]\n{json.dumps(market_data, ensure_ascii=False)}")
-    history = store.load_history()
+    history = store.load_history() if personal else []
     errors, used, resp = [], None, None
     for model in pick_model():
         if model in NVIDIA_MODELS:  # large context: handbook + long history + recent decisions/trades
             turns = config.KIMI_HISTORY_TURNS if model == "kimi" else config.GLM_HISTORY_TURNS
             messages = [{"role": "system", "content": KIMI_SYSTEM},
                         *history[-turns * 2:],
-                        {"role": "user", "content": content + _wide_context()}]
+                        {"role": "user", "content": content + (_wide_context() if personal else "")}]
             name = config.KIMI_MODEL if model == "kimi" else config.GLM_MODEL
             max_tokens = config.KIMI_MAX_TOKENS if model == "kimi" else config.GLM_MAX_TOKENS
         else:
@@ -180,7 +191,8 @@ async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool
         costs.record(hit, miss, usage.completion_tokens, user_text, model=used)
     reply, update = split_state(_visible(resp.choices[0].message.content))
     warnings = store.apply_update(update) if update and allow_state_update else []
-    store.append_history(user_text, reply)
+    if personal:
+        store.append_history(user_text, reply)
     plans = ((update or {}).get("planlar") or {}) if allow_state_update else {}
     plan_coins = [c.upper() for c, p in plans.items()
                   if isinstance(p, dict) and p.get("tetik") is not None and p.get("iptal") is not None]

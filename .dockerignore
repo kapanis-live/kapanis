@@ -1,0 +1,14 @@
+# Secrets, personal data and local builds never go into the image
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+**/*.log.*
+**/.venv
+**/.uv-python
+**/node_modules
+**/__pycache__
+kapanis/frontend/build
+kriptografikbotu/data
+.git
+*.zip

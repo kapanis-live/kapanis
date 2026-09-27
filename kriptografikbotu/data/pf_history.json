@@ -15,22 +15,28 @@
     }
    },
    "toplam_tl": 16937.56
+  },
+  "2026-09-27": {
+   "usdtry": 48.928,
+   "piyasa": {
+    "BIST": {
+     "deger": 14058.5,
+     "maliyet": 16341.31,
+     "para": "TL"
+    },
+    "KRIPTO": {
+     "deger": 60.69,
+     "maliyet": 59.97,
+     "para": "USD"
+    }
+   },
+   "toplam_tl": 17028.18
   }
  },
  "geriye": {
-  "tarih": "2026-09-26",
+  "tarih": "2026-09-27",
   "surum": 3,
   "satirlar": [
-   {
-    "tarih": "2026-06-28",
-    "bist": 16699.81,
-    "kripto_usd": 38.94,
-    "abd_usd": 0.0,
-    "toplam_tl": 18513.38,
-    "usdtry": 46.57929992675781,
-    "xu100": 14274.0,
-    "gram_altin": 6134.45
-   },
    {
     "tarih": "2026-06-29",
     "bist": 16506.68,

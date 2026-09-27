@@ -2,9 +2,15 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { K } from "@/ds";
 import { useAuth } from "@/context/AuthContext";
+import { ClerkSignIn } from "@/pages/Kayit";
 
 // Tasarım sistemindeki giriş ekranı: logo, "Sadece kapanış konuşur.", e-posta + şifre (Göster/Gizle)
 export default function Giris() {
+  const { mode } = useAuth();
+  return mode === "clerk" ? <ClerkSignIn /> : <LegacyGiris />;
+}
+
+function LegacyGiris() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");

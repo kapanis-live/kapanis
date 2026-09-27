@@ -553,6 +553,19 @@ async def push_docs(collection: str, docs: list[dict], replace: bool = False):
         r.raise_for_status()
 
 
+async def link_telegram(code: str, chat_id: int, username: str | None) -> tuple[bool, str]:
+    """/bagla KOD: ask the web backend to bind this chat to the account that created the one-time code."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(f"{config.WEB_URL}/api/bot/telegram/link", headers=_headers(),
+                              json={"code": code, "chat_id": chat_id, "username": username})
+    if r.status_code == 200:
+        return True, r.json().get("email") or ""
+    if r.status_code == 404:
+        return False, "Kod geçersiz ya da süresi dolmuş (10 dakika). Siteden yeni kod al."
+    r.raise_for_status()
+    return False, "Bağlanamadı."
+
+
 async def push_extras(doc: dict):
     """Portfolio-level features (benchmark, shadow portfolio, discipline, journal...) as one document."""
     async with httpx.AsyncClient(timeout=30) as client:
@@ -563,7 +576,7 @@ async def push_extras(doc: dict):
 
 # --- panel commands -> bot actions ---------------------------------------------
 
-Notify = Callable[[str], Awaitable[None]]
+Notify = Callable[..., Awaitable[None]]  # notify(text, command_meta)
 # Panel actions that need the bot's own functions (analysis, plans, paper trades...): main.py registers them.
 EXTRA_HANDLERS: dict[str, Callable[[dict], Awaitable[str]]] = {}
 
@@ -666,8 +679,21 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
                 + (f"\n{warning}" if warning else ""))
 
     if t in EXTRA_HANDLERS:
-        return await EXTRA_HANDLERS[t](p)
+        return await EXTRA_HANDLERS[t]({**p, "_komut": command_meta(cmd)})
     return f"❌ Panel: bilinmeyen komut {t}"
+
+
+USER_COMMANDS = {"analysis.request"}
+
+
+def command_meta(cmd: dict) -> dict:
+    """Who asked (set by the web backend from the verified session, never by the browser)."""
+    return {k: cmd.get(k) for k in ("user_id", "role", "request_id", "telegram_chat_id")}
+
+
+def allowed(cmd: dict) -> bool:
+    """Owner (or commands queued before accounts existed) may do everything; other users only USER_COMMANDS."""
+    return cmd.get("role", "owner") == "owner" or cmd.get("type") in USER_COMMANDS
 
 
 async def process_commands(refresh_alerts: Callable[[], None], notify: Notify) -> int:
@@ -677,12 +703,15 @@ async def process_commands(refresh_alerts: Callable[[], None], notify: Notify) -
         pending = r.json()
         for cmd in pending:
             try:
-                result = await _apply(cmd, refresh_alerts, notify)
+                if not allowed(cmd):  # defence in depth: the backend already refuses these
+                    result = f"❌ Panel: {cmd.get('type')} yalnız sistem sahibine açık"
+                else:
+                    result = await _apply(cmd, refresh_alerts, notify)
             except Exception as e:
                 log.exception("Command %s failed", cmd.get("id"))
                 result = f"❌ Panel komutu uygulanamadı ({cmd.get('type')}): {e}"
-            log.info("Web command %s %s: %s", cmd["id"], cmd["type"], result)
-            await notify(result)
+            log.info("Web command %s %s (%s): %s", cmd["id"], cmd["type"], cmd.get("role", "owner"), result[:200])
+            await notify(result, command_meta(cmd))
             # Marked done even when rejected, so the panel stops showing it as queued;
             # the Telegram message explains the rejection.
             (await client.post(f"{config.WEB_URL}/api/commands/{cmd['id']}/done", headers=_headers())).raise_for_status()

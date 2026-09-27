@@ -1,15 +1,16 @@
-# Any small Linux server (e.g. a DigitalOcean droplet from the GitHub Student Pack credit):
+# Any small Linux server (e.g. an Azure VM from the Azure for Students credit, see BULUT_KURULUM.md):
 #   cp deploy/web.env.example deploy/web.env ; cp deploy/bot.env.example deploy/bot.env   (fill them in)
 #   DOMAIN=kapanis.app docker compose up -d --build
 # Caddy gets and renews the HTTPS certificate for DOMAIN automatically.
 services:
   web:
     build: .
+    image: kapanis:latest
     command: ["/app/start.sh", "web"]
     env_file: deploy/web.env
     restart: unless-stopped
   worker:
-    build: .
+    image: kapanis:latest   # same image as web, built once
     command: ["/app/start.sh", "worker"]
     env_file: deploy/bot.env
     restart: unless-stopped

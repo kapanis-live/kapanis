@@ -2,6 +2,8 @@
 # No secrets are baked in: every key comes from the platform's environment variables at runtime.
 
 FROM node:20-bookworm-slim AS web
+# small VMs (1-2 GB RAM + swap): cap the build's memory, skip source maps (also keeps source out of the site)
+ENV NODE_OPTIONS=--max-old-space-size=1536 GENERATE_SOURCEMAP=false
 WORKDIR /src
 COPY kapanis/frontend/package.json kapanis/frontend/package-lock.json ./
 RUN npm ci --legacy-peer-deps --no-audit --no-fund

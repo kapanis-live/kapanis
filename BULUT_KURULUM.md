@@ -6,7 +6,7 @@ Hesapları, kartı ve anahtarları **sen** oluşturur ve girersin. Depoda hiçbi
 Kararlar (27.09.2026):
 - Giriş: Clerk (Google, e-posta + şifre, e-posta kaydında doğrulama kodu).
 - Veritabanı: MongoDB Atlas, M0, AWS Frankfurt (eu-central-1).
-- Sunucu: Avrupa bölgesinde **Render** ya da **Linux VPS**. Heroku kullanılmıyor.
+- Sunucu: **Microsoft Azure** sanal makine (Azure for Students kredisi), Avrupa bölgesi. Render yedek seçenek. Heroku kullanılmıyor.
 - Telegram botu 7/24 çalışır, uyuyan ücretsiz bir plana konmaz.
 - Demo portföy ve sanal bakiye kapsam dışı.
 
@@ -106,22 +106,125 @@ Backend, Clerk'in "e-posta doğrulandı" demediği hesabı kabul etmez. Google i
 Render'ın ücretsiz planında arka plan worker'ı yok ve ücretsiz web servisi 15 dakika boşta kalınca uyur.
 Bu yüzden `render.yaml`'da iki servis de `starter` planında. Güncel fiyatı Render'da kontrol et.
 
-## 5. Seçenek B: Linux VPS (Avrupa, ör. Frankfurt/Amsterdam)
+## 5. Seçenek B (seçilen): Microsoft Azure sanal makine
 
-Docker kurulu bir sunucuda:
+Azure for Students kredisiyle (kart gerekmez) küçük bir Ubuntu makine. Site, bot ve HTTPS aynı makinede,
+`docker-compose.yml` ile çalışır. Kredi bitince kaynaklar durur, kartından para çekilmez. Öğrenci olduğun sürece
+kredi her yıl yenilenebilir. Kalan krediyi Azure portalında **Cost Management** ya da
+[microsoftazuresponsorships.com/Balance](https://www.microsoftazuresponsorships.com/Balance) gösterir.
 
-```bash
-git clone https://github.com/valenciaennerman-cmd/kapanis.git && cd kapanis
-cp deploy/web.env.example deploy/web.env     # doldur (bölüm 2)
-cp deploy/bot.env.example deploy/bot.env     # doldur
-docker compose up -d --build web caddy       # önce yalnız site
+### 5.1 Makineyi oluştur (portal.azure.com)
+
+**Virtual machines → Create → Azure virtual machine**
+
+| Alan | Değer |
+|---|---|
+| Subscription | Azure for Students |
+| Resource group | Create new → `kapanis` |
+| Virtual machine name | `kapanis-vm` |
+| Region | **(Europe) Germany West Central** (Frankfurt). Öğrenci aboneliği izin vermezse *West Europe*, *North Europe* ya da *Sweden Central*. **ABD bölgesi seçme** (Binance engeller). |
+| Availability options | No infrastructure redundancy required |
+| Security type | Standard |
+| Image | Ubuntu Server 24.04 LTS - x64 Gen2 |
+| Size | **B1s** (1 vCPU, 1 GiB). Portal "free services eligible" diyorsa ilk 12 ay makine ücreti yok. Yoksa **B2ats_v2** (2 GiB) ya da B1s. Aylık fiyat ekranda yazar. |
+| Authentication type | SSH public key |
+| Username | `kapanis` |
+| SSH public key source | Generate new key pair, ad: `kapanis-vm_key` |
+| Public inbound ports | Allow selected ports: **SSH (22), HTTP (80), HTTPS (443)** |
+
+- **Disks:** OS disk type *Standard SSD*, *Delete with VM* işaretli.
+- **Networking:** yeni public IP (varsayılan), *Delete public IP and NIC when VM is deleted* işaretli.
+- **Management:** *Enable auto-shutdown* **kapalı** olmalı. Açık kalırsa bot her gece durur.
+
+**Review + create → Create**. Açılan pencerede **Download private key and create resource**. İndirilen
+`kapanis-vm_key.pem` dosyası makineye giriş anahtarındır: kimseyle paylaşma, git'e koyma.
+`C:\Users\etemk\.ssh\` içine taşı.
+
+Makine açılınca: **kapanis-vm → Overview → DNS name → Not configured** → *DNS name label*: `kapanis` → Save.
+Adres şöyle olur: `kapanis.germanywestcentral.cloudapp.azure.com` (bölgeye göre değişir). Kendi alan adın olana kadar site bu adreste açılır.
+
+### 5.2 Makineye bağlan (Windows PowerShell)
+
+```powershell
+icacls $HOME\.ssh\kapanis-vm_key.pem /inheritance:r /grant:r "$($env:USERNAME):R"
+ssh -i $HOME\.ssh\kapanis-vm_key.pem kapanis@kapanis.germanywestcentral.cloudapp.azure.com
 ```
 
-- `DOMAIN=kapanis.app` ortam değişkeniyle (ya da `.env` dosyasında) Caddy HTTPS sertifikasını kendisi alır ve yeniler.
-- Alan adının A kaydı sunucunun IP'sini göstermeli.
-- `deploy/web.env` ve `deploy/bot.env` git'e girmez (`.gitignore`).
-- Worker'ı (`docker compose up -d worker`) bölüm 6'daki sırayla aç.
-- Güncelleme: `git pull && docker compose up -d --build`.
+(İlk komut, Windows'un "anahtar dosyası herkese açık" uyarısını giderir.)
+
+### 5.3 Kurulum betiği (makinede, bir kez)
+
+`deploy/azure-vm-setup.sh` dosyasının içeriğini kopyala. Makinede `nano azure-vm-setup.sh`, yapıştır, kaydet (Ctrl+O, Enter, Ctrl+X). Sonra:
+
+```bash
+sh azure-vm-setup.sh
+```
+
+Betik şunları yapar:
+- Docker'ı kurar.
+- 2 GB swap ekler (1 GB bellekte panel derlemesi yoksa yarıda kalır).
+- Güvenlik duvarında yalnız 22/80/443'ü açar.
+- Sonda bir **deploy key** (salt okunur anahtar) yazdırır.
+
+O satırı GitHub'da ekle: **kapanis deposu → Settings → Deploy keys → Add deploy key**. *Allow write access* işaretleme.
+Sonra `exit` ile çıkıp tekrar bağlan (Docker yetkisi yeni oturumda geçerli olur).
+
+### 5.4 Kodu indir ve ayarları gir
+
+```bash
+git clone git@github.com:valenciaennerman-cmd/kapanis.git
+cd kapanis
+echo "DOMAIN=kapanis.germanywestcentral.cloudapp.azure.com" > .env
+cp deploy/web.env.example deploy/web.env
+cp deploy/bot.env.example deploy/bot.env
+nano deploy/web.env      # bölüm 2: web değerleri
+nano deploy/bot.env      # bölüm 2: worker değerleri
+chmod 600 deploy/*.env
+```
+
+Botun anahtarlarını elle yazmak yerine bilgisayardan kopyalayabilirsin (bilgisayarda, PowerShell):
+
+```powershell
+scp -i $HOME\.ssh\kapanis-vm_key.pem C:\Users\etemk\OneDrive\Desktop\kriptografikbotu\.env kapanis@kapanis.germanywestcentral.cloudapp.azure.com:kapanis/deploy/bot.env
+```
+
+Sonra makinede `nano deploy/bot.env`:
+- `WEB_URL=http://localhost:8001` satırını `WEB_URL=https://kapanis.germanywestcentral.cloudapp.azure.com` olarak **değiştir**
+  (aynı değişken iki kez olmasın).
+- Şu satırları ekle: `STATE_MONGO_URL=...` (URL-kodlu şifreyle) ve `STATE_DB_NAME=kapanis`.
+- `OLLAMA_URL` satırı varsa sil; sunucuda Ollama yok.
+
+`deploy/web.env` içinde:
+- `CLERK_AUTHORIZED_PARTIES` ve `CORS_ORIGINS` = `https://kapanis.germanywestcentral.cloudapp.azure.com`.
+- `BOT_API_KEY` iki dosyada aynı olmalı.
+
+Bu dosyalar git'e girmez.
+
+### 5.5 Önce yalnız siteyi aç
+
+```bash
+docker compose up -d --build web caddy
+docker compose logs -f web      # Ctrl+C ile çık
+```
+
+- İlk derleme küçük makinede 10-20 dakika sürebilir.
+- Caddy HTTPS sertifikasını kendisi alır. Tarayıcıda `https://kapanis.germanywestcentral.cloudapp.azure.com` açılmalı.
+- Clerk geliştirme anahtarı (`pk_test`) bu adreste de çalışır, sayfada "Development mode" etiketi görünür.
+- Kalıcı site için Clerk production instance ve kendi alan adın gerekir (bölüm 3).
+
+**Bot (worker) bu aşamada kapalı kalır.** Bölüm 6'daki sırayla açılır: `docker compose up -d worker`.
+
+### 5.6 Günlük işler
+
+| İş | Komut (makinede, `~/kapanis` içinde) |
+|---|---|
+| Bot günlüğü | `docker compose logs -f --tail 100 worker` |
+| Güncelleme (yeni kod) | `git pull && docker compose up -d --build` |
+| Yeniden başlat | `docker compose restart worker` (ya da `web`) |
+| Durum | `docker compose ps` |
+| Bellek | `free -h` |
+
+Makine Azure tarafından yeniden başlatılırsa servisler kendiliğinden açılır (`restart: unless-stopped`).
 
 ## 6. Geçiş günü (sıra önemli)
 
@@ -137,7 +240,7 @@ Telegram bir botun mesajlarını aynı anda **yalnız bir** sürece verir. İki 
    - Bağlantı adresini `.env.atlas` dosyasından okur ve adresi ekrana yazmaz.
    - Atlas'ta daha yeni veri varsa durur; üzerine yazmak için `--overwrite` gerekir.
    - Atlas'ta var olanın üzerine yazmadan önce onu `data/atlas_yedek_<zaman>.json` olarak bilgisayara yedekler.
-3. **Sunucudaki worker'ı başlat** (Render: *Resume/Deploy*; VPS: `docker compose up -d worker`).
+3. **Sunucudaki worker'ı başlat** (Azure/VPS: `docker compose up -d worker`; Render: *Resume/Deploy*).
    Açılışta veriyi Atlas'tan geri yükler.
 4. **Kontrol et:**
    - Telegram'da `/pozisyonlar` bugünkü portföyünü gösteriyor mu?

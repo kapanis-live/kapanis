@@ -51,7 +51,7 @@ class CommandPermissionTest(unittest.TestCase):
     def test_command_meta_only_carries_identity(self):
         meta = web_sync.command_meta({"id": "c1", "type": "analysis.request", "payload": {"x": 1}, "user_id": "u1",
                                       "role": "user", "request_id": "r1", "telegram_chat_id": 42})
-        self.assertEqual(meta, {"user_id": "u1", "role": "user", "request_id": "r1", "telegram_chat_id": 42})
+        self.assertEqual(meta, {"user_id": "u1", "role": "user", "request_id": "r1", "telegram_chat_id": 42, "own_keys": None})
 
 
 class PersonalContextTest(unittest.IsolatedAsyncioTestCase):
@@ -135,6 +135,47 @@ class PanelAnalysisRoutingTest(unittest.IsolatedAsyncioTestCase):
             await main.web_command_job(ctx)
         self.assertTrue(captured["done"])
         self.assertEqual(bot.sent, [(OWNER_CHAT, "owner msg"), (77, "user linked")])
+
+
+class OwnKeysBotTest(unittest.IsolatedAsyncioTestCase):
+    async def test_user_key_is_used_and_not_billed_to_owner(self):
+        used_keys, recorded = [], []
+
+        def user_client(model, keys):
+            used_keys.append((model, keys.get("deepseek")))
+            return fake_openai([])
+        with unittest.mock.patch.object(llm, "_user_client", user_client), \
+                unittest.mock.patch.object(llm, "_client", lambda m: self.fail("owner client used")), \
+                unittest.mock.patch.object(llm, "mode", lambda: "deepseek"), \
+                unittest.mock.patch.object(llm.costs, "record", lambda *a, **k: recorded.append(a)), \
+                unittest.mock.patch.object(llm.macro, "summary", unittest.mock.AsyncMock(return_value={})), \
+                unittest.mock.patch.object(llm.news, "get_news", unittest.mock.AsyncMock(return_value=[])):
+            reply, _, _ = await llm.analyze("BTC analiz et.", {"BTC": {}}, personal=False, keys={"deepseek": "sk-user"})
+        self.assertEqual(used_keys, [("deepseek", "sk-user")])
+        self.assertEqual(recorded, [])
+        self.assertIn("senin anahtarınla", reply)
+
+    async def test_missing_user_key_leaves_a_note_in_the_panel(self):
+        pushed, ran = [], []
+
+        async def push(col, docs, replace=False):
+            pushed.extend(docs)
+
+        async def run(*a, **k):
+            ran.append(k)
+            return "cevap"
+        with unittest.mock.patch.object(web_sync, "user_keys", unittest.mock.AsyncMock(return_value=None)), \
+                unittest.mock.patch.object(web_sync, "push_docs", push), \
+                unittest.mock.patch.object(web_sync, "enabled", lambda: True), \
+                unittest.mock.patch.object(main, "run_analysis", run):
+            await main.panel_analysis(FakeBot(), "KRIPTO", ["BTC"], {"user_id": "u9", "role": "user", "request_id": "r9",
+                                                                     "own_keys": True})
+            self.assertEqual(ran, [])  # never falls back to the owner's paid keys
+            self.assertIn("API anahtarın", pushed[0]["metin"])
+            with unittest.mock.patch.object(web_sync, "user_keys", unittest.mock.AsyncMock(return_value={"nvidia": "nv"})):
+                await main.panel_analysis(FakeBot(), "KRIPTO", ["BTC"], {"user_id": "u9", "role": "user", "request_id": "r10",
+                                                                         "own_keys": True})
+            self.assertEqual(ran[0]["keys"], {"nvidia": "nv"})
 
 
 class CloudStateTest(unittest.TestCase):

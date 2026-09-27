@@ -49,6 +49,21 @@ def _client(model: str) -> AsyncOpenAI:
     return _clients[model]
 
 
+def _user_client(model: str, keys: dict) -> AsyncOpenAI:
+    """A panel user's own API key: a client for this call only, never cached or logged."""
+    if model in NVIDIA_MODELS:
+        return AsyncOpenAI(api_key=keys["nvidia"], base_url=config.NVIDIA_BASE_URL, timeout=config.KIMI_TIMEOUT, max_retries=0)
+    return AsyncOpenAI(api_key=keys["deepseek"], base_url=config.DEEPSEEK_BASE_URL, timeout=180, max_retries=1)
+
+
+def user_models(keys: dict) -> list[str]:
+    """Models a user's own keys can run, in the current rotation order."""
+    rot = config.AI_ROTATION
+    first = mode() if mode() in MODEL_NAMES else slot_model()
+    order = rot[rot.index(first):] + rot[:rot.index(first)]
+    return [m for m in order if (m == "deepseek" and keys.get("deepseek")) or (m in NVIDIA_MODELS and keys.get("nvidia"))]
+
+
 def available() -> list[str]:
     return [m for m, key in (("kimi", config.KIMI_API_KEY), ("deepseek", config.DEEPSEEK_API_KEY),
                              ("glm", config.GLM_API_KEY)) if key]
@@ -115,7 +130,7 @@ def split_state(text: str) -> tuple[str, dict | None]:
 
 
 async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool = True,
-                  personal: bool = True) -> tuple[str, list[str], list[str]]:
+                  personal: bool = True, keys: dict | None = None) -> tuple[str, list[str], list[str]]:
     """Send one turn to DeepSeek with history, current state and fresh market data.
 
     Returns the visible reply, state-merge warnings and coins whose plan this reply set
@@ -151,7 +166,12 @@ async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool
                f"\n\n[PİYASA VERİSİ]\n{json.dumps(market_data, ensure_ascii=False)}")
     history = store.load_history() if personal else []
     errors, used, resp = [], None, None
-    for model in pick_model():
+    # keys: a panel user's own API keys (their account pays); otherwise the owner's keys and rotation
+    models = user_models(keys) if keys else pick_model()
+    if not models:
+        raise RuntimeError("Kayıtlı API anahtarın bu modellerle eşleşmedi; Hesap sayfasından kontrol et.")
+    client_for = (lambda m: _user_client(m, keys)) if keys else _client
+    for model in models:
         if model in NVIDIA_MODELS:  # large context: handbook + long history + recent decisions/trades
             turns = config.KIMI_HISTORY_TURNS if model == "kimi" else config.GLM_HISTORY_TURNS
             messages = [{"role": "system", "content": KIMI_SYSTEM},
@@ -165,7 +185,7 @@ async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool
                         {"role": "user", "content": content}]
             name, max_tokens = config.DEEPSEEK_MODEL, config.DEEPSEEK_MAX_TOKENS
         try:
-            resp = await _client(model).chat.completions.create(model=name, messages=messages, max_tokens=max_tokens)
+            resp = await client_for(model).chat.completions.create(model=name, messages=messages, max_tokens=max_tokens)
             if not _visible(resp.choices[0].message.content):
                 raise ValueError("boş cevap")
             used = model
@@ -188,7 +208,8 @@ async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool
             hit, miss = 0, usage.prompt_tokens
         log.info("%s tokens: prompt %s (cache hit %s, miss %s), completion %s",
                  MODEL_NAMES[used], usage.prompt_tokens, hit, miss, usage.completion_tokens)
-        costs.record(hit, miss, usage.completion_tokens, user_text, model=used)
+        if not keys:  # the owner's cost report counts only what the owner pays
+            costs.record(hit, miss, usage.completion_tokens, user_text, model=used)
     reply, update = split_state(_visible(resp.choices[0].message.content))
     warnings = store.apply_update(update) if update and allow_state_update else []
     if personal:
@@ -196,7 +217,7 @@ async def analyze(user_text: str, market_data: dict, *, allow_state_update: bool
     plans = ((update or {}).get("planlar") or {}) if allow_state_update else {}
     plan_coins = [c.upper() for c, p in plans.items()
                   if isinstance(p, dict) and p.get("tetik") is not None and p.get("iptal") is not None]
-    tag = f"🧠 {MODEL_NAMES[used]}" + (f" (yedek: {', '.join(e.split(':')[0] for e in errors)} hata verdi)" if errors else "")
+    tag = f"🧠 {MODEL_NAMES[used]}" + (" · senin anahtarınla" if keys else "") + (f" (yedek: {', '.join(e.split(':')[0] for e in errors)} hata verdi)" if errors else "")
     return f"{reply}\n\n{tag}", warnings, plan_coins
 
 

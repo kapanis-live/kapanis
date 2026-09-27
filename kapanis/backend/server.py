@@ -74,6 +74,7 @@ def _public_user(user: dict) -> dict:
     user = dict(user)
     user["id"] = str(user.pop("_id"))
     user.pop("password_hash", None)
+    user["kendi_anahtari"] = sorted((user.pop("ai_keys", None) or {}).keys())  # never the encrypted keys
     return user
 
 
@@ -101,10 +102,7 @@ async def get_current_user(request: Request) -> dict:
         user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
         if not user:
             raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı.")
-        user["id"] = str(user["_id"])
-        user.pop("_id", None)
-        user.pop("password_hash", None)
-        return user
+        return _public_user(user)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Oturum süresi doldu.")
     except jwt.InvalidTokenError:
@@ -136,7 +134,9 @@ async def auth_config():
     return {"mode": identity.AUTH_MODE, "clerk": identity.clerk_enabled(),
             "clerk_publishable_key": identity.PUBLISHABLE_KEY if identity.clerk_enabled() else "",
             "legacy": identity.legacy_enabled(),
-            "telegram_bot": os.environ.get("TELEGRAM_BOT_USERNAME", "").lstrip("@")}
+            "telegram_bot": os.environ.get("TELEGRAM_BOT_USERNAME", "").lstrip("@"),
+            # shown on the privacy page as the data controller's contact; empty = the contact page
+            "iletisim": os.environ.get("CONTACT_EMAIL", "")}
 
 
 @api.post("/auth/login")
@@ -332,6 +332,8 @@ async def _queue_command(cmd_type: str, payload: dict, user: dict) -> dict:
         "role": "owner" if identity.is_owner(user) else "user",
         # where this user's results may also go; None = site only
         "telegram_chat_id": user.get("telegram_chat_id"),
+        # the analysis runs on the user's own API keys (the bot fetches them only while this is pending)
+        "own_keys": bool(user.get("kendi_anahtari")) and not identity.is_owner(user),
     }
     await db.commands.insert_one(dict(cmd))
     cmd.pop("_id", None)
@@ -416,10 +418,13 @@ async def decision_action(decision_id: str, body: DecisionBody, user: dict = Dep
 
 # Panel actions the bot applies with its own functions (same rules as Telegram). Only these types are accepted.
 USER_ACTION_TYPES = {"analysis.request"}
-USER_DAILY_ANALYSES = int(os.environ.get("USER_DAILY_ANALYSES", "5"))
+USER_DAILY_ANALYSES = int(os.environ.get("USER_DAILY_ANALYSES", "5"))  # on the owner's keys; 0 = own key required
+USER_KEY_DAILY_ANALYSES = int(os.environ.get("USER_KEY_DAILY_ANALYSES", "50"))  # on the user's own keys
+# All non-owner users together: caps the paid AI bill however many people sign up
+GLOBAL_DAILY_ANALYSES = int(os.environ.get("GLOBAL_DAILY_ANALYSES", "100"))
 ACTION_TYPES = {"analysis.request", "plan.add", "plan.remove", "firsat.run", "target.set", "watch.rules",
                 "paper.open", "paper.close", "lesson.request", "check.request", "ind.create", "ind.delete",
-                "compare.request", "dividend.refresh"}
+                "compare.request", "dividend.refresh", "backtest.run", "settings.set", "fundamentals.request"}
 
 
 class ActionBody(BaseModel):
@@ -436,9 +441,19 @@ async def panel_action(body: ActionBody, user: dict = Depends(get_current_user))
         if body.type not in USER_ACTION_TYPES:
             raise HTTPException(status_code=403, detail="Bu işlem yalnız sistem sahibine açık.")
         since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        own = bool(user.get("kendi_anahtari"))
+        limit = USER_KEY_DAILY_ANALYSES if own else USER_DAILY_ANALYSES
+        if limit <= 0:
+            raise HTTPException(status_code=403, detail="Analiz için kendi API anahtarını gir: Hesap → Yapay zekâ anahtarların.")
         used = await db.commands.count_documents({"user_id": user["id"], "type": "analysis.request", "created_at": {"$gte": since}})
-        if used >= USER_DAILY_ANALYSES:
-            raise HTTPException(status_code=429, detail=f"Günlük analiz hakkın doldu ({USER_DAILY_ANALYSES}/gün). Yarın tekrar dene.")
+        if used >= limit:
+            raise HTTPException(status_code=429, detail=f"Günlük analiz hakkın doldu ({limit}/gün). Yarın tekrar dene."
+                                + ("" if own else " Kendi API anahtarını girersen hakkın artar."))
+        if not own:  # the shared (owner-paid) capacity
+            everyone = await db.commands.count_documents({"role": "user", "own_keys": {"$ne": True}, "type": "analysis.request",
+                                                          "created_at": {"$gte": since}})
+            if everyone >= GLOBAL_DAILY_ANALYSES:
+                raise HTTPException(status_code=429, detail="Bugünkü ortak analiz kapasitesi doldu. Kendi API anahtarınla devam edebilirsin.")
     if body.type == "analysis.request":
         codes = body.payload.get("kodlar") or [body.payload.get("kod")]
         if not any(codes) or len(codes) > 10:
@@ -526,7 +541,7 @@ async def root():
 
 
 app.include_router(api)
-app.include_router(user_api.build_router(lambda: db, get_current_user, require_bot_key))
+app.include_router(user_api.build_router(lambda: db, get_current_user, require_bot_key, require_owner))
 
 # Serve the prebuilt panel (frontend/build) from this same server, so the panel opens in seconds
 # instead of waiting for the React dev server to compile. /api routes above take precedence.

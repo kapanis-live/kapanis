@@ -16,7 +16,8 @@ os.environ.update({
     "ADMIN_PASSWORD": "owner-test-password", "OWNER_EMAIL": "owner@example.com", "AUTH_MODE": "both",
     "CLERK_JWKS_URL": "https://clerk.test.invalid/.well-known/jwks.json", "CLERK_SECRET_KEY": "sk_test_dummy",
     "CLERK_ISSUER": "https://clerk.test.invalid", "CLERK_AUTHORIZED_PARTIES": "https://kapanis.test",
-    "CLERK_PUBLISHABLE_KEY": "pk_test_dummy", "USER_DAILY_ANALYSES": "3",
+    "CLERK_PUBLISHABLE_KEY": "pk_test_dummy", "USER_DAILY_ANALYSES": "3", "USER_KEY_DAILY_ANALYSES": "4",
+    "GLOBAL_DAILY_ANALYSES": "5", "KEY_ENCRYPTION_KEY": "kA9mS0Bq3QzvT8Xyq1dN0VYQe6o1c3pY3w5VYyC0x5g=",
 })
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -31,6 +32,8 @@ KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 PROFILES = {
     "user_a": {"email": "a@example.com", "verified": True, "name": "A"},        # e.g. Google sign-in
     "user_b": {"email": "b@example.com", "verified": True, "name": "B"},        # e-mail + code, code entered
+    "user_c": {"email": "c@example.com", "verified": True, "name": "C"},
+    "user_d": {"email": "d@example.com", "verified": True, "name": "D"},
     "user_x": {"email": "x@example.com", "verified": False, "name": "X"},       # e-mail sign-up, code not entered
     "owner_clerk": {"email": "owner@example.com", "verified": True, "name": "Owner"},
 }
@@ -199,6 +202,104 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((cfg["clerk"], cfg["legacy"], cfg["clerk_publishable_key"]), (True, False, "pk_test_dummy"))
         finally:
             identity.AUTH_MODE = old
+
+
+class _FakeProvider:
+    """Stands in for the AI provider's key check: keys starting with 'bad' are refused."""
+    calls = []
+
+    def __init__(self, *a, **k):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def request(self, method, url, headers=None, json=None):
+        _FakeProvider.calls.append(url)
+        bad = headers["Authorization"].split()[-1].startswith("bad")
+        return httpx.Response(401 if bad else 200, request=httpx.Request(method, url))
+
+
+class OwnKeysAndAccountTest(MultiUserTest.__bases__[0]):
+    async def asyncSetUp(self):
+        await MultiUserTest.asyncSetUp(self)
+        self._orig = server.user_api.httpx.AsyncClient
+        server.user_api.httpx.AsyncClient = _FakeProvider
+
+    async def asyncTearDown(self):
+        server.user_api.httpx.AsyncClient = self._orig
+        await MultiUserTest.asyncTearDown(self)
+
+    async def test_own_key_is_encrypted_masked_and_only_for_a_waiting_analysis(self):
+        h = auth("user_a")
+        key = "sk-" + "x" * 30 + "WXYZ"
+        self.assertEqual((await self.c.put("/api/ai-keys", headers=h, json={"saglayici": "deepseek", "anahtar": "bad" + "y" * 30})).status_code, 400)
+        r = await self.c.put("/api/ai-keys", headers=h, json={"saglayici": "deepseek", "anahtar": key})
+        self.assertEqual((r.status_code, r.json()["maske"]), (200, "••••WXYZ"))
+        raw = await server.db.users.find_one({"email": "a@example.com"})
+        self.assertNotIn(key, str(raw))                        # stored encrypted
+        for path in ("/api/auth/me", "/api/ai-keys", "/api/account/export"):
+            body = (await self.c.get(path, headers=h)).text
+            self.assertNotIn(key, body, path)
+            self.assertNotIn(raw["ai_keys"]["deepseek"]["enc"], body, path)
+        me = (await self.c.get("/api/auth/me", headers=h)).json()
+        self.assertEqual(me["kendi_anahtari"], ["deepseek"])
+        # the bot gets the key only while this user has an analysis waiting, and only with the bot key
+        self.assertEqual((await self.c.get(f"/api/bot/user-keys/{me['id']}", headers=BOT)).status_code, 404)
+        await self.c.post("/api/actions", headers=h, json={"type": "analysis.request", "payload": {"kodlar": ["BTC"], "piyasa": "KRIPTO"}})
+        self.assertEqual((await self.c.get(f"/api/bot/user-keys/{me['id']}")).status_code, 401)
+        self.assertEqual((await self.c.get(f"/api/bot/user-keys/{me['id']}", headers=BOT)).json(), {"deepseek": key})
+        cmd = (await self.c.get("/api/commands/pending", headers=BOT)).json()[0]
+        self.assertTrue(cmd["own_keys"])
+        self.assertNotIn(key, str(cmd))
+        # own key: the higher limit (4 in this test) instead of 3, outside the shared capacity
+        for _ in range(3):
+            await self.c.post("/api/actions", headers=h, json={"type": "analysis.request", "payload": {"kodlar": ["BTC"], "piyasa": "KRIPTO"}})
+        r = await self.c.post("/api/actions", headers=h, json={"type": "analysis.request", "payload": {"kodlar": ["BTC"], "piyasa": "KRIPTO"}})
+        self.assertEqual(r.status_code, 429)
+        await self.c.delete("/api/ai-keys/deepseek", headers=h)
+        self.assertEqual((await self.c.get("/api/auth/me", headers=h)).json()["kendi_anahtari"], [])
+
+    async def test_shared_capacity_caps_all_users_together(self):
+        ok = 0
+        for sub in ("user_a", "user_b", "user_c"):
+            for _ in range(2):
+                r = await self.c.post("/api/actions", headers=auth(sub), json={"type": "analysis.request", "payload": {"kodlar": ["ETH"], "piyasa": "KRIPTO"}})
+                ok += r.status_code == 200
+        self.assertEqual(ok, 5)  # GLOBAL_DAILY_ANALYSES = 5 even though each user may do 3
+
+    async def test_account_export_and_delete(self):
+        h = auth("user_d")
+        await self.c.post("/api/portfolio/positions", headers=h, json={"piyasa": "BIST", "kod": "THYAO", "adet": 1, "maliyet": 290})
+        exp = (await self.c.get("/api/account/export", headers=h)).json()
+        self.assertEqual(exp["hesap"]["email"], "d@example.com")
+        self.assertEqual(len(exp["portfoy"]["positions"]), 1)
+        deleted = []
+
+        async def fake_delete(cid):
+            deleted.append(cid)
+            return True
+        orig = identity.delete_clerk_user
+        identity.delete_clerk_user = fake_delete
+        try:
+            self.assertEqual((await self.c.delete("/api/account", headers=h)).status_code, 200)
+        finally:
+            identity.delete_clerk_user = orig
+        self.assertEqual(deleted, ["user_d"])
+        self.assertIsNone(await server.db.users.find_one({"email": "d@example.com"}))
+        self.assertEqual(await server.db.portfolios.count_documents({}), 0)
+        # the owner's account cannot be deleted from the panel (the bot depends on it)
+        self.assertEqual((await self.c.delete("/api/account", headers=auth("owner_clerk"))).status_code, 403)
+
+    async def test_admin_user_list_is_owner_only(self):
+        await self.c.get("/api/auth/me", headers=auth("user_a"))
+        self.assertEqual((await self.c.get("/api/admin/users", headers=auth("user_a"))).status_code, 403)
+        r = (await self.c.get("/api/admin/users", headers=auth("owner_clerk"))).json()
+        self.assertIn("a@example.com", [u["email"] for u in r["kullanicilar"]])
+        self.assertNotIn("positions", str(r))  # counts only, no portfolio contents
 
 
 class ClerkAddressTest(unittest.TestCase):

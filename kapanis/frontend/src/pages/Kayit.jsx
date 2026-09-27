@@ -12,7 +12,7 @@ function Frame({ children, tag }) {
           <p className="kp-login__tag">{tag}</p>
         </div>
         <div className="flex justify-center">{children}</div>
-        <p className="kp-login__foot">Bot işlem yapmaz · broker ya da borsa şifresi istenmez</p>
+        <p className="kp-login__foot">Bot işlem yapmaz · broker ya da borsa şifresi istenmez · <a href="/gizlilik" className="underline">Gizlilik ve KVKK</a></p>
         <K.Disclaimer />
       </div>
     </div>

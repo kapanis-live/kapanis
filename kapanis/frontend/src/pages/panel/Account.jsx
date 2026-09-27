@@ -61,6 +61,119 @@ function TelegramCard() {
   );
 }
 
+
+const KEY_HELP = {
+  deepseek: { url: "https://platform.deepseek.com/api_keys", note: "Ücretli; kullandığın kadar DeepSeek hesabından düşer." },
+  nvidia: { url: "https://build.nvidia.com", note: "Kimi K3 ve GLM 5.3; NVIDIA'nın verdiği ücretsiz kredilerle çalışır." },
+};
+
+// Kullanıcının kendi yapay zekâ anahtarları: sunucuda şifreli saklanır, buraya yalnız son 4 hanesi gelir.
+function AiKeysCard() {
+  const qc = useQueryClient();
+  const q = useData("ai-keys", "/ai-keys");
+  const { refresh } = useAuth();
+  const [draft, setDraft] = useState({ deepseek: "", nvidia: "" });
+  const [busy, setBusy] = useState("");
+  const d = q.data;
+  const after = () => {
+    qc.invalidateQueries({ queryKey: ["ai-keys"] });
+    refresh?.();
+  };
+  const save = async (prov) => {
+    setBusy(prov);
+    try {
+      await api.put("/ai-keys", { saglayici: prov, anahtar: draft[prov].trim() });
+      toast.success(`${d.etiketler[prov]} anahtarın doğrulandı ve şifreli kaydedildi.`);
+      setDraft({ ...draft, [prov]: "" });
+      after();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Kaydedilemedi.");
+    } finally {
+      setBusy("");
+    }
+  };
+  const remove = async (prov) => {
+    await api.delete(`/ai-keys/${prov}`);
+    toast.success("Anahtar silindi.");
+    after();
+  };
+  if (!d) return null;
+  return (
+    <K.Card title="Yapay zekâ anahtarların" actions={<span className="kp-alarm__status is-flat">İsteğe bağlı</span>}>
+      <p className="text-[0.9375rem] text-t-2">
+        Kendi anahtarını girersen analizlerin senin hesabından çalışır ve günlük hakkın artar. Girmezsen sitenin ortak,
+        sınırlı hakkını kullanırsın. Anahtar sunucuda şifreli saklanır, yalnız analiz sırasında kullanılır ve ekranda bir daha tam gösterilmez.
+      </p>
+      {!d.sifreleme && <K.Callout tone="warn" title="Şu an kaydedilemiyor">Sunucuda anahtar şifreleme ayarlı değil.</K.Callout>}
+      <div className="mt-4 flex flex-col gap-4">
+        {Object.keys(d.etiketler).map((prov) => {
+          const saved = d.anahtarlar[prov];
+          return (
+            <div key={prov} className="rounded-xl border border-hairline p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <b className="text-t-1">{d.etiketler[prov]}</b>
+                {saved ? <span className="num text-[0.9375rem] text-t-2">kayıtlı {saved.maske}</span> : <span className="text-[0.9375rem] text-t-3">yok</span>}
+              </div>
+              <p className="kp-note m-0 mt-1">{KEY_HELP[prov].note} Anahtarı <a className="text-info underline" href={KEY_HELP[prov].url} target="_blank" rel="noreferrer">buradan</a> alırsın.</p>
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <div className="min-w-[16rem] flex-1">
+                  <K.TextInput type="password" autoComplete="off" value={draft[prov]} placeholder={saved ? "yenisini yapıştır" : "anahtarı yapıştır"}
+                    onChange={(e) => setDraft({ ...draft, [prov]: e.target.value })} />
+                </div>
+                <K.Button variant="primary" disabled={!draft[prov].trim() || busy === prov || !d.sifreleme} onClick={() => save(prov)}>
+                  {busy === prov ? "Doğrulanıyor…" : "Kaydet"}
+                </K.Button>
+                {saved && <K.Button variant="ghost" onClick={() => remove(prov)}>Sil</K.Button>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </K.Card>
+  );
+}
+
+// KVKK / GDPR: verileri indirme ve hesabı silme
+function DataCard({ owner, logout }) {
+  const [confirm, setConfirm] = useState("");
+  const download = async () => {
+    try {
+      const { data } = await api.get("/account/export");
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+      const a = Object.assign(document.createElement("a"), { href: url, download: "kapanis-verilerim.json" });
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "İndirilemedi.");
+    }
+  };
+  const remove = async () => {
+    try {
+      await api.delete("/account");
+      toast.success("Hesabın ve verilerin silindi.");
+      await logout();
+    } catch (e) {
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Silinemedi.");
+    }
+  };
+  return (
+    <K.Card title="Verilerin">
+      <p className="text-[0.9375rem] text-t-2">Kapanış'ın senin hakkında tuttuğu her şeyi indirebilir ya da hesabını tamamen silebilirsin. Ayrıntı: <a className="text-info underline" href="/gizlilik">Gizlilik</a>.</p>
+      <div className="mt-3"><K.Button variant="ghost" onClick={download}>Verilerimi indir</K.Button></div>
+      {!owner && (
+        <div className="mt-5 rounded-xl border border-down/40 p-4">
+          <b className="text-down">Hesabımı sil</b>
+          <p className="kp-note m-0 mt-1">Portföyün, analizlerin, Telegram bağlantın, API anahtarların ve giriş hesabın silinir. Geri alınamaz. Onaylamak için SİL yaz.</p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <K.TextInput value={confirm} placeholder="SİL" onChange={(e) => setConfirm(e.target.value)} />
+            <K.Button variant="ghost" disabled={confirm.trim().toLocaleUpperCase("tr-TR") !== "SİL"} onClick={remove}>Hesabımı kalıcı olarak sil</K.Button>
+          </div>
+        </div>
+      )}
+    </K.Card>
+  );
+}
+
 export default function Account() {
   const { user, mode, owner, logout } = useAuth();
   return (
@@ -78,6 +191,8 @@ export default function Account() {
         <div className="mt-4"><K.Button variant="ghost" onClick={logout}>Çıkış yap</K.Button></div>
       </K.Card>
       <TelegramCard />
+      {!owner && <AiKeysCard />}
+      <DataCard owner={owner} logout={logout} />
       <p className="kp-note">Kapanış broker ya da borsa şifresi istemez, işlem yapmaz.{mode === "clerk" ? " Şifren Kapanış'ta değil, giriş servisinde (Clerk) saklanır." : ""}</p>
     </div>
   );

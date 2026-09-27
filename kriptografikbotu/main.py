@@ -340,7 +340,7 @@ async def build_market_data(coins: list[str]) -> tuple[dict, list[str]]:
 
 async def run_analysis(bot, chat_id: int | None, user_text: str, coins: list[str],
                        data: dict | None = None, footer: str = "", buttons=plan_alarm_buttons,
-                       allow_state_update: bool = True, personal: bool = True) -> str | None:
+                       allow_state_update: bool = True, personal: bool = True, keys: dict | None = None) -> str | None:
     """DeepSeek analysis. Pass `data` to send prepared market data instead of coin snapshots.
 
     `buttons(reply, plan_coins)` returns the inline keyboard for the reply, or None.
@@ -354,7 +354,8 @@ async def run_analysis(bot, chat_id: int | None, user_text: str, coins: list[str
                 if missing:
                     user_text += f"\n(Not: {', '.join(missing)} için Binance'te {config.QUOTE} paritesi bulunamadı.)"
             reply, warnings, plan_coins = await llm.analyze(user_text, data,
-                                                            allow_state_update=allow_state_update, personal=personal)
+                                                            allow_state_update=allow_state_update, personal=personal,
+                                                            keys=keys)
         except Exception as e:
             log.exception("Analysis failed")
             if status:
@@ -4450,6 +4451,20 @@ async def panel_analysis(bot, piyasa: str, kodlar: list[str], cmd: dict | None =
     owner = not cmd or cmd.get("role", "owner") == "owner"
     chat = config.ALLOWED_CHAT_ID if owner else cmd.get("telegram_chat_id")
     extra = {} if owner else {"personal": False, "allow_state_update": False, "buttons": None}
+    if not owner and cmd.get("own_keys"):
+        try:  # the user's own API keys, fetched for this analysis only and kept in memory
+            keys = await web_sync.user_keys(cmd["user_id"])
+        except Exception as e:
+            log.warning("User keys unavailable for %s: %s", cmd.get("user_id"), e)
+            keys = None
+        if not keys:
+            now = alerts_store.now_tr()
+            await web_sync.push_docs("analyses", [{
+                "id": f"an_{cmd.get('request_id')}", "user_id": cmd["user_id"], "request_id": cmd.get("request_id"),
+                "kodlar": [k.upper() for k in kodlar if k][:10], "piyasa": piyasa, "zaman": now.isoformat(),
+                "metin": "❌ Kayıtlı API anahtarın kullanılamadı. Hesap sayfasından anahtarını kontrol edip tekrar dene."}])
+            return None
+        extra["keys"] = keys
     kodlar = [k.upper() for k in kodlar if k][:10]
     if not kodlar:
         return None
@@ -4875,12 +4890,85 @@ def register_panel_actions(bot):
         plan = await tools.dividend_plan(force=True)
         return "💰 Panelden temettü planı yenilendi.\n" + tools.dividend_text(plan)
 
+    async def backtest_req(p):
+        """Same engine as /backtest; the panel's Backtest page shows the latest run."""
+        pair = str(p.get("pair", "")).upper().replace("-", "/")
+        if "/" not in pair:
+            pair = f"{pair}/{config.QUOTE}"
+        direction, tf = str(p.get("yon", "ABOVE")).upper(), str(p.get("tf", "15m"))
+        num = lambda k: float(p[k]) if p.get(k) not in (None, "") else None
+        trigger, stop, target = num("tetik"), num("iptal"), num("hedef")
+        days = int(p.get("gun") or 180)
+        if direction not in ("ABOVE", "BELOW") or tf not in backtest.TF_MS or not trigger or trigger <= 0 or not 7 <= days <= 365:
+            return "❌ Panel backtest: parite, yön (ABOVE/BELOW), tetik > 0, zaman dilimi ve 7-365 gün gerekli"
+        try:
+            res = await backtest.run(alerts_store.pair_to_symbol(pair), direction, trigger, tf, days, stop, target)
+        except market.SymbolNotFound:
+            return f"❌ Panel backtest: Binance'te {pair} yok"
+        if "hata" in res:
+            return f"❌ Panel backtest: {res['hata']}"
+        positions.save_last_backtest({"pair": pair, "yon": direction, "tetik": trigger, "timeframe": tf,
+                                      "iptal": stop, "hedef": target, "gun": days, **res})
+        t = res["tum"]
+        return (f"🧪 Panelden backtest {pair} KAPANIŞ {direction} {trigger:g} {tf}: {t['islem']} tetik, "
+                f"isabet %{t['isabet_yuzde']}, net toplam {t['toplam_R_net']}R (sonuç panelde)")
+
+    async def settings_set(p):
+        """Only the few settings that are safe to change from the panel. Rules stay fixed in code."""
+        s = alerts_store.load_settings()
+        done = []
+        if p.get("ai_mod") in ("sira", "deepseek", "kimi", "glm"):
+            s["ai_mod"] = p["ai_mod"]
+            done.append(f"yapay zekâ: {p['ai_mod']}")
+        for key, name, cast in (("bist_butce", "bist_budget_tl", int), ("abd_butce", "abd_butce_usd", float)):
+            if p.get(key) not in (None, ""):
+                v = cast(float(p[key]))
+                if not 0 < v <= 100_000_000:
+                    return f"❌ Panel ayarı: {key} sıfırdan büyük olmalı"
+                s[name] = v
+                done.append(f"{key} {v:,}")
+        if not done:
+            return "❌ Panel ayarı: değişiklik yok"
+        alerts_store.save_settings(s)
+        return "⚙️ Panelden ayar: " + ", ".join(done)
+
+    async def fundamentals_req(p):
+        """/temel from the panel: BIST (İş Yatırım) or US (SEC + Yahoo) fundamentals, no AI."""
+        tick = bist.ticker(str(p.get("kod", ""))).removesuffix(".US")
+        mkt = p.get("piyasa") or ("BIST" if tick in universe.bist_names() else await _detect_market(tick))
+        try:
+            if mkt == "ABD":
+                f = await us_fund.report(tick)
+                text = us_fund.text(f)
+                label = f["puan"].get("durum")
+                flags = (f.get("uyarilar") or [])[:6]
+                good = (f.get("olumlular") or [])[:6]
+            elif mkt == "BIST":
+                f = await fundamentals.report(tick)
+                text = fundamentals.text(f)
+                label = f["puan"].get("etiket")
+                flags = (f.get("kirmizi_bayraklar") or [])[:6]
+                good = []
+            else:
+                return f"❌ Panel temel analiz: {tick} BIST ya da ABD hissesi değil"
+        except Exception as e:
+            await web_sync.push_docs("sonuclar", [{"id": "temel", "tur": "temel", "hata": f"{tick}: {str(e)[:150]}",
+                                                   "zaman": alerts_store.now_tr().isoformat()}])
+            return f"❌ Panel temel analiz {tick}: {str(e)[:150]}"
+        await web_sync.push_docs("sonuclar", [{"id": "temel", "tur": "temel", "kod": tick, "piyasa": mkt,
+                                               "zaman": alerts_store.now_tr().isoformat(), "fiyat": f.get("fiyat"),
+                                               "skor": f["puan"]["skor"], "etiket": label, "parcalar": f["puan"]["parcalar"],
+                                               "not": f["puan"].get("not"), "uyarilar": flags, "olumlular": good,
+                                               "metin": text, "kaynak": f.get("kaynak")}])
+        return f"📚 Panelden temel analiz {tick}: skor {f['puan']['skor']}/100, {label} (ayrıntı panelde)"
+
     web_sync.EXTRA_HANDLERS.update({
         "analysis.request": analysis, "plan.add": plan_add_, "plan.remove": plan_remove, "firsat.run": firsat_run,
         "target.set": target_set, "watch.rules": rules_set, "paper.open": paper_open_, "paper.close": paper_close_,
         "lesson.request": lesson,
         "check.request": check_req, "ind.create": ind_create_, "ind.delete": ind_delete_, "compare.request": compare_req,
         "dividend.refresh": dividend_refresh,
+        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req,
     })
 
 

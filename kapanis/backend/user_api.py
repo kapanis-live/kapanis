@@ -11,7 +11,9 @@ portfolios (one document per user)
 telegram_links: {code_hash, user_id, expires_at, used} - one-time codes, 10 minutes, stored hashed.
 """
 import hashlib
+import httpx
 import math
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -21,6 +23,27 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import chart_data
+
+# Users' own AI API keys are stored encrypted with this Fernet key (web process env only, never in git).
+# Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+KEY_ENCRYPTION_KEY = os.environ.get("KEY_ENCRYPTION_KEY", "")
+PROVIDERS = {
+    # name: (label, how to check the key without spending anything meaningful)
+    "deepseek": ("DeepSeek", "GET", "https://api.deepseek.com/models", None),
+    "nvidia": ("NVIDIA (Kimi / GLM)", "POST", "https://integrate.api.nvidia.com/v1/chat/completions",
+               {"model": "meta/llama-3.1-8b-instruct", "messages": [{"role": "user", "content": "ok"}], "max_tokens": 1}),
+}
+
+
+def _fernet():
+    from cryptography.fernet import Fernet
+    if not KEY_ENCRYPTION_KEY:
+        raise HTTPException(status_code=503, detail="Sunucuda anahtar şifreleme ayarlı değil (KEY_ENCRYPTION_KEY).")
+    return Fernet(KEY_ENCRYPTION_KEY.encode())
+
+
+def mask(tail: str) -> str:
+    return f"••••{tail}"
 
 MARKETS = {"KRIPTO": "USD", "BIST": "TL", "ABD": "USD"}
 LINK_MINUTES = 10
@@ -75,6 +98,11 @@ class CashBody(BaseModel):
     tutar: float
 
 
+class AiKeyBody(BaseModel):
+    saglayici: str
+    anahtar: str
+
+
 class LinkBody(BaseModel):
     code: str
     chat_id: int
@@ -87,7 +115,7 @@ async def ensure_indexes(db):
     await db.telegram_links.create_index("expires_at", expireAfterSeconds=3600)
 
 
-def build_router(get_db, current_user, require_bot_key) -> APIRouter:
+def build_router(get_db, current_user, require_bot_key, require_owner=None) -> APIRouter:
     """get_db() returns the current database handle (looked up per request, so tests can swap it)."""
     r = APIRouter(prefix="/api")
 
@@ -209,6 +237,119 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
             except Exception:
                 out[key] = None
         return out
+
+    # ---------------- Users' own AI API keys ----------------
+    @r.get("/ai-keys")
+    async def ai_keys(user: dict = Depends(current_user)):
+        """Which keys the user saved: masked, never the key itself."""
+        u = await get_db().users.find_one({"_id": ObjectId(user["id"])}, {"ai_keys": 1})
+        saved = (u or {}).get("ai_keys") or {}
+        return {"sifreleme": bool(KEY_ENCRYPTION_KEY),
+                "anahtarlar": {p: ({"maske": mask(saved[p]["son4"]), "eklendi": saved[p].get("eklendi")} if p in saved else None)
+                               for p in PROVIDERS},
+                "etiketler": {p: v[0] for p, v in PROVIDERS.items()}}
+
+    @r.put("/ai-keys")
+    async def save_ai_key(body: AiKeyBody, user: dict = Depends(current_user)):
+        prov, key = body.saglayici.lower(), body.anahtar.strip()
+        if prov not in PROVIDERS:
+            raise HTTPException(status_code=400, detail="Sağlayıcı deepseek ya da nvidia olmalı.")
+        if not 20 <= len(key) <= 300 or any(c.isspace() for c in key):
+            raise HTTPException(status_code=400, detail="Anahtar biçimi geçersiz.")
+        f = _fernet()
+        label, method, url, body_json = PROVIDERS[prov]
+        try:  # the provider says whether the key works; the key is sent only to that provider
+            async with httpx.AsyncClient(timeout=20) as client:
+                resp = await client.request(method, url, headers={"Authorization": f"Bearer {key}"}, json=body_json)
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail=f"{label} şu an doğrulanamadı, biraz sonra tekrar dene.")
+        if resp.status_code in (401, 403):
+            raise HTTPException(status_code=400, detail=f"{label} bu anahtarı kabul etmedi.")
+        await get_db().users.update_one({"_id": ObjectId(user["id"])}, {"$set": {f"ai_keys.{prov}": {
+            "enc": f.encrypt(key.encode()).decode(), "son4": key[-4:], "eklendi": _now().isoformat()}}})
+        return {"ok": True, "maske": mask(key[-4:])}
+
+    @r.delete("/ai-keys/{prov}")
+    async def delete_ai_key(prov: str, user: dict = Depends(current_user)):
+        if prov not in PROVIDERS:
+            raise HTTPException(status_code=400, detail="Bilinmeyen sağlayıcı.")
+        await get_db().users.update_one({"_id": ObjectId(user["id"])}, {"$unset": {f"ai_keys.{prov}": ""}})
+        return {"ok": True}
+
+    @r.get("/bot/user-keys/{uid}")
+    async def bot_user_keys(uid: str, _: bool = Depends(require_bot_key)):
+        """For the bot only, and only while that user has an analysis waiting: the decrypted keys, in memory."""
+        since = (_now() - timedelta(hours=2)).isoformat()
+        waiting = await get_db().commands.find_one({"user_id": uid, "type": "analysis.request", "status": "pending",
+                                                    "own_keys": True, "created_at": {"$gte": since}})
+        if not waiting:
+            raise HTTPException(status_code=404, detail="Bekleyen analiz yok.")
+        u = await get_db().users.find_one({"_id": ObjectId(uid)}, {"ai_keys": 1})
+        f = _fernet()
+        out = {}
+        for prov, v in ((u or {}).get("ai_keys") or {}).items():
+            try:
+                out[prov] = f.decrypt(v["enc"].encode()).decode()
+            except Exception:
+                continue  # rotated encryption key: the user has to enter it again
+        if not out:
+            raise HTTPException(status_code=404, detail="Anahtar yok.")
+        return out
+
+    # ---------------- Account: export and delete (KVKK / GDPR) ----------------
+    async def my_data(uid: str) -> dict:
+        user = await get_db().users.find_one({"_id": ObjectId(uid)}, {"password_hash": 0, "ai_keys": 0})
+        return {
+            "hesap": {k: (str(v) if k == "_id" else v) for k, v in (user or {}).items()},
+            "portfoy": await get_db().portfolios.find_one({"user_id": uid}, {"_id": 0}),
+            "analizler": await get_db().analyses.find({"user_id": uid}, {"_id": 0}).to_list(5000),
+            "istekler": await get_db().commands.find({"user_id": uid}, {"_id": 0, "telegram_chat_id": 0}).to_list(5000),
+        }
+
+    @r.get("/account/export")
+    async def export(user: dict = Depends(current_user)):
+        """Everything Kapanış stores about the signed-in user, as JSON."""
+        return {"olusturma": _now().isoformat(), **await my_data(user["id"])}
+
+    @r.delete("/account")
+    async def delete_account(user: dict = Depends(current_user)):
+        """Delete the user's portfolio, analyses, requests, link codes and account (and the Clerk account)."""
+        if user.get("role") in ("owner", "admin"):
+            raise HTTPException(status_code=403, detail="Sistem sahibinin hesabı buradan silinemez (bot bu hesaba bağlı).")
+        uid = user["id"]
+        if user.get("clerk_id"):
+            import identity
+            if not await identity.delete_clerk_user(user["clerk_id"]):
+                raise HTTPException(status_code=502, detail="Giriş hesabı silinemedi, biraz sonra tekrar dene.")
+        d = get_db()
+        await d.portfolios.delete_many({"user_id": uid})
+        await d.analyses.delete_many({"user_id": uid})
+        await d.commands.delete_many({"user_id": uid})
+        await d.telegram_links.delete_many({"user_id": uid})
+        await d.users.delete_one({"_id": ObjectId(uid)})
+        return {"ok": True}
+
+    if require_owner is not None:
+        @r.get("/admin/users")
+        async def admin_users(_: dict = Depends(require_owner)):
+            """Owner overview: who signed up and how much they use (no portfolio contents)."""
+            d = get_db()
+            since = (_now() - timedelta(days=1)).isoformat()
+            out = []
+            async for u in d.users.find({}, {"password_hash": 0}).sort("created_at", -1).limit(1000):
+                own = sorted((u.get("ai_keys") or {}).keys())
+                uid = str(u["_id"])
+                pf = await d.portfolios.find_one({"user_id": uid}, {"positions": 1})
+                out.append({
+                    "email": u.get("email"), "rol": u.get("role"), "kayit": u.get("created_at"),
+                    "giris": "Clerk" if u.get("clerk_id") else "yerel", "telegram": bool(u.get("telegram_chat_id")),
+                    "kendi_anahtari": own,
+                    "acik_pozisyon": sum(1 for p in (pf or {}).get("positions", []) if p.get("durum") == "acik"),
+                    "analiz_24s": await d.commands.count_documents({"user_id": uid, "type": "analysis.request", "created_at": {"$gte": since}}),
+                    "analiz_toplam": await d.analyses.count_documents({"user_id": uid}),
+                })
+            total = await d.commands.count_documents({"role": "user", "type": "analysis.request", "created_at": {"$gte": since}})
+            return {"kullanicilar": out, "kullanici_analiz_24s": total}
 
     # ---------------- Telegram link ----------------
     @r.get("/telegram/status")

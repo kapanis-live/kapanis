@@ -112,6 +112,14 @@ async def fetch_clerk_profile(clerk_id: str) -> dict:
     return profile
 
 
+async def delete_clerk_user(clerk_id: str) -> bool:
+    """Remove the account from Clerk too (account deletion). True when Clerk confirms or it was already gone."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.delete(f"{CLERK_API}/users/{clerk_id}", headers={"Authorization": f"Bearer {CLERK_SECRET_KEY}"})
+    _profile_cache.pop(clerk_id, None)
+    return r.status_code in (200, 404)
+
+
 async def user_from_clerk(db, token: str) -> dict:
     """Verified Clerk token -> the Kapanış user document (created on first sign-in)."""
     claims = verify_clerk_token(token)

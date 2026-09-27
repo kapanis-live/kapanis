@@ -553,6 +553,16 @@ async def push_docs(collection: str, docs: list[dict], replace: bool = False):
         r.raise_for_status()
 
 
+async def user_keys(user_id: str) -> dict | None:
+    """A panel user's own AI keys (decrypted by the backend, only while that user has a queued analysis)."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(f"{config.WEB_URL}/api/bot/user-keys/{user_id}", headers=_headers())
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return {k: v for k, v in r.json().items() if k in ("deepseek", "nvidia") and v} or None
+
+
 async def link_telegram(code: str, chat_id: int, username: str | None) -> tuple[bool, str]:
     """/bagla KOD: ask the web backend to bind this chat to the account that created the one-time code."""
     async with httpx.AsyncClient(timeout=15) as client:
@@ -688,7 +698,7 @@ USER_COMMANDS = {"analysis.request"}
 
 def command_meta(cmd: dict) -> dict:
     """Who asked (set by the web backend from the verified session, never by the browser)."""
-    return {k: cmd.get(k) for k in ("user_id", "role", "request_id", "telegram_chat_id")}
+    return {k: cmd.get(k) for k in ("user_id", "role", "request_id", "telegram_chat_id", "own_keys")}
 
 
 def allowed(cmd: dict) -> bool:

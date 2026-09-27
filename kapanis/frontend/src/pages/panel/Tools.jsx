@@ -147,12 +147,55 @@ function CompareCard() {
   );
 }
 
+function FundamentalsCard() {
+  const [kod, setKod] = useState("");
+  const { d, waiting, markAsked } = useResult("temel");
+  const run = async () => {
+    const k = kod.trim().toUpperCase();
+    if (!k) return toast.error("Hisse kodu yaz.");
+    if (await sendAction("fundamentals.request", { kod: k }, `${k} temel analizi istendi.`)) markAsked();
+  };
+  return (
+    <K.Card title="Temel analiz (tek hisse)">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <K.Field label="Hisse (BIST ya da ABD)"><K.TextInput value={kod} placeholder="THYAO, AAPL" onChange={(e) => setKod(e.target.value)} /></K.Field>
+        <div className="flex items-end"><K.Button variant="primary" onClick={run} disabled={!!waiting}>{waiting ? "Hazırlanıyor…" : "Getir"}</K.Button></div>
+      </div>
+      {waiting && <p className="kp-note">Bilançolar indiriliyor (10–40 sn). Yapay zekâ kullanılmaz.</p>}
+      {!waiting && d.hata && <K.Callout tone="warn" title="Getirilemedi">{d.hata}</K.Callout>}
+      {!waiting && d.kod && (
+        <div className="mt-5 flex flex-col gap-4">
+          <div className="kp-grid kp-g-3">
+            <K.StatCard label={`${d.kod} · ${d.piyasa}`} value={`${U.fmtNum(d.skor, 0)}/100`} tone={d.skor >= 70 ? "up" : d.skor < 45 ? "down" : undefined} sub={d.etiket} />
+            {Object.entries(d.parcalar || {}).slice(0, 2).map(([k, v]) => <K.StatCard key={k} label={k} value={v} />)}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(d.parcalar || {}).map(([k, v]) => (
+              <span key={k} className="rounded-lg border border-hairline px-3 py-1 text-[0.9375rem] text-t-2">{k}: <b className="num text-t-1">{v}</b></span>
+            ))}
+          </div>
+          {d.olumlular?.length > 0 && <K.Callout tone="info" title="Olumlu">{d.olumlular.join("; ")}</K.Callout>}
+          {d.uyarilar?.length > 0 && <K.Callout tone="warn" title="Uyarılar">{d.uyarilar.join("; ")}</K.Callout>}
+          <details>
+            <summary className="cursor-pointer text-[0.9375rem] font-semibold text-t-1">Tüm rakamlar</summary>
+            <pre className="mt-3 whitespace-pre-wrap text-[0.875rem] leading-relaxed text-t-2" style={{ fontFamily: "inherit" }}>
+              {String(d.metin || "").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "").trim()}
+            </pre>
+          </details>
+          <p className="kp-note">{d.not} · {relDay(d.zaman)} · {d.kaynak}</p>
+        </div>
+      )}
+    </K.Card>
+  );
+}
+
 export default function Tools() {
   return (
     <div className="kp-page">
       <K.PageHeader controls={false} title="Kontrol ve karşılaştırma"
         subtitle="Sayıları kod hesaplar. Almadan önce kapıdan geçir, hisseleri yan yana koy." />
       <CheckCard />
+      <FundamentalsCard />
       <CompareCard />
     </div>
   );

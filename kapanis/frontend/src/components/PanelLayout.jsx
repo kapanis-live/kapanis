@@ -9,7 +9,7 @@ import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid, Bell, Activity, Wallet, FileBarChart, Globe2, Receipt, LineChart, FlaskConical,
-  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target, ClipboardCheck, UserRound, Briefcase,
+  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target, ClipboardCheck, UserRound, Briefcase, Users as UsersIcon,
 } from "lucide-react";
 
 const NAV = [
@@ -52,6 +52,7 @@ const NAV = [
     items: [
       { to: "/app/maliyet", label: "Yapay zekâ maliyeti", icon: Receipt },
       { to: "/app/ayarlar", label: "Ayarlar", icon: SettingsIcon },
+      { to: "/app/kullanicilar", label: "Kullanıcılar", icon: UsersIcon },
       { to: "/app/hesap", label: "Hesap & Telegram", icon: UserRound },
     ],
   },

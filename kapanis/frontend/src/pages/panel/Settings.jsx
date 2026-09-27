@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { K, U } from "@/ds";
+import { sendAction } from "@/lib/actions";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData } from "@/lib/useData";
 import { DataView, Panel } from "@/components/DataView";
@@ -12,6 +15,31 @@ function Row({ label, value }) {
       <span className="text-sm text-t-2">{label}</span>
       <span className="num text-sm font-medium text-t-1">{value}</span>
     </div>
+  );
+}
+
+// Panelden değiştirilebilen ayarlar; kurallar kodda sabit kalır.
+function EditCard() {
+  const [f, setF] = useState({ ai_mod: "sira", bist_butce: "", abd_butce: "" });
+  const save = () => {
+    const body = { ai_mod: f.ai_mod };
+    if (f.bist_butce.trim()) body.bist_butce = U.parseTr(f.bist_butce);
+    if (f.abd_butce.trim()) body.abd_butce = U.parseTr(f.abd_butce);
+    sendAction("settings.set", body, "Ayarlar bota iletildi.");
+  };
+  return (
+    <K.Card title="Değiştir">
+      <div className="grid gap-3 sm:grid-cols-4">
+        <K.Field label="Yapay zekâ modeli" hint="sıra = 15 dakikada bir değişir">
+          <K.Select value={f.ai_mod} onChange={(e) => setF({ ...f, ai_mod: e.target.value })}
+            options={[{ value: "sira", label: "Sırayla" }, { value: "deepseek", label: "DeepSeek" }, { value: "kimi", label: "Kimi K3" }, { value: "glm", label: "GLM 5.3" }]} />
+        </K.Field>
+        <K.Field label="BIST bütçesi" hint="boş = değişmez"><K.TextInput prefix="₺" inputMode="decimal" value={f.bist_butce} onChange={(e) => setF({ ...f, bist_butce: e.target.value })} /></K.Field>
+        <K.Field label="ABD bütçesi" hint="boş = değişmez"><K.TextInput prefix="$" inputMode="decimal" value={f.abd_butce} onChange={(e) => setF({ ...f, abd_butce: e.target.value })} /></K.Field>
+        <div className="flex items-end"><K.Button variant="primary" onClick={save}>Kaydet</K.Button></div>
+      </div>
+      <p className="kp-note">Sessiz saatler Telegram'dan: /set_config quiet_hours=09:00-16:00. Kademe ve risk kuralları kodda sabittir.</p>
+    </K.Card>
   );
 }
 
@@ -35,15 +63,16 @@ export default function Settings() {
                 </>
               )}
               <Row label="Saat dilimi" value={d.timezone} />
-              <p className="mt-3 text-xs text-t-3">Bu değerler bottan okunur; değiştirmek için Telegram komutlarını kullan (/set_config).</p>
+              <p className="mt-3 text-xs text-t-3">Bu değerler bottan okunur. Model ve bütçeler aşağıdan değiştirilebilir.</p>
             </Panel>
 
             <Panel title="Hesap" testid="settings-account">
               <Row label="E-posta" value={user?.email || "—"} />
               <Row label="Rol" value={user?.role || "—"} />
               <Row label="Telegram bildirimleri" value={d.notifications?.telegram ? "Açık" : "Kapalı"} />
-              <Row label="E-posta bildirimleri" value={d.notifications?.email ? "Açık" : "Kapalı"} />
             </Panel>
+
+            <div className="lg:col-span-2"><EditCard /></div>
 
             <Panel title="Kurallar (salt okunur)" testid="settings-rules" className="lg:col-span-2">
               <div className="mb-3 flex items-center gap-2 text-xs text-t-3">

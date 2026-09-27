@@ -6,7 +6,7 @@ Hesapları, kartı ve anahtarları **sen** oluşturur ve girersin. Depoda hiçbi
 Kararlar (27.09.2026):
 - Giriş: Clerk (Google, e-posta + şifre, e-posta kaydında doğrulama kodu).
 - Veritabanı: MongoDB Atlas, M0, AWS Frankfurt (eu-central-1).
-- Sunucu: **Microsoft Azure** sanal makine (Azure for Students kredisi), Avrupa bölgesi. Render yedek seçenek. Heroku kullanılmıyor.
+- Sunucu: **Google Cloud** sanal makine (europe-west3 Frankfurt, IP 34.89.243.88). Azure ve Render yedek seçenek. Heroku kullanılmıyor.
 - Telegram botu 7/24 çalışır, uyuyan ücretsiz bir plana konmaz.
 - Demo portföy ve sanal bakiye kapsam dışı.
 
@@ -106,14 +106,25 @@ Backend, Clerk'in "e-posta doğrulandı" demediği hesabı kabul etmez. Google i
 Render'ın ücretsiz planında arka plan worker'ı yok ve ücretsiz web servisi 15 dakika boşta kalınca uyur.
 Bu yüzden `render.yaml`'da iki servis de `starter` planında. Güncel fiyatı Render'da kontrol et.
 
-## 5. Seçenek B (seçilen): Microsoft Azure sanal makine
+## 5. Linux sanal makine (Google Cloud — kullanılan; Azure aynı adımlar)
+
+**Google Cloud notları**
+- Bölge Avrupa olmalı (europe-west3 Frankfurt). Ücretsiz e2-micro yalnız ABD bölgelerinde; oraya kurulursa Binance çalışmaz.
+- VPC firewall: VM ayarlarında *Allow HTTP traffic* ve *Allow HTTPS traffic* işaretli olmalı (ufw'ye ek olarak).
+- Alan adı yoksa HTTPS için `34-89-243-88.sslip.io` kullan (IP'yi gösteren ücretsiz ad; Caddy sertifikayı bununla alır).
+- MongoDB Atlas → Network Access: VM IP'si (34.89.243.88/32). Veri aktarımı bilgisayardan yapılacaksa bilgisayarının IP'si de izinli kalmalı.
+- Bağlantı: Google Cloud konsolundaki **SSH** düğmesi ya da `gcloud compute ssh`. Kurulum betiği (5.3) Docker/swap/firewall kurulu değilse kullanılır; deploy key kısmı her durumda gerekir.
+
+### Azure'a özel adımlar (5.1–5.2)
+
+Microsoft Azure sanal makine
 
 Azure for Students kredisiyle (kart gerekmez) küçük bir Ubuntu makine. Site, bot ve HTTPS aynı makinede,
 `docker-compose.yml` ile çalışır. Kredi bitince kaynaklar durur, kartından para çekilmez. Öğrenci olduğun sürece
 kredi her yıl yenilenebilir. Kalan krediyi Azure portalında **Cost Management** ya da
 [microsoftazuresponsorships.com/Balance](https://www.microsoftazuresponsorships.com/Balance) gösterir.
 
-### 5.1 Makineyi oluştur (portal.azure.com)
+#### 5.1 Makineyi oluştur (portal.azure.com)
 
 **Virtual machines → Create → Azure virtual machine**
 
@@ -143,7 +154,7 @@ kredi her yıl yenilenebilir. Kalan krediyi Azure portalında **Cost Management*
 Makine açılınca: **kapanis-vm → Overview → DNS name → Not configured** → *DNS name label*: `kapanis` → Save.
 Adres şöyle olur: `kapanis.germanywestcentral.cloudapp.azure.com` (bölgeye göre değişir). Kendi alan adın olana kadar site bu adreste açılır.
 
-### 5.2 Makineye bağlan (Windows PowerShell)
+#### 5.2 Makineye bağlan (Windows PowerShell)
 
 ```powershell
 icacls $HOME\.ssh\kapanis-vm_key.pem /inheritance:r /grant:r "$($env:USERNAME):R"

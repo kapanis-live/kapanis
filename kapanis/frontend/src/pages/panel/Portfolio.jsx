@@ -15,7 +15,7 @@ const TARGET_NAMES = { BIST: "BIST", KRIPTO: "Kripto", ABD: "ABD", NAKIT: "Nakit
 const TARGET_COLORS = { BIST: "var(--cat-1)", KRIPTO: "var(--cat-2)", ABD: "var(--cat-3)", NAKIT: "var(--cat-5)" };
 
 // Bugünkü varlıklar ve kıyaslar: aynı ilk güne göre yüzde değişim
-function HistoryCard({ rows }) {
+function HistoryCard({ rows, real }) {
   const [period, setPeriod] = useState("90 gün");
   const latest = rows?.[rows.length - 1]?.tarih;
   const start = latest && new Date(`${latest}T12:00:00Z`);
@@ -49,14 +49,35 @@ function HistoryCard({ rows }) {
       <p className="kp-note">
         Bugünkü varlıklarının her gün ne ettiği (kripto ve ABD o günün kuruyla ₺). Alış tarihleri bilinmediği için bu bir
         “eldekiler” görünümüdür. Bugün ₺{U.fmtNum(last.toplam_tl, 0)} · 1 $ = ₺{U.fmtNum(last.usdtry, 2)}.
+        {real?.length ? ` Gerçek günlük kayıt: ${real.length} gün (ilki ${relDayShort(real[0].tarih)}); her gün portföyün o günkü değeri saklanıyor.` : ""}
       </p>
     </K.Card>
   );
 }
 
+const relDayShort = (iso) => `${+iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+
 const MONTH_SHORT = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
 
 // Temettü gelir planı: geçen 12 ayın ödemeleri x bugünkü adet (brüt tahmin), ay ay
+// Birikim planları (DCA): aylık hatırlatma, "Aldım" ile kayıt. Telegram: /birikim
+function DcaCard({ plans }) {
+  if (!plans?.length) return null;
+  return (
+    <K.Card title={`Birikim planları (${plans.length})`}>
+      <K.DataTable rows={plans} rowKey="id" columns={[
+        { key: "varlik", label: "Varlık", render: (p) => <K.Ticker symbol={p.varlik} name={MARKET_UI[p.piyasa]?.label || p.piyasa} logo={logo(p.varlik, p.piyasa)} /> },
+        { key: "tutar", label: "Aylık", num: true, render: (p) => U.fmtPrice(p.tutar, curOf(p.para), 0) },
+        { key: "gun", label: "Gün", num: true, mobile: false, render: (p) => `her ayın ${p.gun}'i` },
+        { key: "alim", label: "Alım", num: true, render: (p) => String(p.alim || 0) },
+        { key: "ortalama", label: "Ort. maliyet", num: true, strong: true, render: (p) => (p.ortalama ? priceFmt(p.ortalama, curOf(p.para)) : "—") },
+        { key: "maliyet", label: "Toplam", num: true, mobile: false, render: (p) => U.fmtPrice(p.maliyet || 0, curOf(p.para), 0) },
+      ]} />
+      <p className="kp-note">Hatırlatma her ayın seçtiğin gününde gelir; fiyat ortalamanın belirgin altındaysa ekstra kademe önerilir. Yeni plan: Telegram /birikim.</p>
+    </K.Card>
+  );
+}
+
 function DividendCard({ plan }) {
   if (!plan?.satirlar?.length) return null;
   const tl = plan.toplam?.TL || {};
@@ -200,9 +221,10 @@ export default function Portfolio() {
                 mobileEnd={(r) => U.fmtPrice(r.value, r.cur, 2)} />
               <p className="kp-note">Satıra dokun: o kodun grafiği açılır. Toplam % alış maliyetine göre; rakamları bot kodla hesaplar.</p>
             </K.Card>
-            <HistoryCard rows={d.geriye?.satirlar} />
+            <HistoryCard rows={d.geriye?.satirlar} real={(d.gecmis || []).filter((x) => x.toplam_tl)} />
             <TargetCard dagilim={d.dagilim} hedef={d.hedef} />
             <DividendCard plan={d.temettu_plani} />
+            <DcaCard plans={d.birikim} />
             <div className="kp-grid kp-split-l">
               <K.Card title="Dağılım">
                 {totalTl != null ? (

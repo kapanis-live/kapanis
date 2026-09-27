@@ -13,6 +13,8 @@ import NasilCalisir from "@/pages/public/NasilCalisir";
 import Kurallar from "@/pages/public/Kurallar";
 import SSS from "@/pages/public/SSS";
 import Iletisim from "@/pages/public/Iletisim";
+import Gizlilik from "@/pages/public/Gizlilik";
+import Users from "@/pages/panel/Users";
 import Giris from "@/pages/Giris";
 import Kayit from "@/pages/Kayit";
 import MyPortfolio from "@/pages/panel/MyPortfolio";
@@ -71,6 +73,7 @@ function App() {
           <Route path="/kurallar" element={pub(<Kurallar />)} />
           <Route path="/sss" element={pub(<SSS />)} />
           <Route path="/iletisim" element={pub(<Iletisim />)} />
+          <Route path="/gizlilik" element={pub(<Gizlilik />)} />
           <Route path="/giris/*" element={<Giris />} />
           <Route path="/kayit/*" element={<Kayit />} />
 
@@ -92,6 +95,7 @@ function App() {
           <Route path="/app/maliyet" element={own(<Cost />)} />
           <Route path="/app/backtest" element={own(<Backtest />)} />
           <Route path="/app/ayarlar" element={own(<Settings />)} />
+          <Route path="/app/kullanicilar" element={own(<Users />)} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -97,7 +97,10 @@ export function PublicLayout({ children }) {
           <div className="mt-8">
             <Disclaimer />
           </div>
-          <p className="mt-4 text-xs text-t-3">© 2026 Kapanış. Tüm hakları saklıdır.</p>
+          <p className="mt-4 text-xs text-t-3">
+            © 2026 Kapanış. Tüm hakları saklıdır. ·{" "}
+            <Link to="/gizlilik" className="underline hover:text-t-1">Gizlilik ve KVKK</Link>
+          </p>
         </div>
       </footer>
     </div>

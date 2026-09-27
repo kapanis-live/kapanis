@@ -1,3 +1,7 @@
+import { useState } from "react";
+import { toast } from "sonner";
+import { K, U } from "@/ds";
+import { sendAction } from "@/lib/actions";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData } from "@/lib/useData";
 import { DataView, StatCard, Panel } from "@/components/DataView";
@@ -6,12 +10,42 @@ import { TEXTS } from "@/lib/texts";
 import { useTheme } from "@/lib/theme";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip } from "recharts";
 
+const TFS = ["15m", "1h", "4h", "1d"];
+
+// Aynı motor: Telegram'daki /backtest. Sonuç birkaç saniye içinde aşağıdaki kartlara gelir.
+function RunCard() {
+  const [f, setF] = useState({ pair: "BTC", yon: "ABOVE", tetik: "", tf: "15m", iptal: "", hedef: "", gun: "180" });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const run = async () => {
+    const num = (v) => (String(v).trim() === "" ? null : U.parseTr(String(v)));
+    const body = { ...f, pair: f.pair.trim().toUpperCase(), tetik: num(f.tetik), iptal: num(f.iptal), hedef: num(f.hedef), gun: parseInt(f.gun, 10) || 180 };
+    if (!body.pair || !(body.tetik > 0)) return toast.error("Parite ve tetik fiyatı gerekli.");
+    await sendAction("backtest.run", body, `${body.pair} backtest başlatıldı (kapanış bazlı).`);
+  };
+  return (
+    <K.Card title="Yeni backtest (kripto, kapanış bazlı)">
+      <div className="grid gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <K.Field label="Coin"><K.TextInput value={f.pair} onChange={set("pair")} placeholder="BTC" /></K.Field>
+        <K.Field label="Yön"><K.Select value={f.yon} onChange={set("yon")} options={[{ value: "ABOVE", label: "Üstünde kapanış" }, { value: "BELOW", label: "Altında kapanış" }]} /></K.Field>
+        <K.Field label="Tetik"><K.TextInput prefix="$" inputMode="decimal" value={f.tetik} onChange={set("tetik")} /></K.Field>
+        <K.Field label="Mum"><K.Select value={f.tf} onChange={set("tf")} options={TFS} /></K.Field>
+        <K.Field label="İptal" hint="boş = 1,5×ATR"><K.TextInput prefix="$" inputMode="decimal" value={f.iptal} onChange={set("iptal")} /></K.Field>
+        <K.Field label="Hedef" hint="boş = 2×ATR"><K.TextInput prefix="$" inputMode="decimal" value={f.hedef} onChange={set("hedef")} /></K.Field>
+        <K.Field label="Gün"><K.TextInput inputMode="numeric" value={f.gun} onChange={set("gun")} /></K.Field>
+        <div className="flex items-end"><K.Button variant="primary" onClick={run}>Çalıştır</K.Button></div>
+      </div>
+      <p className="kp-note">Komisyon ve kayma düşülmüş net R ile hesaplanır. Geçmiş sonuç geleceği garanti etmez. Telegram: /backtest</p>
+    </K.Card>
+  );
+}
+
 export default function Backtest() {
   const q = useData("backtest", "/backtest");
   const { colors: c } = useTheme();
   return (
     <div>
       <PageHeader eyebrow="Performans / Backtest" title="Backtest" subtitle="Strateji simülasyonu ve performans metrikleri." testid="page-backtest" />
+      <div className="mb-6"><RunCard /></div>
       <DataView query={q} loadingText={TEXTS.loading.backtest}>
         {(d) => {
           const m = d.metrics;

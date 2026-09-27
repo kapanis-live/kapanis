@@ -1,0 +1,23 @@
+kapanis.live {
+	encode gzip
+
+	header {
+		defer
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Content-Security-Policy "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+		-Server
+	}
+
+	# Worker-only endpoints: the bot reaches web:8001 on the internal Docker network, never through here.
+	@botonly path_regexp ^/api/(bot/(telegram|strategies|user-keys)(/|$)|ingest(/|$)|commands/(pending$|[^/]+/done$))
+	respond @botonly 404
+
+	reverse_proxy web:8001 {
+		# Marks internet traffic; the API refuses bot endpoints for any request carrying it.
+		header_up X-Kapanis-Public 1
+	}
+}

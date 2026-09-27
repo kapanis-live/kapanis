@@ -8,6 +8,7 @@ import os
 import sys
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 
 os.environ.update({
@@ -17,7 +18,7 @@ os.environ.update({
     "CLERK_JWKS_URL": "https://clerk.test.invalid/.well-known/jwks.json", "CLERK_SECRET_KEY": "sk_test_dummy",
     "CLERK_ISSUER": "https://clerk.test.invalid", "CLERK_AUTHORIZED_PARTIES": "https://kapanis.test",
     "CLERK_PUBLISHABLE_KEY": "pk_test_dummy", "USER_DAILY_ANALYSES": "3", "USER_KEY_DAILY_ANALYSES": "4",
-    "GLOBAL_DAILY_ANALYSES": "5", "KEY_ENCRYPTION_KEY": "kA9mS0Bq3QzvT8Xyq1dN0VYQe6o1c3pY3w5VYyC0x5g=",
+    "GLOBAL_DAILY_ANALYSES": "5", "RATE_IP_PER_MINUTE": "100000", "KEY_ENCRYPTION_KEY": "kA9mS0Bq3QzvT8Xyq1dN0VYQe6o1c3pY3w5VYyC0x5g=",
 })
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -77,6 +78,8 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         server.db = server.client["kapanis_test_multiuser"]
         await server.client.drop_database("kapanis_test_multiuser")
         await server.startup()
+        server.limits._hits.clear()
+        server.limits._streams.clear()
         self.c = httpx.AsyncClient(transport=httpx.ASGITransport(app=server.app), base_url="https://kapanis.test")
 
     async def asyncTearDown(self):
@@ -203,6 +206,129 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         finally:
             identity.AUTH_MODE = old
 
+    async def test_telegram_portfolio_and_crisis_plan_stay_in_linked_account(self):
+        ha, hb = auth("user_a"), auth("user_b")
+        code = (await self.c.post("/api/telegram/link-code", headers=ha)).json()["kod"]
+        await self.c.post("/api/bot/telegram/link", headers=BOT, json={"code": code, "chat_id": 111})
+        r = await self.c.post("/api/bot/telegram/position", headers=BOT,
+                              json={"chat_id": 111, "piyasa": "BIST", "kod": "THYAO", "adet": 2, "maliyet": 100})
+        self.assertEqual(r.status_code, 200, r.text)
+        pid = r.json()["id"]
+        self.assertEqual((await self.c.get("/api/portfolio", headers=hb)).json()["positions"], [])
+
+        day = 86400
+        base = (int(time.time()) // day - 3) * day + 7 * 3600  # 07:00 UTC, three closed BIST sessions
+
+        async def chart(*args):
+            return {"candles": [{"t": base, "c": 110}, {"t": base + day, "c": 120}, {"t": base + 2 * day, "c": 121}]}
+        original = server.user_api.chart_data.chart
+        server.user_api.chart_data.chart = chart
+        try:
+            proposal = (await self.c.post("/api/bot/telegram/risk-proposal", headers=BOT,
+                                          json={"chat_id": 111})).json()
+        finally:
+            server.user_api.chart_data.chart = original
+        self.assertEqual(proposal["suggestions"][0]["id"], pid)
+        # every open position is listed with its risk now and after; stops cannot be undone (goalpost)
+        self.assertEqual(proposal["affected"][0]["fiyat"], 121)
+        self.assertEqual((proposal["affected"][0]["risk_sonra"], proposal["geri_alinabilir"]), (round(2 * (121 - 114.95), 2), {"risk_hedefi": True, "stoplar": False}))
+        url = f"/api/risk/proposals/{proposal['id']}/apply"
+        self.assertEqual((await self.c.post(url, headers=hb, json={"position_ids": [pid]})).status_code, 404)
+        self.assertEqual((await self.c.get("/api/portfolio", headers=ha)).json()["risk_target_pct"], 1)
+        self.assertEqual((await self.c.post(url, headers=ha, json={"position_ids": [pid]})).status_code, 200)
+        portfolio = (await self.c.get("/api/portfolio", headers=ha)).json()
+        self.assertEqual((portfolio["risk_target_pct"], portfolio["risk_mode"]), (0.5, "defansif"))
+        self.assertEqual(portfolio["positions"][0]["stop"], 114.95)
+        await self.c.post("/api/risk/restore-target", headers=ha)
+        restored = (await self.c.get("/api/portfolio", headers=ha)).json()
+        self.assertEqual(restored["risk_target_pct"], 1)
+        self.assertEqual(restored["positions"][0]["stop"], 114.95)
+
+    async def test_telegram_add_is_confirmed_marked_and_refused_when_ambiguous(self):
+        ha = auth("user_a")
+        code = (await self.c.post("/api/telegram/link-code", headers=ha)).json()["kod"]
+        await self.c.post("/api/bot/telegram/link", headers=BOT, json={"code": code, "chat_id": 555})
+        r = (await self.c.post("/api/bot/telegram/position", headers=BOT,
+                               json={"chat_id": 555, "piyasa": "BIST", "kod": "EREGL", "adet": 3, "maliyet": 40})).json()
+        self.assertEqual((r["kaynak"], r["hesap"]), ("telegram", "a***@example.com"))
+        pos = (await self.c.get("/api/portfolio", headers=ha)).json()["positions"][0]
+        self.assertEqual(pos["kaynak"], "telegram")
+        # a chat that somehow maps to two accounts never gets a purchase written anywhere
+        await server.db.users.update_one({"email": "b@example.com"}, {"$set": {"telegram_chat_id": 555}}, upsert=False)
+        await self.c.get("/api/auth/me", headers=auth("user_b"))
+        await server.db.users.update_one({"email": "b@example.com"}, {"$set": {"telegram_chat_id": 555}})
+        r = await self.c.post("/api/bot/telegram/position", headers=BOT,
+                              json={"chat_id": 555, "piyasa": "BIST", "kod": "EREGL", "adet": 1, "maliyet": 40})
+        self.assertEqual(r.status_code, 409)
+
+    async def test_portfolio_stream_sends_only_revision_numbers(self):
+        h = auth("user_a")
+        await self.c.post("/api/portfolio/positions", headers=h, json={"piyasa": "BIST", "kod": "THYAO", "adet": 1, "maliyet": 290})
+        server.user_api.STREAM_SECONDS = 1  # the test client buffers the whole stream
+        async with self.c.stream("GET", "/api/portfolio/stream", headers=h) as resp:
+            self.assertEqual(resp.headers["content-type"].split(";")[0], "text/event-stream")
+            first = ""
+            async for chunk in resp.aiter_text():
+                first += chunk
+                if "\n\n" in first:
+                    break
+        self.assertTrue(first.startswith("event: rev\ndata: "), first)
+        self.assertNotIn("THYAO", first)
+        self.assertEqual((await self.c.get("/api/portfolio/stream")).status_code, 401)
+
+    async def test_bot_endpoints_refuse_internet_traffic_even_with_the_key(self):
+        public = {**BOT, "X-Kapanis-Public": "1"}  # what the site's reverse proxy adds to every outside request
+        for method, path in (("GET", "/api/commands/pending"), ("GET", "/api/bot/user-keys/x"),
+                             ("GET", "/api/bot/telegram/linked/1"), ("POST", "/api/ingest/positions")):
+            self.assertEqual((await self.c.request(method, path, headers=public, json=[])).status_code, 404, path)
+        self.assertEqual((await self.c.get("/api/commands/pending", headers=BOT)).status_code, 200)  # internal worker
+        self.assertFalse((await self.c.get("/api/bot/telegram/linked/111", headers=BOT)).json()["bagli"])
+        code = (await self.c.post("/api/telegram/link-code", headers=auth("user_a"))).json()["kod"]
+        await self.c.post("/api/bot/telegram/link", headers=BOT, json={"code": code, "chat_id": 111})
+        self.assertTrue((await self.c.get("/api/bot/telegram/linked/111", headers=BOT)).json()["bagli"])
+
+    async def test_rate_limits_per_ip_per_user_and_open_streams(self):
+        old = server.limits.IP_PER_MINUTE, server.limits.CHART_PER_MINUTE, server.limits.MAX_STREAMS
+        server.limits.IP_PER_MINUTE, server.limits.CHART_PER_MINUTE, server.limits.MAX_STREAMS = 5, 2, 1
+        try:
+            codes = [(await self.c.get("/api/auth/config")).status_code for _ in range(6)]
+            self.assertEqual(codes, [200] * 5 + [429])
+            server.limits._hits.clear()
+            server.limits.IP_PER_MINUTE = 1000
+            h = auth("user_a")
+
+            async def fake_chart(symbol, tf, market):
+                return {"symbol": symbol}
+            with unittest.mock.patch.object(server.chart_data, "chart", fake_chart):
+                chart = [(await self.c.get("/api/chart/THYAO?market=BIST", headers=h)).status_code for _ in range(3)]
+                self.assertEqual(chart, [200, 200, 429])
+                self.assertEqual((await self.c.get("/api/chart/THYAO?market=BIST", headers=auth("user_b"))).status_code, 200)
+            with server.limits.StreamSlot("u1"):
+                with self.assertRaises(server.HTTPException):
+                    server.limits.StreamSlot("u1").__enter__()  # a second tab of the same user
+                with server.limits.StreamSlot("u2"):
+                    pass  # other users are not affected
+            with server.limits.StreamSlot("u1"):
+                pass  # the slot is free again after the first connection closed
+        finally:
+            server.limits.IP_PER_MINUTE, server.limits.CHART_PER_MINUTE, server.limits.MAX_STREAMS = old
+
+    async def test_strategy_and_quant_scan_are_scoped_and_queued(self):
+        ha, hb = auth("user_a"), auth("user_b")
+        strategy = (await self.c.post("/api/strategies", headers=ha, json={"name": "Altın Vuruş",
+                    "rules": {"fk_max": 10, "momentum_min": 0, "quality_min": 70}})).json()
+        self.assertEqual((await self.c.post(f"/api/strategies/{strategy['id']}/run", headers=hb)).status_code, 404)
+        self.assertEqual((await self.c.post(f"/api/strategies/{strategy['id']}/run", headers=ha)).status_code, 200)
+        code = (await self.c.post("/api/telegram/link-code", headers=ha)).json()["kod"]
+        await self.c.post("/api/bot/telegram/link", headers=BOT, json={"code": code, "chat_id": 111})
+        self.assertEqual((await self.c.post("/api/bot/telegram/quant-run", headers=BOT,
+                                       json={"chat_id": 222, "top_n": 3})).status_code, 404)
+        # A second scan waits until the first completes, so the worker cannot mix two requests.
+        self.assertEqual((await self.c.post("/api/bot/telegram/quant-run", headers=BOT,
+                                       json={"chat_id": 111, "top_n": 3})).status_code, 409)
+        pending = (await self.c.get("/api/commands/pending", headers=BOT)).json()
+        self.assertEqual((len(pending), pending[0]["payload"]["strategy_id"]), (1, strategy["id"]))
+
 
 class _FakeProvider:
     """Stands in for the AI provider's key check: keys starting with 'bad' are refused."""
@@ -300,6 +426,20 @@ class OwnKeysAndAccountTest(MultiUserTest.__bases__[0]):
         r = (await self.c.get("/api/admin/users", headers=auth("owner_clerk"))).json()
         self.assertIn("a@example.com", [u["email"] for u in r["kullanicilar"]])
         self.assertNotIn("positions", str(r))  # counts only, no portfolio contents
+
+
+class LastClosedTest(unittest.TestCase):
+    def test_todays_forming_candle_never_counts(self):
+        import chart_data
+        day = 86400
+        today = (int(time.time()) // day) * day
+        bist = [{"t": today - day + 7 * 3600, "c": 1}, {"t": today + 7 * 3600, "c": 2}]
+        # 12:00 UTC today: BIST session still open -> yesterday; 16:00 UTC -> today's close counts
+        self.assertEqual(chart_data.last_closed(bist, "BIST", now=today + 12 * 3600)["c"], 1)
+        self.assertEqual(chart_data.last_closed(bist, "BIST", now=today + 16 * 3600)["c"], 2)
+        crypto = [{"t": today - day, "c": 1}, {"t": today, "c": 2}]
+        self.assertEqual(chart_data.last_closed(crypto, "KRIPTO", now=today + 60)["c"], 1)
+        self.assertIsNone(chart_data.last_closed([], "BIST"))
 
 
 class ClerkAddressTest(unittest.TestCase):

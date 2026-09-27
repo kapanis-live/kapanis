@@ -10,19 +10,23 @@ portfolios (one document per user)
 
 telegram_links: {code_hash, user_id, expires_at, used} - one-time codes, 10 minutes, stored hashed.
 """
+import asyncio
 import hashlib
 import httpx
 import math
 import os
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 import chart_data
+import limits
 
 # Users' own AI API keys are stored encrypted with this Fernet key (web process env only, never in git).
 # Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -45,6 +49,7 @@ def _fernet():
 def mask(tail: str) -> str:
     return f"••••{tail}"
 
+STREAM_SECONDS = 300  # one live-update connection; the browser reconnects after it
 MARKETS = {"KRIPTO": "USD", "BIST": "TL", "ABD": "USD"}
 LINK_MINUTES = 10
 MAX_OPEN_POSITIONS = 200
@@ -109,10 +114,23 @@ class LinkBody(BaseModel):
     username: Optional[str] = None
 
 
+class BotPositionBody(PositionBody):
+    chat_id: int
+
+
+class BotChatBody(BaseModel):
+    chat_id: int
+
+
+class ApplyRiskBody(BaseModel):
+    position_ids: list[str] = []
+
+
 async def ensure_indexes(db):
     await db.portfolios.create_index("user_id", unique=True)
     await db.telegram_links.create_index("code_hash", unique=True)
     await db.telegram_links.create_index("expires_at", expireAfterSeconds=3600)
+    await db.risk_proposals.create_index("expires_at", expireAfterSeconds=0)
 
 
 def build_router(get_db, current_user, require_bot_key, require_owner=None) -> APIRouter:
@@ -122,9 +140,12 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
     async def load(uid: str) -> dict:
         doc = await get_db().portfolios.find_one({"user_id": uid}, {"_id": 0})
         if doc is None:
-            doc = {"user_id": uid, "rev": 0, "cash_balance": {"TL": 0.0, "USD": 0.0}, "positions": [], "transactions": []}
+            doc = {"user_id": uid, "rev": 0, "cash_balance": {"TL": 0.0, "USD": 0.0}, "positions": [],
+                   "transactions": [], "risk_target_pct": 1.0, "risk_mode": "normal"}
             await get_db().portfolios.update_one({"user_id": uid}, {"$setOnInsert": doc}, upsert=True)
             doc = await get_db().portfolios.find_one({"user_id": uid}, {"_id": 0})
+        doc.setdefault("risk_target_pct", 1.0)
+        doc.setdefault("risk_mode", "normal")
         return doc
 
     async def save(doc: dict):
@@ -133,7 +154,8 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
         res = await get_db().portfolios.update_one(
             {"user_id": doc["user_id"], "rev": rev},
             {"$set": {"cash_balance": doc["cash_balance"], "positions": doc["positions"],
-                      "transactions": doc["transactions"][-2000:], "rev": rev + 1}})
+                      "transactions": doc["transactions"][-2000:], "rev": rev + 1,
+                      "risk_target_pct": doc["risk_target_pct"], "risk_mode": doc["risk_mode"]}})
         if res.matched_count == 0:
             raise HTTPException(status_code=409, detail="Portföy başka bir sekmede değişti; sayfayı yenileyip tekrar dene.")
         doc["rev"] = rev + 1
@@ -151,6 +173,33 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
     @r.get("/portfolio")
     async def get_portfolio(user: dict = Depends(current_user)):
         return await load(user["id"])
+
+    @r.get("/portfolio/stream")
+    async def portfolio_stream(user: dict = Depends(current_user)):
+        """Server-sent events: 'rev' whenever this user's portfolio changes (e.g. /ekle in Telegram).
+        Only the revision number is sent, never portfolio contents; the page then reloads its own data.
+        Each connection lasts 5 minutes and the browser reconnects (with a fresh session token)."""
+        uid = user["id"]
+        slot = limits.StreamSlot(uid).__enter__()  # 429 when this user already has too many open
+
+        async def events():
+            try:
+                last, beat, started = None, time.monotonic(), time.monotonic()
+                while time.monotonic() - started < STREAM_SECONDS:
+                    doc = await get_db().portfolios.find_one({"user_id": uid}, {"rev": 1})
+                    rev = (doc or {}).get("rev", 0)
+                    if rev != last:
+                        yield f"event: rev\ndata: {rev}\n\n"
+                        last, beat = rev, time.monotonic()
+                    elif time.monotonic() - beat > 15:
+                        yield ": ping\n\n"
+                        beat = time.monotonic()
+                    await asyncio.sleep(1.5)
+            finally:
+                slot.__exit__(None, None, None)  # also when the browser closes the tab
+
+        return StreamingResponse(events(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @r.post("/portfolio/positions")
     async def add_position(body: PositionBody, user: dict = Depends(current_user)):
@@ -177,6 +226,28 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
            para=MARKETS[mkt], pozisyon_id=pos["id"])
         await save(doc)
         return pos
+
+    @r.get("/bot/telegram/linked/{chat_id}")
+    async def telegram_linked(chat_id: int, _: bool = Depends(require_bot_key)):
+        """Is this Telegram chat linked to a site account? (the bot asks before doing costly work)"""
+        return {"bagli": bool(await get_db().users.find_one({"telegram_chat_id": chat_id}, {"_id": 1}))}
+
+    @r.post("/bot/telegram/position")
+    async def telegram_add_position(body: BotPositionBody, _: bool = Depends(require_bot_key)):
+        """A linked private Telegram chat records a purchase; no broker order is placed."""
+        accounts = await get_db().users.find({"telegram_chat_id": body.chat_id}, {"_id": 1, "email": 1}).to_list(2)
+        if not accounts:
+            raise HTTPException(status_code=404, detail="Bu Telegram hesabı siteye bağlı değil.")
+        if len(accounts) > 1:  # never guess which account a purchase belongs to
+            raise HTTPException(status_code=409, detail="Bu Telegram sohbeti birden fazla hesaba bağlı görünüyor; sitede bağlantıyı yeniden kur.")
+        account = accounts[0]
+        uid = str(account["_id"])
+        pos = await add_position(PositionBody(**body.model_dump(exclude={"chat_id"})), {"id": uid})
+        # mark where it came from (the panel shows "Telegram'dan eklendi"); rev already moved in add_position
+        await get_db().portfolios.update_one({"user_id": uid, "positions.id": pos["id"]}, {"$set": {"positions.$.kaynak": "telegram"}})
+        email = account.get("email") or ""
+        name, _, domain = email.partition("@")
+        return {**pos, "kaynak": "telegram", "hesap": (name[:2] + "***@" + domain) if domain else ""}
 
     @r.patch("/portfolio/positions/{pid}/stop")
     async def move_stop(pid: str, body: StopBody, user: dict = Depends(current_user)):
@@ -233,10 +304,105 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
                 continue
             try:
                 c = await chart_data.chart(p["kod"], "1d", p["piyasa"])
-                out[key] = c["candles"][-1]["c"] if c.get("candles") else None
+                last = chart_data.last_closed(c.get("candles"), p["piyasa"])
+                out[key] = last["c"] if last else None
             except Exception:
                 out[key] = None
         return out
+
+    async def create_risk_proposal(uid: str) -> dict:
+        doc = await load(uid)
+        suggestions, affected = [], []
+        for pos in doc["positions"]:
+            if pos["durum"] != "acik":
+                continue
+            try:
+                chart = await chart_data.chart(pos["kod"], "1d", pos["piyasa"])
+                last = chart_data.last_closed(chart["candles"], pos["piyasa"])  # never today's forming candle
+                price = last["c"] if last else None
+            except Exception:
+                price = None
+            old = pos.get("stop")
+            row = {"id": pos["id"], "kod": pos["kod"], "piyasa": pos["piyasa"], "para": pos.get("para"),
+                   "adet": pos["adet"], "maliyet": pos["maliyet"], "fiyat": price, "eski_stop": old,
+                   # money lost if the price fell to the stop from the last close (a stop is not a guaranteed fill)
+                   "risk_simdi": round(pos["adet"] * (price - old), 2) if price and old is not None and price > old else None,
+                   "onerilen_stop": None, "risk_sonra": None}
+            if price:
+                proposed = round(max(pos["maliyet"], price * 0.95, old or 0), 6)
+                if price > pos["maliyet"] * 1.05 and proposed < price and (old is None or proposed > old):
+                    row.update(onerilen_stop=proposed, risk_sonra=round(pos["adet"] * (price - proposed), 2))
+                    suggestions.append({"id": pos["id"], "kod": pos["kod"], "piyasa": pos["piyasa"],
+                                        "fiyat": price, "eski_stop": old, "onerilen_stop": proposed})
+            affected.append(row)
+        now = _now()
+        proposal = {"id": f"risk_{ObjectId()}", "user_id": uid, "portfolio_rev": doc["rev"],
+                    "created_at": now.isoformat(), "expires_at": now + timedelta(minutes=15),
+                    "old_target_pct": doc["risk_target_pct"], "new_target_pct": round(doc["risk_target_pct"] / 2, 4),
+                    "suggestions": suggestions, "affected": affected, "status": "pending",
+                    # what can be undone: the risk target yes; a raised stop no (goalpost rule, stops only move up)
+                    "geri_alinabilir": {"risk_hedefi": True, "stoplar": False}}
+        await get_db().risk_proposals.insert_one(dict(proposal))
+        proposal.pop("_id", None)
+        proposal["expires_at"] = proposal["expires_at"].isoformat()
+        return proposal
+
+    @r.post("/risk/proposals")
+    async def new_risk_proposal(user: dict = Depends(current_user)):
+        return await create_risk_proposal(user["id"])
+
+    @r.post("/bot/telegram/risk-proposal")
+    async def telegram_risk_proposal(body: BotChatBody, _: bool = Depends(require_bot_key)):
+        account = await get_db().users.find_one({"telegram_chat_id": body.chat_id}, {"_id": 1})
+        if not account:
+            raise HTTPException(status_code=404, detail="Önce Telegram hesabını siteye bağla.")
+        return await create_risk_proposal(str(account["_id"]))
+
+    @r.get("/risk/proposals/latest")
+    async def latest_risk_proposal(user: dict = Depends(current_user)):
+        row = await get_db().risk_proposals.find_one({"user_id": user["id"], "status": "pending",
+                                                      "expires_at": {"$gt": _now()}}, {"_id": 0}, sort=[("created_at", -1)])
+        if row:
+            row["expires_at"] = row["expires_at"].isoformat()
+        return row or {}
+
+    @r.post("/risk/proposals/{proposal_id}/apply")
+    async def apply_risk_proposal(proposal_id: str, body: ApplyRiskBody, user: dict = Depends(current_user)):
+        proposal = await get_db().risk_proposals.find_one({"id": proposal_id, "user_id": user["id"],
+                                                            "status": "pending", "expires_at": {"$gt": _now()}})
+        if not proposal:
+            raise HTTPException(status_code=404, detail="Kriz planı bulunamadı ya da süresi doldu.")
+        doc = await load(user["id"])
+        if doc["rev"] != proposal["portfolio_rev"]:
+            raise HTTPException(status_code=409, detail="Portföy değişti. Yeni kriz planı oluştur.")
+        wanted = set(body.position_ids)
+        offered = {row["id"]: row for row in proposal["suggestions"]}
+        if not wanted.issubset(offered):
+            raise HTTPException(status_code=400, detail="Plan dışı stop seçildi.")
+        doc["risk_target_pct"] = proposal["new_target_pct"]
+        doc["risk_mode"] = "defansif"
+        for pos in doc["positions"]:
+            if pos["id"] in wanted:
+                pos["stop"] = offered[pos["id"]]["onerilen_stop"]
+        tx(doc, tur="risk_off", eski_hedef=proposal["old_target_pct"], yeni_hedef=proposal["new_target_pct"],
+           stoplar=list(wanted))
+        await save(doc)
+        await get_db().risk_proposals.update_one({"id": proposal_id}, {"$set": {"status": "applied"}})
+        return {"risk_target_pct": doc["risk_target_pct"], "risk_mode": doc["risk_mode"], "updated_stops": list(wanted)}
+
+    @r.post("/risk/restore-target")
+    async def restore_risk_target(user: dict = Depends(current_user)):
+        doc = await load(user["id"])
+        if doc["risk_mode"] != "defansif":
+            raise HTTPException(status_code=409, detail="Defansif hedef açık değil.")
+        latest = next((x for x in reversed(doc["transactions"]) if x.get("tur") == "risk_off"), None)
+        if not latest:
+            raise HTTPException(status_code=409, detail="Önceki risk hedefi bulunamadı.")
+        doc["risk_target_pct"] = latest["eski_hedef"]
+        doc["risk_mode"] = "normal"
+        tx(doc, tur="risk_target_restore", yeni_hedef=doc["risk_target_pct"])
+        await save(doc)
+        return {"risk_target_pct": doc["risk_target_pct"], "risk_mode": doc["risk_mode"]}
 
     # ---------------- Users' own AI API keys ----------------
     @r.get("/ai-keys")
@@ -303,6 +469,8 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
             "hesap": {k: (str(v) if k == "_id" else v) for k, v in (user or {}).items()},
             "portfoy": await get_db().portfolios.find_one({"user_id": uid}, {"_id": 0}),
             "analizler": await get_db().analyses.find({"user_id": uid}, {"_id": 0}).to_list(5000),
+            "stratejiler": await get_db().strategies.find({"user_id": uid}, {"_id": 0}).to_list(5000),
+            "kriz_planlari": await get_db().risk_proposals.find({"user_id": uid}, {"_id": 0}).to_list(5000),
             "istekler": await get_db().commands.find({"user_id": uid}, {"_id": 0, "telegram_chat_id": 0}).to_list(5000),
         }
 
@@ -324,6 +492,8 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
         d = get_db()
         await d.portfolios.delete_many({"user_id": uid})
         await d.analyses.delete_many({"user_id": uid})
+        await d.strategies.delete_many({"user_id": uid})
+        await d.risk_proposals.delete_many({"user_id": uid})
         await d.commands.delete_many({"user_id": uid})
         await d.telegram_links.delete_many({"user_id": uid})
         await d.users.delete_one({"_id": ObjectId(uid)})

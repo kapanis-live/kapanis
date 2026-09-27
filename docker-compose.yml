@@ -13,13 +13,18 @@ services:
     image: kapanis:latest   # same image as web, built once
     command: ["/app/start.sh", "worker"]
     env_file: deploy/bot.env
+    environment:
+      WEB_URL: http://web:8001   # internal network: bot endpoints are closed to the internet
+    volumes: [backups:/app/kriptografikbotu/backups]   # daily database backups (db_backup.py)
     restart: unless-stopped
     depends_on: [web]
   caddy:
     image: caddy:2
-    command: caddy reverse-proxy --from ${DOMAIN:?set DOMAIN} --to web:8001
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
     ports: ["80:80", "443:443"]
-    volumes: [caddy_data:/data]
+    volumes: [caddy_data:/data, ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro]   # security headers, bot paths blocked
     restart: unless-stopped
 volumes:
   caddy_data:
+  backups:

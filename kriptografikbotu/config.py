@@ -169,6 +169,8 @@ USAGE_FILE = DATA_DIR / "usage.jsonl"
 
 # Web panel (Kapanış). Empty = sync disabled.
 WEB_URL = os.getenv("WEB_URL", "").rstrip("/")
+# Address people open in a browser (links in Telegram messages); defaults to WEB_URL
+PUBLIC_URL = (os.getenv("PUBLIC_URL") or WEB_URL or "https://kapanis.live").rstrip("/")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "")
 WEB_SYNC_INTERVAL = 60      # seconds between full data pushes
 WEB_COMMAND_INTERVAL = 15   # seconds between command-queue polls

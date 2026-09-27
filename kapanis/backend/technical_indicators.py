@@ -54,7 +54,7 @@ def calculate(rows):
     lows = [r["l"] for r in rows]
     volumes = [r["v"] for r in rows]
     count = len(rows)
-    out = {f"ema{n}": ema(closes, n) for n in (9, 21, 50, 100, 200)}
+    out = {f"ema{n}": ema(closes, n) for n in (5, 9, 10, 20, 21, 50, 100, 200)}
 
     mid = sma(closes, 20)
     deviation = [None if i < 19 else sqrt(sum((x - mid[i]) ** 2 for x in closes[i - 19:i + 1]) / 20)
@@ -74,12 +74,60 @@ def calculate(rows):
         true_ranges.append(max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1])))
     out["atr"] = _rma(true_ranges, 14)
 
+    plus_dm, minus_dm = [0.0], [0.0]
+    for i in range(1, count):
+        up, down = highs[i] - highs[i - 1], lows[i - 1] - lows[i]
+        plus_dm.append(up if up > down and up > 0 else 0.0)
+        minus_dm.append(down if down > up and down > 0 else 0.0)
+    plus_smooth, minus_smooth = _rma(plus_dm, 14), _rma(minus_dm, 14)
+    dx = [None] * count
+    for i in range(13, count):
+        atr = out["atr"][i]
+        plus = 100 * plus_smooth[i] / atr if atr else 0
+        minus = 100 * minus_smooth[i] / atr if atr else 0
+        dx[i] = 100 * abs(plus - minus) / (plus + minus) if plus + minus else 0.0
+    out["adx"] = [None] * min(count, 13) + _rma(dx[13:], 14)
+
+    ema13 = ema(closes, 13)
+    out["bull_power"] = [None if e is None else h - e for h, e in zip(highs, ema13)]
+    out["bear_power"] = [None if e is None else l - e for l, e in zip(lows, ema13)]
+
     k = [None] * count
     for i in range(13, count):
         low, high = min(lows[i - 13:i + 1]), max(highs[i - 13:i + 1])
         k[i] = 100 * (closes[i] - low) / (high - low) if high > low else 50.0
     out["stoch_k"] = k
     out["stoch_d"] = [None if i < 15 else sum(k[i - 2:i + 1]) / 3 for i in range(count)]
+
+    gains = [0.0] + [max(closes[i] - closes[i - 1], 0) for i in range(1, count)]
+    losses = [0.0] + [max(closes[i - 1] - closes[i], 0) for i in range(1, count)]
+    avg_gains = [None] + _rma(gains[1:], 14)
+    avg_losses = [None] + _rma(losses[1:], 14)
+    rsi = [None] * count
+    for i in range(14, count):
+        g, loss = avg_gains[i], avg_losses[i]
+        rsi[i] = 100 * g / (g + loss) if g + loss else 50.0
+    stoch_rsi = [None] * count
+    for i in range(27, count):
+        window = rsi[i - 13:i + 1]
+        low, high = min(window), max(window)
+        stoch_rsi[i] = 100 * (rsi[i] - low) / (high - low) if high > low else 50.0
+    out["stoch_rsi"] = stoch_rsi
+
+    buying_pressure, ultimate_tr = [], []
+    for i in range(count):
+        previous = closes[i - 1] if i else closes[i]
+        low, high = min(lows[i], previous), max(highs[i], previous)
+        buying_pressure.append(closes[i] - low)
+        ultimate_tr.append(high - low)
+    ultimate = [None] * count
+    for i in range(27, count):
+        averages = []
+        for period in (7, 14, 28):
+            tr_total = sum(ultimate_tr[i - period + 1:i + 1])
+            averages.append(sum(buying_pressure[i - period + 1:i + 1]) / tr_total if tr_total else .5)
+        ultimate[i] = 100 * (4 * averages[0] + 2 * averages[1] + averages[2]) / 7
+    out["ultimate"] = ultimate
 
     typical = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
     cci = [None] * count

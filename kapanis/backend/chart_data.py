@@ -40,6 +40,29 @@ def detect(symbol: str, market: str | None) -> tuple[str, str]:
     return (market or "KRIPTO").upper(), s
 
 
+# Daily session close in UTC (with a margin for data delay): a daily candle counts only after it.
+DAILY_CLOSE_UTC = {"BIST": (15, 20), "ABD": (21, 10)}
+
+
+def last_closed(candles: list[dict], market: str, now: float | None = None) -> dict | None:
+    """Pure: the last CLOSED daily candle. Crypto closes at 00:00 UTC; BIST and US at their session end.
+    The still-forming candle of today never counts (close rule)."""
+    import datetime as _dt
+    now = time.time() if now is None else now
+    for c in reversed(candles or []):
+        start = _dt.datetime.fromtimestamp(c["t"], _dt.timezone.utc)
+        if market in DAILY_CLOSE_UTC:
+            h, m = DAILY_CLOSE_UTC[market]
+            closes = start.replace(hour=h, minute=m, second=0, microsecond=0)
+            if closes < start:
+                closes += _dt.timedelta(days=1)
+        else:
+            closes = start + _dt.timedelta(days=1)
+        if closes.timestamp() <= now:
+            return c
+    return None
+
+
 async def _binance(client: httpx.AsyncClient, code: str, tf: str) -> list[dict]:
     last = None
     for base in BINANCE:
@@ -194,7 +217,8 @@ async def chart(symbol: str, tf: str = "1d", market: str | None = None) -> dict:
         raise ChartError("Bu zaman diliminde yeterli mum yok")
     closes = [r["c"] for r in rows]
     series = {
-        "sma20": sma(closes, 20), "sma50": sma(closes, 50), "sma200": sma(closes, 200),
+        "sma5": sma(closes, 5), "sma10": sma(closes, 10), "sma20": sma(closes, 20),
+        "sma50": sma(closes, 50), "sma100": sma(closes, 100), "sma200": sma(closes, 200),
         "rsi": rsi(closes), "vol_ma": sma([r["v"] for r in rows], 20),
         "vwap": vwap(rows, intraday=tf in ("15m", "1h", "4h")),
     }

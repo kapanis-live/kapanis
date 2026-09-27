@@ -1,6 +1,7 @@
 """Multi-user safety on the bot side. No network, no real model, temporary data folder.
 Run with: python -m unittest test_multiuser"""
 import os
+import pathlib
 import tempfile
 import types
 import unittest
@@ -115,7 +116,11 @@ class PanelAnalysisRoutingTest(unittest.IsolatedAsyncioTestCase):
         chats = [c for c, _ in self.calls]
         self.assertEqual(chats, [55, None, OWNER_CHAT, OWNER_CHAT])
         self.assertEqual([kw.get("personal", True) for _, kw in self.calls], [False, False, True, True])
-        self.assertTrue(all(kw.get("buttons") is None for _, kw in self.calls[:2]))  # no owner-plan buttons for users
+        # users get only a web link to their own analysis, never the owner's plan / "Aldım" buttons
+        for _, kw in self.calls[:2]:
+            markup = kw["buttons"]("cevap", ["BTC"]) if kw.get("buttons") else None
+            buttons = [b for row in (markup.inline_keyboard if markup else []) for b in row]
+            self.assertTrue(all(b.url and "/app/analizlerim?id=" in b.url and not b.callback_data for b in buttons))
         self.assertEqual([d.get("user_id") for d in self.pushed], ["u1", "u2", "o", None])
         self.assertEqual(len({d["id"] for d in self.pushed}), 4)
 
@@ -178,6 +183,18 @@ class OwnKeysBotTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(ran[0]["keys"], {"nvidia": "nv"})
 
 
+class StrategyExplainTest(unittest.TestCase):
+    def test_eliminated_counts_each_rule_and_missing_fk_fails(self):
+        import quant_scan
+        data = {"excluded": 7, "rows": [
+            {"kod": "A", "fk": 5, "kalite": 80, "momentum_goreli": 3},
+            {"kod": "B", "fk": None, "kalite": 90, "momentum_goreli": -5},
+            {"kod": "C", "fk": 15, "kalite": 60, "momentum_goreli": 10}]}
+        rules = {"fk_max": 10, "momentum_min": 0, "quality_min": 70}
+        self.assertEqual(quant_scan.eliminated(data, rules), {"veri_eksik": 7, "fk": 2, "momentum": 1, "kalite": 1})
+        self.assertEqual([r["kod"] for r in quant_scan.rank(data, rules)], ["A"])
+
+
 class CloudStateTest(unittest.TestCase):
     """data/ survives a wiped disk: needs a local MongoDB, skipped without one."""
 
@@ -214,6 +231,94 @@ class CloudStateTest(unittest.TestCase):
             cs._collection().database.client.close()
             os.environ.pop("STATE_MONGO_URL", None)
             importlib.reload(cloud_store)
+
+
+class PublicChatLimitTest(unittest.IsolatedAsyncioTestCase):
+    """Any Telegram user can message the bot: voice needs a linked account and has an hourly budget."""
+
+    def setUp(self):
+        main._chat_hits.clear()
+        self.replies = []
+
+    def _update(self, chat_id):
+        async def reply_text(text, **kw):
+            self.replies.append(text)
+        voice = types.SimpleNamespace(duration=5, file_size=1000)
+        msg = types.SimpleNamespace(voice=voice, reply_text=reply_text, text="")
+        return types.SimpleNamespace(effective_chat=types.SimpleNamespace(id=chat_id, type="private"), message=msg)
+
+    async def test_unlinked_chat_is_refused_before_transcribing(self):
+        with unittest.mock.patch.object(web_sync, "enabled", return_value=True),                 unittest.mock.patch.object(web_sync, "telegram_linked", unittest.mock.AsyncMock(return_value=False)),                 unittest.mock.patch.object(main.voice_quant, "transcribe") as tr:
+            await main.quant_voice(self._update(555), types.SimpleNamespace(user_data={}))
+        tr.assert_not_called()
+        self.assertIn("bağla", self.replies[-1])
+
+    async def test_linked_chat_gets_six_voice_messages_an_hour(self):
+        with unittest.mock.patch.object(web_sync, "enabled", return_value=True),                 unittest.mock.patch.object(web_sync, "telegram_linked", unittest.mock.AsyncMock(return_value=True)):
+            allowed = [main.chat_rate_ok(777, "voice", 6, 3600) for _ in range(6)]
+            self.assertTrue(all(allowed))
+            await main.quant_voice(self._update(777), types.SimpleNamespace(user_data={}))
+        self.assertIn("Saatte en fazla 6", self.replies[-1])
+
+    def test_owner_chat_is_never_limited(self):
+        self.assertTrue(all(main.chat_rate_ok(OWNER_CHAT, "public", 1, 600) for _ in range(5)))
+        self.assertTrue(main.chat_rate_ok(888, "public", 1, 600))
+        self.assertFalse(main.chat_rate_ok(888, "public", 1, 600))
+
+
+class BackupTest(unittest.TestCase):
+    """Daily dump of every collection and its restore: needs a local MongoDB, skipped without one."""
+
+    def test_dump_prune_and_restore_into_new_database(self):
+        import importlib
+        import sys
+        import cloud_store
+        import db_backup
+        try:
+            from pymongo import MongoClient
+            client = MongoClient("mongodb://127.0.0.1:27017", serverSelectionTimeoutMS=1500)
+            client.admin.command("ping")
+        except Exception:
+            self.skipTest("no local MongoDB")
+        src, dst = "kapanis_test_backup", "kapanis_test_backup_geri"
+        os.environ["STATE_MONGO_URL"], os.environ["STATE_DB_NAME"] = "mongodb://127.0.0.1:27017", src
+        folder = tempfile.mkdtemp()
+        os.environ["BACKUP_DIR"], os.environ["BACKUP_KEEP"] = folder, "2"
+        importlib.reload(cloud_store)
+        bk = importlib.reload(db_backup)
+        try:
+            from datetime import datetime, timezone
+            client[src].users.insert_many([{"id": "u1", "email": "a@example.com", "created": datetime(2026, 1, 2, tzinfo=timezone.utc)},
+                                           {"id": "u2", "email": "b@example.com"}])
+            client[src].portfolios.insert_one({"user_id": "u1", "rev": 3, "positions": [{"kod": "THYAO", "adet": 10.5}]})
+            for day in (1, 2, 3):
+                path, counts = bk.run(datetime(2026, 9, day, 3, 30, tzinfo=timezone.utc))
+            self.assertEqual(counts, {"portfolios": 1, "users": 2})
+            self.assertEqual(len(list(pathlib.Path(folder).glob("kapanis-*.jsonl.gz"))), 2)  # BACKUP_KEEP
+            rows = list(bk.read(path))
+            self.assertIsInstance(next(d for c, d in rows if c == "users" and d["id"] == "u1")["created"], datetime)
+
+            sys.path.insert(0, str(pathlib.Path(__file__).parent / "scripts"))
+            import restore_backup
+            with unittest.mock.patch.object(sys, "argv", ["x", str(path)]):
+                self.assertEqual(restore_backup.main(), 0)  # dry run
+            self.assertEqual(client[dst].users.count_documents({}), 0)
+            with unittest.mock.patch.object(sys, "argv", ["x", str(path), "--yes", "--db", dst]):
+                restore_backup.main()
+            self.assertEqual(client[dst].users.count_documents({}), 2)
+            self.assertEqual(client[dst].portfolios.find_one()["positions"][0]["adet"], 10.5)
+            client[dst].users.delete_one({"id": "u2"})
+            with unittest.mock.patch.object(sys, "argv", ["x", str(path), "--yes", "--db", dst]):
+                restore_backup.main()  # non-empty collection: skipped, never mixed
+            self.assertEqual(client[dst].users.count_documents({}), 1)
+        finally:
+            client.drop_database(src)
+            client.drop_database(dst)
+            client.close()
+            for k in ("STATE_MONGO_URL", "BACKUP_DIR", "BACKUP_KEEP"):
+                os.environ.pop(k, None)
+            importlib.reload(cloud_store)
+            importlib.reload(db_backup)
 
 
 if __name__ == "__main__":

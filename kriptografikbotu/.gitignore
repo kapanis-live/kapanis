@@ -22,3 +22,6 @@ ornek
 # Personal data (portfolio, decisions, chat history, settings): stays on this PC and in MongoDB Atlas,
 # never in git. Migration: scripts/import_data_to_atlas.py
 data/
+
+# Daily database backups (every user's data): stay on the server, never in git
+backups/

@@ -200,8 +200,9 @@ scp -i $HOME\.ssh\kapanis-vm_key.pem C:\Users\etemk\OneDrive\Desktop\kriptografi
 ```
 
 Sonra makinede `nano deploy/bot.env`:
-- `WEB_URL=http://localhost:8001` satırını `WEB_URL=https://kapanis.germanywestcentral.cloudapp.azure.com` olarak **değiştir**
-  (aynı değişken iki kez olmasın).
+- `WEB_URL` satırına dokunma: `docker-compose.yml` bot için `http://web:8001` (iç ağ) verir.
+  Bot uçları (`/api/bot/*`, `/api/ingest/*`, `/api/commands/pending`) internetten kapalıdır; bot web'e yalnız iç ağdan ulaşır.
+- `PUBLIC_URL=https://kapanis.live` ekle (Telegram mesajlarındaki bağlantılar için).
 - Şu satırları ekle: `STATE_MONGO_URL=...` (URL-kodlu şifreyle) ve `STATE_DB_NAME=kapanis`.
 - `OLLAMA_URL` satırı varsa sil; sunucuda Ollama yok.
 
@@ -235,7 +236,29 @@ docker compose logs -f web      # Ctrl+C ile çık
 | Durum | `docker compose ps` |
 | Bellek | `free -h` |
 
-Makine Azure tarafından yeniden başlatılırsa servisler kendiliğinden açılır (`restart: unless-stopped`).
+Makine yeniden başlatılırsa servisler kendiliğinden açılır (`restart: unless-stopped`).
+
+### 5.7 Güvenlik ve yedek
+
+- `deploy/Caddyfile`: HTTPS, güvenlik başlıkları (HSTS, iframe yasağı, nosniff), bot yollarını dışarıya 404.
+  Kontrol: `curl -sI https://kapanis.live | grep -i strict` ve `curl -s -o /dev/null -w '%{http_code}' https://kapanis.live/api/commands/pending` → `404`.
+- Hız sınırı API'de: IP başına dakikada 180 istek, kullanıcı başına dakikada 40 grafik, en fazla 3 açık canlı bağlantı (`RATE_*`).
+- Telegram: sesli sorgu yalnız siteye bağlı hesaplar için, saatte 6; herkese açık komutlar 10 dakikada 30.
+- **Günlük yedek:** worker her gün 03:30'da bütün veritabanını `backups` birimine yazar
+  (`kapanis-YYYYMMDD-HHMM.jsonl.gz`, son 14 gün). Alınamazsa sahibine Telegram uyarısı gelir.
+  Atlas M0 kendi yedeğini tutmaz; bu dosyalar tek kopyadır, ara sıra bilgisayara indir:
+
+```bash
+docker compose exec worker ls -l /app/kriptografikbotu/backups
+docker compose cp worker:/app/kriptografikbotu/backups ./yedek-indir     # sonra scp ile bilgisayara
+```
+
+Geri yükleme (önce yeni bir veritabanı adına, kontrol et, sonra `DB_NAME`/`STATE_DB_NAME`'i değiştir):
+
+```bash
+docker compose exec -w /app/kriptografikbotu worker python scripts/restore_backup.py backups/kapanis-20260927-0330.jsonl.gz            # deneme
+docker compose exec -w /app/kriptografikbotu worker python scripts/restore_backup.py backups/kapanis-20260927-0330.jsonl.gz --yes --db kapanis_geri
+```
 
 ## 6. Geçiş günü (sıra önemli)
 

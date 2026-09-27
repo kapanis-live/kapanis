@@ -1,0 +1,16 @@
+# Use the locally verified React build on a small VM; Python dependencies remain reproducible.
+FROM python:3.11-slim
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 TZ=Europe/Istanbul
+WORKDIR /app
+COPY kapanis/backend/requirements.cloud.txt /tmp/web-req.txt
+COPY kriptografikbotu/requirements.txt /tmp/bot-req.txt
+RUN pip install -r /tmp/web-req.txt -r /tmp/bot-req.txt
+COPY kapanis/backend/ kapanis/backend/
+COPY kriptografikbotu/ kriptografikbotu/
+COPY kapanis/frontend/build/ kapanis/frontend/build/
+COPY kapanis/frontend/public/logos/ kapanis/frontend/build/logos/
+COPY deploy/start.sh /app/start.sh
+RUN chmod +x /app/start.sh && useradd --create-home kapanis && mkdir -p /app/kriptografikbotu/data /app/kriptografikbotu/backups && chown -R kapanis /app
+USER kapanis
+EXPOSE 8001
+CMD ["/app/start.sh", "web"]

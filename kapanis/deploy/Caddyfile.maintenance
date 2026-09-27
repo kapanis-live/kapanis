@@ -1,0 +1,9 @@
+kapanis.live {
+    root * /srv/maintenance
+    rewrite * /index.html
+    header Cache-Control "no-store"
+    header Retry-After "3600"
+    file_server {
+        status 503
+    }
+}

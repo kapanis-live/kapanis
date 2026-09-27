@@ -27,6 +27,8 @@ const NAV = [
     items: [
       { to: "/app/sinyaller", label: "Sinyaller & Analiz", icon: Activity },
       { to: "/app/analizlerim", label: "Son Analizlerim", icon: FileBarChart },
+      { to: "/app/stratejiler", label: "Strateji Kurucu", icon: FlaskConical },
+      { to: "/app/kriz", label: "Kriz Planı", icon: ShieldCheck },
       { to: "/app/planlar", label: "Planlar & Fırsatlar", icon: Target },
       { to: "/app/kontrol", label: "Kontrol & Karşılaştır", icon: ClipboardCheck },
       { to: "/app/alarmlar", label: "Alarmlar", icon: Bell },
@@ -61,12 +63,14 @@ const NAV = [
 
 // Sistem sahibi olmayan kullanıcı: kendi portföyü, piyasa sayfaları, hesabı (botun kişisel verisi kapalı)
 const USER_NAV = [
-  { group: "Portföy", items: [{ to: "/app/portfoyum", label: "Portföyüm", icon: Briefcase }] },
+  { group: "Portföy", items: [{ to: "/app/portfoyum", label: "Portföyüm", icon: Briefcase },
+    { to: "/app/kriz", label: "Kriz Planı", icon: ShieldCheck }] },
   {
     group: "Piyasa",
     items: [
       { to: "/app/grafik", label: "Grafik & Analiz", icon: CandlestickChart },
       { to: "/app/analizlerim", label: "Son Analizlerim", icon: FileBarChart },
+      { to: "/app/stratejiler", label: "Strateji Kurucu", icon: FlaskConical },
       { to: "/app/makro", label: "Makro", icon: Globe2 },
       { to: "/app/vadeli", label: "Vadeli", icon: LineChart },
     ],
@@ -242,6 +246,7 @@ function SideFooter() {
 export function PanelLayout({ children }) {
   const [open, setOpen] = useState(false);
   const { logout, owner } = useAuth();
+  const myPortfolio = useData("my-portfolio", "/portfolio", { refetchInterval: 8000 });
   const loc = useLocation();
   const navigate = useNavigate();
 
@@ -251,7 +256,7 @@ export function PanelLayout({ children }) {
   };
 
   return (
-    <div className="min-h-screen bg-ink text-t-1">
+    <div className={cn("min-h-screen bg-ink text-t-1", myPortfolio.data?.risk_mode === "defansif" && "kp-defensive")}>
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-hairline bg-side lg:flex">
         <div className="px-5 pb-6 pt-5"><Brand /></div>
         <div className="flex-1 overflow-y-auto px-3 pb-4"><SideNav /></div>
@@ -282,6 +287,10 @@ export function PanelLayout({ children }) {
           </div>
           <TopActions onLogout={handleLogout} />
         </header>
+
+        {myPortfolio.data?.risk_mode === "defansif" && <Link to="/app/kriz" className="kp-defensive-banner block px-4 py-2 text-sm font-semibold md:px-7">
+          Defansif mod açık · risk hedefi %{myPortfolio.data.risk_target_pct} · Planı gör →
+        </Link>}
 
         <main key={loc.pathname} className="kp-main mx-auto max-w-[1400px] px-4 pb-24 pt-7 animate-fade-in md:px-7 lg:px-10 lg:pb-10">
           {children}

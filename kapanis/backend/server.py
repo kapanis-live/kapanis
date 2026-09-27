@@ -7,6 +7,7 @@ load_dotenv(ROOT_DIR / ".env")
 import os
 import hmac
 import logging
+import math
 import jwt
 import bcrypt
 from datetime import datetime, timezone, timedelta
@@ -20,7 +21,9 @@ from bson import ObjectId
 import mock_data
 import chart_data
 import identity
+import limits
 import user_api
+from starlette.responses import JSONResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -39,6 +42,14 @@ MAX_FAILED = 5
 LOCK_MINUTES = 15
 
 app = FastAPI()
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    """Every /api request counts against the client IP's per-minute budget (the stream counts once when opened)."""
+    if request.url.path.startswith("/api/") and not limits.hit(f"ip:{limits.client_ip(request)}", limits.IP_PER_MINUTE):
+        return JSONResponse({"detail": "Çok sık istek gönderildi; bir dakika sonra tekrar dene."}, status_code=429)
+    return await call_next(request)
 api = APIRouter(prefix="/api")
 
 
@@ -109,7 +120,11 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Geçersiz oturum.")
 
 
-async def require_bot_key(x_bot_key: Optional[str] = Header(None)):
+async def require_bot_key(x_bot_key: Optional[str] = Header(None), x_kapanis_public: Optional[str] = Header(None)):
+    # The site's reverse proxy marks every request that came from the internet (X-Kapanis-Public).
+    # Bot endpoints are for the worker on the internal network only: even a leaked key does not work from outside.
+    if x_kapanis_public:
+        raise HTTPException(status_code=404, detail="Not found")
     if not x_bot_key or not hmac.compare_digest(x_bot_key, BOT_API_KEY):
         raise HTTPException(status_code=401, detail="Geçersiz bot anahtarı.")
     return True
@@ -310,6 +325,7 @@ async def get_candles(symbol: str, user: dict = Depends(get_current_user)):
 @api.get("/chart/{symbol}")
 async def get_chart(symbol: str, tf: str = "1d", market: Optional[str] = None, user: dict = Depends(get_current_user)):
     """Candles + SMA20/50/200, RSI, volume MA and VWAP for any coin, BIST or US ticker."""
+    limits.check_user(user["id"], "chart", limits.CHART_PER_MINUTE)  # each new symbol is an outbound request
     try:
         return await chart_data.chart(symbol, tf, market)
     except chart_data.ChartError as e:
@@ -430,6 +446,154 @@ ACTION_TYPES = {"analysis.request", "plan.add", "plan.remove", "firsat.run", "ta
 class ActionBody(BaseModel):
     type: str
     payload: dict = {}
+
+
+class StrategyRules(BaseModel):
+    fk_max: Optional[float] = None
+    momentum_min: Optional[float] = None
+    quality_min: Optional[float] = None
+
+
+class StrategyBody(BaseModel):
+    name: str
+    rules: StrategyRules
+
+
+def _validated_strategy(body: StrategyBody) -> dict:
+    name = body.name.strip()
+    if not 2 <= len(name) <= 40 or any(ch in name for ch in "<>/\\"):
+        raise HTTPException(status_code=400, detail="Strateji adı 2–40 karakter olmalı.")
+    r = body.rules
+    if any(v is not None and not math.isfinite(v) for v in (r.fk_max, r.momentum_min, r.quality_min)):
+        raise HTTPException(status_code=400, detail="Koşullar sonlu sayı olmalı.")
+    if r.fk_max is not None and not 0 < r.fk_max <= 100:
+        raise HTTPException(status_code=400, detail="F/K üst sınırı 0–100 arasında olmalı.")
+    if r.momentum_min is not None and not -100 <= r.momentum_min <= 300:
+        raise HTTPException(status_code=400, detail="3 aylık göreli momentum -100 ile 300 arasında olmalı.")
+    if r.quality_min is not None and not 0 <= r.quality_min <= 100:
+        raise HTTPException(status_code=400, detail="Kalite puanı 0–100 arasında olmalı.")
+    return {"name": name, "name_key": name.casefold(), "rules": r.model_dump()}
+
+
+async def _queue_strategy_run(strategy: dict, user: dict, top_n: int = 3) -> dict:
+    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    count = await db.commands.count_documents({"user_id": user["id"], "type": "strategy.scan", "created_at": {"$gte": since}})
+    if count >= 5:
+        raise HTTPException(status_code=429, detail="Günde en fazla 5 strateji taraması yapılabilir.")
+    pending = await db.commands.find_one({"user_id": user["id"], "type": "strategy.scan", "status": "pending"})
+    if pending:
+        raise HTTPException(status_code=409, detail="Önceki strateji taraman sürüyor.")
+    return await _queue_command("strategy.scan", {"strategy_id": strategy["id"], "top_n": top_n}, user)
+
+
+@api.get("/strategies")
+async def list_strategies(user: dict = Depends(get_current_user)):
+    return await db.strategies.find({"user_id": user["id"]}, {"_id": 0, "name_key": 0}).sort("created_at", -1).to_list(20)
+
+
+@api.post("/strategies")
+async def create_strategy(body: StrategyBody, user: dict = Depends(get_current_user)):
+    value = _validated_strategy(body)
+    if await db.strategies.count_documents({"user_id": user["id"]}) >= 20:
+        raise HTTPException(status_code=400, detail="En fazla 20 strateji kaydedebilirsin.")
+    if await db.strategies.find_one({"user_id": user["id"], "name_key": value["name_key"]}):
+        raise HTTPException(status_code=409, detail="Bu adla bir stratejin var.")
+    doc = {"id": f"st_{ObjectId()}", "user_id": user["id"], **value,
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.strategies.insert_one(dict(doc))
+    doc.pop("_id", None)
+    doc.pop("name_key", None)
+    return doc
+
+
+@api.delete("/strategies/{strategy_id}")
+async def delete_strategy(strategy_id: str, user: dict = Depends(get_current_user)):
+    result = await db.strategies.delete_one({"id": strategy_id, "user_id": user["id"]})
+    if not result.deleted_count:
+        raise HTTPException(status_code=404, detail="Strateji bulunamadı.")
+    return {"ok": True}
+
+
+@api.post("/strategies/{strategy_id}/run")
+async def run_strategy(strategy_id: str, user: dict = Depends(get_current_user)):
+    strategy = await db.strategies.find_one({"id": strategy_id, "user_id": user["id"]})
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strateji bulunamadı.")
+    return await _queue_strategy_run(strategy, user)
+
+
+class TelegramStrategyRun(BaseModel):
+    chat_id: int
+    name: str
+
+
+@api.get("/strategies/{strategy_id}/history")
+async def strategy_history(strategy_id: str, user: dict = Depends(get_current_user)):
+    """Forward record of a strategy: each past scan's picks and their return since that scan vs BIST 100.
+    Point-in-time fundamentals are not available for free, so this is NOT a historical backtest."""
+    runs = await db.analyses.find({"user_id": user["id"], "strategy_id": strategy_id, "rows": {"$exists": True}},
+                                  {"_id": 0, "id": 1, "zaman": 1, "rows": 1, "xu100": 1, "gecen": 1}).sort("zaman", -1).to_list(10)
+    closes: dict[str, float | None] = {}
+
+    async def close_of(code: str):
+        if code not in closes:
+            try:
+                c = await chart_data.chart(code, "1d", "BIST")
+                last = chart_data.last_closed(c.get("candles"), "BIST")
+                closes[code] = last["c"] if last else None
+            except Exception:
+                closes[code] = None
+        return closes[code]
+
+    index_now = await close_of("XU100")
+    out = []
+    for run in runs:
+        picks = []
+        for r in run.get("rows") or []:
+            now = await close_of(r["kod"])
+            picks.append({"kod": r["kod"], "fiyat_o_gun": r.get("fiyat"), "fiyat_simdi": now,
+                          "getiri": round((now / r["fiyat"] - 1) * 100, 2) if now and r.get("fiyat") else None})
+        rets = [p["getiri"] for p in picks if p["getiri"] is not None]
+        idx = round((index_now / run["xu100"] - 1) * 100, 2) if index_now and run.get("xu100") else None
+        out.append({"id": run["id"], "zaman": run["zaman"], "secilen": picks, "gecen": run.get("gecen"),
+                    "ortalama_getiri": round(sum(rets) / len(rets), 2) if rets else None, "xu100_getiri": idx})
+    return {"kosular": out, "not": "Tarama anından bu yana, eşit ağırlıklı, maliyet ve temettü hariç, son kapanışlarla. "
+            "Geriye dönük test değildir: bilançoların geçmişteki hâli ücretsiz kaynaklarda yok. Gelecek için garanti değildir."}
+
+
+@api.post("/bot/telegram/strategy-run")
+async def telegram_strategy_run(body: TelegramStrategyRun, _: bool = Depends(require_bot_key)):
+    account = await db.users.find_one({"telegram_chat_id": body.chat_id})
+    if not account:
+        raise HTTPException(status_code=404, detail="Telegram hesabını siteden bağla.")
+    user = _public_user(account)
+    strategy = await db.strategies.find_one({"user_id": user["id"], "name_key": body.name.strip().casefold()})
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Bu adla kayıtlı strateji bulunamadı.")
+    return await _queue_strategy_run(strategy, user)
+
+
+class TelegramQuantRun(BaseModel):
+    chat_id: int
+    top_n: int = 3
+
+
+@api.post("/bot/telegram/quant-run")
+async def telegram_quant_run(body: TelegramQuantRun, _: bool = Depends(require_bot_key)):
+    if not 1 <= body.top_n <= 10:
+        raise HTTPException(status_code=400, detail="1–10 hisse iste.")
+    account = await db.users.find_one({"telegram_chat_id": body.chat_id})
+    if not account:
+        raise HTTPException(status_code=404, detail="Telegram hesabını siteden bağla.")
+    return await _queue_strategy_run({"id": "builtin:quality_momentum"}, _public_user(account), body.top_n)
+
+
+@api.get("/bot/strategies/{strategy_id}")
+async def bot_get_strategy(strategy_id: str, _: bool = Depends(require_bot_key)):
+    strategy = await db.strategies.find_one({"id": strategy_id}, {"_id": 0, "name_key": 0})
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strateji bulunamadı.")
+    return strategy
 
 
 @api.post("/actions")
@@ -617,6 +781,7 @@ async def startup():
     await db.users.create_index("telegram_chat_id", sparse=True)
     await db.commands.create_index([("user_id", 1), ("type", 1), ("created_at", -1)])
     await db.analyses.create_index([("user_id", 1), ("zaman", -1)])
+    await db.strategies.create_index([("user_id", 1), ("name_key", 1)], unique=True)
     await user_api.ensure_indexes(db)
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier")

@@ -20,18 +20,22 @@ import { cn } from "@/lib/utils";
 
 const TFS = [["15m", "15 dk"], ["1h", "1 saat"], ["4h", "4 saat"], ["1d", "Günlük"], ["1w", "Haftalık"]];
 const MARKETS = ["KRIPTO", "BIST", "ABD"];
-const LINES = [["sma20", "SMA 20"], ["sma50", "SMA 50"], ["sma200", "SMA 200"],
-  ["ema9", "EMA 9"], ["ema21", "EMA 21"], ["ema50", "EMA 50"], ["ema100", "EMA 100"], ["ema200", "EMA 200"], ["vwap", "VWAP"]];
+const LINES = [["sma5", "SMA 5"], ["sma10", "SMA 10"], ["sma20", "SMA 20"], ["sma50", "SMA 50"],
+  ["sma100", "SMA 100"], ["sma200", "SMA 200"], ["ema5", "EMA 5"], ["ema9", "EMA 9"], ["ema10", "EMA 10"],
+  ["ema20", "EMA 20"], ["ema21", "EMA 21"], ["ema50", "EMA 50"], ["ema100", "EMA 100"], ["ema200", "EMA 200"], ["vwap", "VWAP"]];
 const INDICATORS = [
   { title: "Trend ve fiyat", items: [...LINES, ["bollinger", "Bollinger Bantları 20,2"]] },
   { title: "Momentum", items: [["rsi", "RSI 14"], ["macd", "MACD 12,26,9"], ["stoch", "Stokastik 14,3"],
-    ["cci", "CCI 20"], ["roc", "ROC 12"], ["williams_r", "Williams %R 14"]] },
-  { title: "Hacim ve oynaklık", items: [["atr", "ATR 14"], ["obv", "OBV"], ["mfi", "MFI 14"]] },
+    ["stoch_rsi", "Stokastik RSI 14"], ["cci", "CCI 20"], ["roc", "ROC 12"],
+    ["williams_r", "Williams %R 14"], ["ultimate", "Ultimate Oscillator"]] },
+  { title: "Hacim ve oynaklık", items: [["atr", "ATR 14"], ["adx", "ADX 14"], ["obv", "OBV"],
+    ["mfi", "MFI 14"], ["bull_bear", "Bull / Bear Power"]] },
 ];
-const INDICATOR_COLORS = { sma20: "#d99d56", sma50: "#4eabdb", sma200: "#b18be5", ema9: "#ef7062",
-  ema21: "#e7bf59", ema50: "#57bdab", ema100: "#8c9dec", ema200: "#cf85c3", vwap: "#c9a851",
+const INDICATOR_COLORS = { sma5: "#8cb7e0", sma10: "#8bd0b3", sma20: "#d99d56", sma50: "#4eabdb", sma100: "#c7a0df", sma200: "#b18be5",
+  ema5: "#f0a971", ema9: "#ef7062", ema10: "#d189bf", ema20: "#8cad76", ema21: "#e7bf59", ema50: "#57bdab", ema100: "#8c9dec", ema200: "#cf85c3", vwap: "#c9a851",
   bollinger: "#8099d6", macd: "#6d9de7", stoch: "#d1a457", atr: "#8db9a2", cci: "#d38da0",
-  roc: "#a5a0dd", obv: "#83bcda", mfi: "#b6a67b", williams_r: "#92b888" };
+  roc: "#a5a0dd", obv: "#83bcda", mfi: "#b6a67b", williams_r: "#92b888", stoch_rsi: "#df8bce",
+  ultimate: "#7cc2a5", adx: "#e8ad69", bull_bear: "#c29edd" };
 const DEFAULT_ON = { sma20: true, sma50: true, sma200: true, rsi: true, seviye: true, bolge: true, sinyal: true };
 const OVERLAYS = [["seviye", "Alış + plan"], ["bolge", "Destek / direnç"], ["sinyal", "Bot sinyalleri"]];
 
@@ -131,9 +135,14 @@ function CandleChart({ data, on, overlay }) {
       pane += 1;
     }
     if (on.stoch) { line("stoch_k", INDICATOR_COLORS.stoch, pane); line("stoch_d", c.down, pane, 1); pane += 1; }
-    ["atr", "cci", "roc", "williams_r", "obv", "mfi"].forEach((key) => {
+    ["atr", "adx", "cci", "roc", "williams_r", "stoch_rsi", "ultimate", "obv", "mfi"].forEach((key) => {
       if (on[key]) { line(key, INDICATOR_COLORS[key], pane); pane += 1; }
     });
+    if (on.bull_bear) {
+      line("bull_power", c.up, pane);
+      line("bear_power", c.down, pane, 1);
+      pane += 1;
+    }
     chart.panes().forEach((p, i) => p.setStretchFactor(i === 0 ? 65 : i === 1 ? 17 : 18));
     chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, data.candles.length - 140), to: data.candles.length + 3 });
 
@@ -168,8 +177,8 @@ function CandleChart({ data, on, overlay }) {
           {on.rsi && <span><span className="text-t-3">RSI</span> <b className="font-semibold text-rsi">{data.rsi[i] == null ? "—" : Math.round(data.rsi[i])}</b></span>}
         </div>
       </div>
-      <div ref={ref} style={{ height: 440 + 150 * (Number(!!on.rsi) + Number(!!on.macd) + Number(!!on.stoch) +
-        ["atr", "cci", "roc", "williams_r", "obv", "mfi"].filter((key) => on[key]).length) }} className="w-full" data-testid="tv-chart" />
+      <div ref={ref} style={{ height: 440 + 150 * (Number(!!on.rsi) + Number(!!on.macd) + Number(!!on.stoch) + Number(!!on.bull_bear) +
+        ["atr", "adx", "cci", "roc", "williams_r", "stoch_rsi", "ultimate", "obv", "mfi"].filter((key) => on[key]).length) }} className="w-full" data-testid="tv-chart" />
     </div>
   );
 }

@@ -1,0 +1,12 @@
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+**/*.log.*
+**/.venv
+**/.uv-python
+**/node_modules
+**/__pycache__
+kriptografikbotu/data
+.git
+*.zip

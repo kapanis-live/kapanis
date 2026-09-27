@@ -9,6 +9,7 @@ Every request carries X-Bot-Key. Nothing here runs unless WEB_URL and BOT_API_KE
 """
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable
 
@@ -563,6 +564,23 @@ async def user_keys(user_id: str) -> dict | None:
     return {k: v for k, v in r.json().items() if k in ("deepseek", "nvidia") and v} or None
 
 
+_linked_cache: dict[int, tuple[float, bool]] = {}
+
+
+async def telegram_linked(chat_id: int) -> bool:
+    """Is this chat linked to a site account? Cached 5 minutes so a flood of messages is one lookup."""
+    now = time.monotonic()
+    hit = _linked_cache.get(chat_id)
+    if hit and now - hit[0] < 300:
+        return hit[1]
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"{config.WEB_URL}/api/bot/telegram/linked/{chat_id}", headers=_headers())
+    r.raise_for_status()
+    linked = bool(r.json().get("bagli"))
+    _linked_cache[chat_id] = (now, linked)
+    return linked
+
+
 async def link_telegram(code: str, chat_id: int, username: str | None) -> tuple[bool, str]:
     """/bagla KOD: ask the web backend to bind this chat to the account that created the one-time code."""
     async with httpx.AsyncClient(timeout=15) as client:
@@ -574,6 +592,66 @@ async def link_telegram(code: str, chat_id: int, username: str | None) -> tuple[
         return False, "Kod geçersiz ya da süresi dolmuş (10 dakika). Siteden yeni kod al."
     r.raise_for_status()
     return False, "Bağlanamadı."
+
+
+async def telegram_add_position(chat_id: int, code: str, quantity: float, price: float) -> dict:
+    """Record a linked user's manually reported BIST purchase on the site."""
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(f"{config.WEB_URL}/api/bot/telegram/position", headers=_headers(),
+                              json={"chat_id": chat_id, "piyasa": "BIST", "kod": code,
+                                    "adet": quantity, "maliyet": price})
+    if r.status_code >= 400:
+        if r.status_code == 404:
+            raise ValueError("Önce sitede Hesap → Telegram bölümünden hesabını bağla.")
+        try:
+            detail = r.json().get("detail")
+        except (ValueError, TypeError, AttributeError):
+            detail = None
+        raise ValueError(detail if isinstance(detail, str) else "Portföye eklenemedi; kod, adet ve fiyatı kontrol et.")
+    return r.json()
+
+
+async def telegram_run_strategy(chat_id: int, name: str) -> dict:
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(f"{config.WEB_URL}/api/bot/telegram/strategy-run", headers=_headers(),
+                              json={"chat_id": chat_id, "name": name})
+    if r.status_code >= 400:
+        try:
+            detail = r.json().get("detail")
+        except (ValueError, TypeError, AttributeError):
+            detail = None
+        raise ValueError(detail if isinstance(detail, str) else "Strateji başlatılamadı.")
+    return r.json()
+
+
+async def telegram_risk_proposal(chat_id: int) -> dict:
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(f"{config.WEB_URL}/api/bot/telegram/risk-proposal", headers=_headers(),
+                              json={"chat_id": chat_id})
+    if r.status_code == 404:
+        raise ValueError("Önce sitede Hesap → Telegram bölümünden hesabını bağla.")
+    r.raise_for_status()
+    return r.json()
+
+
+async def telegram_quant_run(chat_id: int, top_n: int) -> dict:
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.post(f"{config.WEB_URL}/api/bot/telegram/quant-run", headers=_headers(),
+                              json={"chat_id": chat_id, "top_n": top_n})
+    if r.status_code >= 400:
+        try:
+            detail = r.json().get("detail")
+        except (ValueError, TypeError, AttributeError):
+            detail = None
+        raise ValueError(detail if isinstance(detail, str) else "Quant taraması başlatılamadı.")
+    return r.json()
+
+
+async def get_strategy(strategy_id: str) -> dict:
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(f"{config.WEB_URL}/api/bot/strategies/{strategy_id}", headers=_headers())
+    r.raise_for_status()
+    return r.json()
 
 
 async def push_extras(doc: dict):
@@ -693,7 +771,7 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
     return f"❌ Panel: bilinmeyen komut {t}"
 
 
-USER_COMMANDS = {"analysis.request"}
+USER_COMMANDS = {"analysis.request", "strategy.scan"}
 
 
 def command_meta(cmd: dict) -> dict:

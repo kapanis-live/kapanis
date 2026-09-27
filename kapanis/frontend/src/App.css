@@ -1,1 +1,8 @@
 /* Kapanış — global stiller index.css içinde. */
+@keyframes kp-position-enter { from { opacity: .4; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.kp-position-enter { animation: kp-position-enter .28s ease-out both; }
+/* yeni gelen pozisyon 4 sn vurgulanır (yanıp sönmez; 150 ms geçiş) */
+.kp-position-new > .kp-card, .kp-position-new > section { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow 150ms; }
+@media (prefers-reduced-motion: reduce) { .kp-position-enter { animation: none; } }
+.kp-defensive header { border-color: #9b4d4d; box-shadow: inset 0 -2px #9b4d4d; }
+.kp-defensive-banner { color: #ffe3e3; background: #6e2929; }

@@ -20,7 +20,7 @@ COPY kapanis/backend/ kapanis/backend/
 COPY kriptografikbotu/ kriptografikbotu/
 COPY --from=web /src/build kapanis/frontend/build
 COPY deploy/start.sh /app/start.sh
-RUN chmod +x /app/start.sh && useradd --create-home kapanis && mkdir -p /app/kriptografikbotu/data && chown -R kapanis /app
+RUN chmod +x /app/start.sh && useradd --create-home kapanis && mkdir -p /app/kriptografikbotu/data /app/kriptografikbotu/backups && chown -R kapanis /app
 USER kapanis
 EXPOSE 8001
 CMD ["/app/start.sh", "web"]

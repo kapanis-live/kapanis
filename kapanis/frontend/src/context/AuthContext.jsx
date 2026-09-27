@@ -4,6 +4,7 @@ import { ClerkProvider, useAuth as useClerkAuth, useClerk } from "@clerk/react";
 import { trTR } from "@clerk/localizations";
 import api, { API, formatApiErrorDetail } from "@/lib/api";
 import { LoadingState } from "@/components/states";
+import { setLiveTokenGetter } from "@/lib/live";
 
 // user: null = kontrol ediliyor, false = giriş yapılmamış, obje = giriş yapılmış ({id, email, role, ...})
 // mode: "legacy" (bu bilgisayardaki tek yönetici şifresi) ya da "clerk" (Google / e-posta + kod)
@@ -70,7 +71,11 @@ function ClerkBridge({ children, legacy }) {
       if (t) cfg.headers.Authorization = `Bearer ${t}`;
       return cfg;
     });
-    return () => api.interceptors.request.eject(id);
+    setLiveTokenGetter(() => tokenRef.current?.());
+    return () => {
+      api.interceptors.request.eject(id);
+      setLiveTokenGetter(null);
+    };
   }, []);
 
   const refresh = useCallback(async () => {

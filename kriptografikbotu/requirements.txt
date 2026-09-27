@@ -8,3 +8,4 @@ websockets>=13
 mplfinance>=0.12.10b0
 feedparser>=6.0
 pymongo>=4.6  # cloud_store: data/ kept in MongoDB when STATE_MONGO_URL is set
+faster-whisper>=1.2,<2  # short Telegram voice quant requests; CPU int8

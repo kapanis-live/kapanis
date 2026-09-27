@@ -7,8 +7,8 @@ $web = "C:\Users\etemk\OneDrive\Desktop\kapanis"
 
 $targets = @()
 
-# Bot and API: the venv launcher python.exe lives inside the project folder.
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" | ForEach-Object {
+# Bot and API: venv launchers may use python.exe or hidden pythonw.exe.
+Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" | ForEach-Object {
     $exe = "$($_.ExecutablePath)"
     $cmd = "$($_.CommandLine)"
     if ($exe.StartsWith($bot, [StringComparison]::OrdinalIgnoreCase) -and $cmd -match "main\.py") {

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { DataView } from "@/components/DataView";
 import { chartHref } from "@/components/AssetLogo";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { logo } from "@/lib/dsmap";
+import { usePortfolioStream } from "@/lib/live";
 
 // Kullanıcının kendi gerçek portföyü (Claude Design "Kullanıcı paneli · Portföyüm").
 // Yalnız onun hesabında tutulur; Kapanış işlem yapmaz, aracı kuruma bağlanmaz.
@@ -101,12 +102,35 @@ function FirstRun({ tg, keys, onAdd }) {
 export default function MyPortfolio() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  // Anlık: Telegram'dan /ekle ya da başka sekmedeki değişiklik sunucudan olay olarak gelir; 8 sn'lik yenileme yedek
   const q = useData("my-portfolio", "/portfolio", LIVE);
   const quotes = useData("my-quotes", "/portfolio/quotes", { refetchInterval: 60_000 });
   const tg = useData("tg-status", "/telegram/status");
   const keys = useData("ai-keys", "/ai-keys");
   const [showBuy, setShowBuy] = useState(false);
   const buyRef = useRef(null);
+  usePortfolioStream(() => {
+    qc.invalidateQueries({ queryKey: ["my-portfolio"] });
+    qc.invalidateQueries({ queryKey: ["my-quotes"] });
+  });
+  // Yeni gelen pozisyonu kısa süre vurgula (ilk yüklemede değil); Telegram'dan geldiyse haber ver
+  const seen = useRef(null);
+  const [newIds, setNewIds] = useState([]);
+  useEffect(() => {
+    const open = (q.data?.positions || []).filter((p) => p.durum === "acik");
+    if (!q.data) return undefined;
+    if (seen.current === null) {
+      seen.current = new Set(open.map((p) => p.id));
+      return undefined;
+    }
+    const added = open.filter((p) => !seen.current.has(p.id));
+    open.forEach((p) => seen.current.add(p.id));
+    if (!added.length) return undefined;
+    added.filter((p) => p.kaynak === "telegram").forEach((p) => toast.success(`${p.kod} Telegram'dan portföyüne eklendi.`));
+    setNewIds((f) => [...f, ...added.map((p) => p.id)]);
+    const t = setTimeout(() => setNewIds((f) => f.filter((id) => !added.some((p) => p.id === id))), 4000);
+    return () => clearTimeout(t);
+  }, [q.data]);
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["my-portfolio"] });
     qc.invalidateQueries({ queryKey: ["my-quotes"] });
@@ -132,6 +156,7 @@ export default function MyPortfolio() {
           <div className="kp-page">
             <K.PageHeader controls={false} title="Portföyüm"
               subtitle={fresh ? "Hoş geldin. Üç adımda hazırsın." : "Son kapanmış günlük mumlara göre · yalnız senin hesabında"} />
+            {!fresh && <div className="flex justify-end"><K.Button variant="secondary" onClick={() => navigate("/app/kriz")}>Kriz planını incele</K.Button></div>}
             {fresh ? (
               <FirstRun tg={tg.data} keys={keys.data} onAdd={openBuy} />
             ) : (
@@ -150,7 +175,9 @@ export default function MyPortfolio() {
                     {open.map((p) => {
                       const price = px(p);
                       return (
-                        <K.PositionCard key={p.id} symbol={p.kod} name={MK[p.piyasa]?.label} logo={logo(p.kod, p.piyasa)}
+                        <div key={p.id} className={newIds.includes(p.id) ? "kp-position-enter kp-position-new" : undefined}>
+                          {p.kaynak === "telegram" && <span className="kp-alarm__status is-flat" style={{ display: "inline-block", marginBottom: "0.5rem" }}>Telegram’dan eklendi</span>}
+                          <K.PositionCard symbol={p.kod} name={MK[p.piyasa]?.label} logo={logo(p.kod, p.piyasa)}
                           qty={p.adet} cost={p.maliyet} price={price ?? p.maliyet} cur={CUR[p.para]} stop={p.stop ?? undefined} target={p.hedef ?? undefined}
                           priceLabel={price == null ? "Fiyat alınamadı (alış)" : undefined}
                           onOpenChart={() => navigate(chartHref(p.kod, p.piyasa))}
@@ -158,7 +185,7 @@ export default function MyPortfolio() {
                           onSold={async (e) => {
                             const r = await call(() => api.post(`/portfolio/positions/${p.id}/sell`, { fiyat: e.price }));
                             if (r) { toast.success(`${p.kod} satışı kaydedildi: ${U.fmtSignedMoney(r.kar, CUR[p.para])}`); refresh(); }
-                          }} />
+                          }} /></div>
                       );
                     })}
                   </div>

@@ -5,6 +5,7 @@ import logging
 import math
 import re
 import time
+import tempfile
 from collections import deque
 from datetime import datetime, time as dtime, timedelta
 from logging.handlers import RotatingFileHandler
@@ -37,6 +38,7 @@ import gate
 import journal
 import pf_alarm
 import positions
+import quant_scan
 import risk
 import risk_news
 import scanner
@@ -51,6 +53,7 @@ import watchlist
 import features
 import tools
 import cloud_store
+import db_backup
 import config
 import conversation_store as store
 import llm
@@ -61,6 +64,7 @@ import opportunities
 import market
 import watcher
 import web_sync
+import voice_quant
 from alert_engine import AlertEngine
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO,
@@ -384,6 +388,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 _link_tries: dict[int, list[float]] = {}
+_chat_hits: dict[str, list[float]] = {}
+
+
+def chat_rate_ok(chat_id: int, bucket: str, limit: int, window: float) -> bool:
+    """Per-chat budget for commands any Telegram user can send (the owner's chat is never limited)."""
+    if chat_id == config.ALLOWED_CHAT_ID:
+        return True
+    key, now = f"{bucket}:{chat_id}", time.time()
+    hits = [t for t in _chat_hits.get(key, []) if now - t < window]
+    if len(hits) >= limit:
+        _chat_hits[key] = hits
+        return False
+    _chat_hits[key] = hits + [now]
+    if len(_chat_hits) > 20000:
+        for k in [k for k, v in _chat_hits.items() if not v or now - v[-1] > 3600][:5000]:
+            _chat_hits.pop(k, None)
+    return True
 
 
 def _mask_email(email: str) -> str:
@@ -414,10 +435,162 @@ async def bagla(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if ok:
         _link_tries.pop(chat_id, None)
+        web_sync._linked_cache.pop(chat_id, None)
         await update.message.reply_text(f"✅ Bağlandı: {_mask_email(info)}\nSiteden istediğin analizler buraya da gelecek. "
                                         "Bağlantıyı kaldırmak için sitede Hesap → Bağlantıyı kaldır.")
     else:
         await update.message.reply_text(f"❌ {info}")
+
+
+async def web_ekle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/ekle THYAO 10 300: add to the linked site's portfolio, never place an order."""
+    if update.effective_chat.type != "private" or not web_sync.enabled():
+        return
+    if not chat_rate_ok(update.effective_chat.id, "public", 30, 600):
+        await update.message.reply_text("Çok sık mesaj gönderdin; birkaç dakika sonra tekrar dene.")
+        return
+    args = context.args or []
+    if len(args) == 3 and args[2].upper() == "TL":
+        code, price = args[0].upper(), args[1].replace(",", ".")
+        try:
+            if not re.fullmatch(r"[A-Z0-9.]{2,12}", code) or float(price) <= 0:
+                raise ValueError()
+            context.user_data["site_ekle"] = (code, float(price))
+            await update.message.reply_text(f"{code} için alış fiyatı {price} TL. Kaç adet aldın? Yalnız sayıyı yaz.")
+        except ValueError:
+            await update.message.reply_text("Kullanım: /ekle THYAO 10 300 (kod, adet, alış fiyatı)")
+        return
+    if len(args) != 3:
+        await update.message.reply_text("Kullanım: /ekle THYAO 10 300 (kod, adet, alış fiyatı). /ekle THYAO 300 TL yazarsan adedi sorarım.")
+        return
+    code = args[0].upper()
+    try:
+        qty, price = float(args[1].replace(",", ".")), float(args[2].replace(",", "."))
+        if not re.fullmatch(r"[A-Z0-9.]{2,12}", code) or qty <= 0 or price <= 0:
+            raise ValueError()
+        row = await web_sync.telegram_add_position(update.effective_chat.id, code, qty, price)
+        account = f" (hesap: {row['hesap']})" if row.get("hesap") else ""
+        await update.message.reply_text(f"✅ {row['kod']} {row['adet']:g} adet × {row['maliyet']:g} TL portföyüne eklendi{account}.\n"
+                                        f"📊 {config.PUBLIC_URL}/app/portfoyum\nGerçek borsa emri gönderilmedi.")
+    except ValueError as e:
+        await update.message.reply_text(f"❌ {e or 'Kod, adet ve fiyatı kontrol et.'}")
+    except Exception:
+        log.exception("Telegram portfolio add failed")
+        await update.message.reply_text("Şu an portföye eklenemedi; biraz sonra tekrar dene.")
+
+
+async def site_or_owner_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not chat_rate_ok(update.effective_chat.id, "public", 30, 600):
+        return  # silent: answering every message of a flood is the flood's goal
+    pending = context.user_data.get("site_ekle")
+    if pending:
+        try:
+            qty = float(update.message.text.strip().replace(",", "."))
+            if qty <= 0:
+                raise ValueError()
+            code, price = pending
+            row = await web_sync.telegram_add_position(update.effective_chat.id, code, qty, price)
+            context.user_data.pop("site_ekle", None)
+            account = f" (hesap: {row['hesap']})" if row.get("hesap") else ""
+            await update.message.reply_text(f"✅ {row['kod']} {row['adet']:g} adet portföyüne eklendi{account}. "
+                                            f"{config.PUBLIC_URL}/app/portfoyum")
+        except ValueError as e:
+            await update.message.reply_text(f"❌ {e or 'Kaç adet aldığını sayı olarak yaz.'}")
+        except Exception:
+            log.exception("Telegram portfolio add failed")
+            await update.message.reply_text("Şu an eklenemedi; biraz sonra tekrar dene.")
+        return
+    n = voice_quant.top_n(update.message.text)
+    if n is not None and update.effective_chat.type == "private" and web_sync.enabled():
+        return await quant_confirm_prompt(update.message, context, update.message.text, n)
+    if update.effective_chat.id == config.ALLOWED_CHAT_ID:
+        return await text_message(update, context)
+    await update.message.reply_text("Hesabını /bagla ile bağlayıp /ekle KOD ADET FİYAT yazabilirsin. "
+                                    "Analiz için web panelinde Grafik → Analiz et bölümünü kullan.")
+
+
+async def quant_confirm_prompt(message, context, heard: str, n: int):
+    context.user_data["quant_pending"] = {"n": n, "at": time.time()}
+    await message.reply_text(
+        f"Şunu anladım: “{heard[:400]}”\nBIST 100 içinden kalite + 3 aylık göreli momentumla ilk {n} hisseyi tara. "
+        "Doğruysa onayla; analiz biraz sürebilir. Gerçek emir verilmez.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Taramayı başlat", callback_data="quant|confirm"),
+            InlineKeyboardButton("Vazgeç", callback_data="quant|cancel")]]))
+
+
+async def quant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private" or not web_sync.enabled():
+        return
+    if not chat_rate_ok(update.effective_chat.id, "public", 30, 600):
+        await update.message.reply_text("Çok sık mesaj gönderdin; birkaç dakika sonra tekrar dene.")
+        return
+    raw = " ".join(context.args or [])
+    n = voice_quant.top_n(raw)
+    if n is None:
+        await update.message.reply_text("Örnek: /quant BIST 100 kalite ve momentum en yüksek 3 hisse")
+        return
+    await quant_confirm_prompt(update.message, context, raw, n)
+
+
+async def quant_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private" or not web_sync.enabled():
+        return
+    chat_id = update.effective_chat.id
+    # Transcribing costs CPU on the shared server: only linked site accounts, at most 6 recordings an hour.
+    if chat_id != config.ALLOWED_CHAT_ID:
+        try:
+            linked = await web_sync.telegram_linked(chat_id)
+        except Exception as e:
+            log.warning("Telegram link check failed: %s", e)
+            await update.message.reply_text("Şu an ses kaydı işlenemiyor; biraz sonra tekrar dene.")
+            return
+        if not linked:
+            await update.message.reply_text("Sesli sorgu için önce hesabını bağla: sitede Hesap → Telegram'ı bağla, sonra /bagla KOD.")
+            return
+    if not chat_rate_ok(chat_id, "voice", 6, 3600):
+        await update.message.reply_text("Saatte en fazla 6 ses kaydı işleyebiliyorum. Yazıyla da sorabilirsin: /quant BIST 100 kalite momentum en yüksek 3 hisse")
+        return
+    voice = update.message.voice
+    if voice.duration > 30 or (voice.file_size or 0) > 2_000_000:
+        await update.message.reply_text("Ses kaydı en fazla 30 saniye ve 2 MB olmalı.")
+        return
+    status = await update.message.reply_text("🎧 Ses kaydı çözülüyor…")
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            path = f"{directory}/request.ogg"
+            await (await voice.get_file()).download_to_drive(path)
+            heard = await asyncio.to_thread(voice_quant.transcribe, path)
+        n = voice_quant.top_n(heard)
+        if n is None:
+            await status.edit_text(f"Duyduğum: “{heard[:400] or 'anlaşılmadı'}”\nŞimdilik BIST 100 kalite + momentum sorgusunu destekliyorum. Yazıyla da gönderebilirsin: /quant BIST 100 kalite momentum en yüksek 3 hisse")
+            return
+        await status.delete()
+        await quant_confirm_prompt(update.message, context, heard, n)
+    except Exception:
+        log.exception("Voice quant transcription failed")
+        await status.edit_text("Ses kaydı çözülemedi. Yazıyla dene: /quant BIST 100 kalite momentum en yüksek 3 hisse")
+
+
+async def quant_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    pending = context.user_data.pop("quant_pending", None)
+    await query.edit_message_reply_markup(None)
+    if query.data == "quant|cancel":
+        await query.message.reply_text("Tarama başlatılmadı.")
+        return
+    if not pending or time.time() - pending["at"] > 300:
+        await query.message.reply_text("Onay süresi doldu; sorguyu tekrar gönder.")
+        return
+    try:
+        await web_sync.telegram_quant_run(update.effective_chat.id, pending["n"])
+        await query.message.reply_text("🔎 BIST 100 taraması sıraya alındı. Sonuç Telegram'a ve Son Analizlerim'e gelecek.")
+    except ValueError as e:
+        await query.message.reply_text(f"❌ {e}")
+    except Exception:
+        log.exception("Quant scan request failed")
+        await query.message.reply_text("Tarama şu an başlatılamadı; biraz sonra tekrar dene.")
 
 
 @authorized
@@ -1125,6 +1298,8 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
     footer = "\n".join(x for x in (gate.summary_line(g), QUIET_NOTE if alerts_store.is_quiet() else "") if x)
     last_row = df.iloc[-1]
 
+    alarm_analysis_id = f"alarm_{pair.replace('/', '')}_{alert['id']}_{int(time.time())}"
+
     def decision_buttons(reply: str, _plan_coins):
         verdict = re.search(r"KARAR:\s*\**\s*(AL|BEKLE|PAS)", reply)
         d = positions.log_decision({
@@ -1140,13 +1315,24 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
             "uyarilar": warns,
             "gostergeler": {c: _num(last_row[c]) for c in
                             ("close", "sma20", "sma50", "sma200", "rsi14", "atr14", "volume", "vol_avg20", "vwap")}})
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
-             InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")],
-            [InlineKeyboardButton("🗑 Alarmı sil", callback_data=f"asil|{pair}|{alert['id']}")]])
+        rows = [[InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
+                 InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")],
+                [InlineKeyboardButton("🗑 Alarmı sil", callback_data=f"asil|{pair}|{alert['id']}")]]
+        if web_sync.enabled():  # opens this very analysis; the page needs the owner's session
+            rows.append([InlineKeyboardButton("📊 Analizi ve grafiği panelde aç",
+                                              url=f"{config.PUBLIC_URL}/app/analizlerim?id={alarm_analysis_id}")])
+        return InlineKeyboardMarkup(rows)
 
-    await run_analysis(bot, chat, f"[ALARM TETİKLENDİ] {pair} {tf} kapanış {close:g} {op} tetik {alert['tetik']:g}.",
-                       [], data=data, footer=footer, buttons=decision_buttons)
+    reply = await run_analysis(bot, chat, f"[ALARM TETİKLENDİ] {pair} {tf} kapanış {close:g} {op} tetik {alert['tetik']:g}.",
+                               [], data=data, footer=footer, buttons=decision_buttons)
+    if reply and web_sync.enabled():  # the owner's panel keeps the alarm analysis next to its chart
+        try:
+            await web_sync.push_docs("analyses", [{
+                "id": alarm_analysis_id, "kodlar": [pair.split("/")[0]], "piyasa": "KRIPTO", "tur": "alarm",
+                "zaman": alerts_store.now_tr().isoformat(), "timeframe": tf,
+                "metin": "\n\n".join([reply, footer]) if footer else reply}])
+        except Exception as e:
+            log.warning("Alarm analysis not saved to the panel: %s", e)
 
 
 async def on_alert_notice(bot, pair: str, alert: dict, text: str):
@@ -2016,7 +2202,10 @@ async def send_buy_signal(bot, coin: str, buy: dict):
             "kapi": {k: buy[k] for k in ("ok", "rr", "kademe_usd", "kademe_notlari", "risk_off", "hacim_ok", "acgozluluk",
                                          "kurallar", "kalan", "mum", "veri")}})
         markup = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
-                                        InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")]])
+                                        InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")],
+                                       [InlineKeyboardButton("📊 Web Panelinde Gör", url=f"{config.PUBLIC_URL}/app/grafik?kod={tick}&piyasa=BIST")]])
+    else:
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📊 Web Panelinde Gör", url=f"{config.PUBLIC_URL}/app/grafik?kod={tick}&piyasa=BIST")]])
         lines.append("\nKesinlik yok: kurallar geçti demektir. Kapanıştan sonra fiyat değişmiş olabilir, "
                      "butona basmadan fiyatı kontrol et.")
     text = "\n".join(lines)
@@ -2125,6 +2314,51 @@ async def tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🇹🇷 BIST: {len(bist.watchlist())} hisse son GÜNLÜK kapanışta taranıyor "
             "(orta/uzun vade: haftalık trend + kırılım ya da geri çekilme; giriş sonraki günlük kapanış teyidiyle)...")
         await run_bist_scan(context.bot, announce_to=chat)
+
+
+async def tara_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    legacy = {"kapat", "kapali", "kapalı", "off", "ac", "aç", "acik", "açık", "on", "kripto", "bist", "hepsi"}
+    if update.effective_chat.id == config.ALLOWED_CHAT_ID and (
+            not context.args or context.args[0].casefold() in legacy):
+        return await tara(update, context)
+    if update.effective_chat.type != "private" or not context.args:
+        await update.message.reply_text(f"Kayıtlı stratejin için: /tara StratejiAdı. Stratejiyi {config.PUBLIC_URL}/app/stratejiler sayfasında oluştur.")
+        return
+    if not chat_rate_ok(update.effective_chat.id, "public", 30, 600):
+        await update.message.reply_text("Çok sık mesaj gönderdin; birkaç dakika sonra tekrar dene.")
+        return
+    try:
+        cmd = await web_sync.telegram_run_strategy(update.effective_chat.id, " ".join(context.args))
+        await update.message.reply_text(f"🔎 {', '.join(context.args)} taraması sıraya alındı. "
+                                        "BIST 100 bilanço verileri ilk taramada zaman alabilir; sonuç buraya ve Son Analizlerim'e gelecek. "
+                                        f"İstek: {cmd.get('request_id', '')}")
+    except ValueError as e:
+        await update.message.reply_text(f"❌ {e}")
+    except Exception:
+        log.exception("Telegram strategy request failed")
+        await update.message.reply_text("Strateji taraması şu an başlatılamadı.")
+
+
+async def kriz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private" or not web_sync.enabled():
+        return
+    if not chat_rate_ok(update.effective_chat.id, "public", 30, 600):
+        await update.message.reply_text("Çok sık mesaj gönderdin; birkaç dakika sonra tekrar dene.")
+        return
+    try:
+        plan = await web_sync.telegram_risk_proposal(update.effective_chat.id)
+    except ValueError as e:
+        await update.message.reply_text(f"❌ {e}")
+        return
+    except Exception:
+        log.exception("Telegram risk proposal failed")
+        await update.message.reply_text("Kriz planı şu an hazırlanamadı; biraz sonra tekrar dene.")
+        return
+    count = len(plan.get("suggestions") or [])
+    await update.message.reply_text(
+        f"🛡 Kriz planı hazır: risk hedefi %{plan['old_target_pct']:g} → %{plan['new_target_pct']:g}; "
+        f"{count} stop yükseltme önerisi. Hiçbir değişiklik uygulanmadı. Planı sitede inceleyip seçerek uygula.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Web Panelinde Gör", url=f"{config.PUBLIC_URL}/app/kriz")]]))
 
 
 async def send_bist_signal(bot, sym: str, g: dict):
@@ -4451,6 +4685,13 @@ async def panel_analysis(bot, piyasa: str, kodlar: list[str], cmd: dict | None =
     owner = not cmd or cmd.get("role", "owner") == "owner"
     chat = config.ALLOWED_CHAT_ID if owner else cmd.get("telegram_chat_id")
     extra = {} if owner else {"personal": False, "allow_state_update": False, "buttons": None}
+    if cmd and cmd.get("request_id"):
+        from urllib.parse import quote
+        # The destination still requires the user's site session; no analysis text is in the URL.
+        analysis_id = f"an_{cmd['request_id']}_{kodlar[0].upper()}" if kodlar else ""
+        url = f"{config.PUBLIC_URL}/app/analizlerim?id={quote(analysis_id)}"
+        extra["buttons"] = lambda _reply, _codes: InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 Web panelinde gör", url=url)]])
     if not owner and cmd.get("own_keys"):
         try:  # the user's own API keys, fetched for this analysis only and kept in memory
             keys = await web_sync.user_keys(cmd["user_id"])
@@ -4778,6 +5019,18 @@ async def cloud_state_job(context: ContextTypes.DEFAULT_TYPE):
         log.warning("Cloud state sync failed: %s", e)
 
 
+async def backup_job(context: ContextTypes.DEFAULT_TYPE):
+    """03:30 TR: whole database to a gzip file on the server (Atlas M0 keeps no backups)."""
+    try:
+        path, counts = await asyncio.to_thread(db_backup.run)
+        if not path.stat().st_size or not counts:
+            raise RuntimeError("boş yedek")
+    except Exception as e:
+        log.exception("Database backup failed")
+        await context.bot.send_message(config.ALLOWED_CHAT_ID, f"⚠️ Günlük veritabanı yedeği alınamadı: {type(e).__name__}. "
+                                       "Ayrıntı sunucu loglarında; site çalışmaya devam ediyor.")
+
+
 async def ind_alarm_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         for text in await tools.check_ind_alerts():
@@ -4792,6 +5045,58 @@ def register_panel_actions(bot):
         kodlar = p.get("kodlar") or [p.get("kod")]
         await panel_analysis(bot, piyasa, kodlar, p.get("_komut"))
         return f"🧠 Panelden analiz: {', '.join(k for k in kodlar if k)} ({piyasa}) — cevap yukarıda ve panelde."
+
+    async def strategy_scan(p):
+        meta = p.get("_komut") or {}
+        strategy = ({"id": "builtin:quality_momentum", "user_id": meta.get("user_id"),
+                     "name": "Kalite + Momentum", "rules": {}}
+                    if p["strategy_id"] == "builtin:quality_momentum" else
+                    await web_sync.get_strategy(p["strategy_id"]))
+        if strategy["user_id"] != meta.get("user_id"):
+            return "❌ Strateji hesabı uyuşmuyor; tarama yapılmadı."
+        chat = meta.get("telegram_chat_id")
+        status = None
+        if chat:  # honest progress instead of a promise of seconds
+            try:
+                status = await bot.send_message(chat, f"⏳ {strategy['name']}: BIST 100 verisi hazırlanıyor…", disable_notification=True)
+            except Exception:
+                status = None
+
+        async def progress(done, total):
+            if status:
+                await status.edit_text(f"⏳ {strategy['name']}: şirket verileri toplanıyor {done}/{total} "
+                                       "(ilk tarama birkaç dakika sürebilir, sonrakiler günlük önbellekten gelir)")
+        data = await quant_scan.snapshot(progress)
+        if status:
+            try:
+                await status.delete()
+            except Exception:
+                pass
+        ranked = quant_scan.rank(data, strategy["rules"])
+        top = ranked[:max(1, min(10, int(p.get("top_n") or 3)))]
+        lines = [f"🔎 {strategy['name']} — BIST 100", f"Taranan: {data['universe_count']} · veri eksikliği nedeniyle dışlanan: {data['excluded']}",
+                 f"Hesap: {data['calculated_at'][:16]} UTC · 3 aylık endekse göre momentum", ""]
+        if top:
+            for i, row in enumerate(top, 1):
+                lines.append(f"{i}. {row['kod']} · kalite {row['kalite']}/100 · göreli momentum %{row['momentum_goreli']:+g} "
+                             f"· F/K {row['fk'] if row['fk'] is not None else 'yok'} · birleşik puan {row['birlesik_skor']}/100")
+        else:
+            lines.append("Koşulları geçen hisse yok.")
+        lines.extend(["", "Kalite; kârlılık, finansal kalite, bilanço ve nakit akışı bileşenlerinden hesaplanır. "
+                       "Puan getiri olasılığı değildir. F/K olmayan hisse, F/K koşulunu geçmez.",
+                      f"Kaynak: {data['source']}. Bilanço: İş Yatırım; fiyat: Yahoo (gecikmeli)."])
+        message = "\n".join(lines)
+        now = alerts_store.now_tr().isoformat()
+        request_id = meta.get("request_id") or str(int(time.time()))
+        record_id = f"an_{request_id}_strategy"
+        await web_sync.push_docs("analyses", [{"id": record_id, "user_id": meta["user_id"], "request_id": request_id,
+            "kodlar": [row["kod"] for row in top], "piyasa": "BIST", "zaman": now, "metin": message,
+            "strategy_id": strategy["id"], "strategy_name": strategy["name"], "rules": strategy["rules"], "rows": top,
+            "universe_count": data["universe_count"], "excluded": data["excluded"],
+            "elenen": quant_scan.eliminated(data, strategy["rules"]), "gecen": len(ranked),
+            "hesap_zamani": data["calculated_at"], "xu100": data.get("xu100"), "xu100_tarih": data.get("xu100_tarih"),
+            "tur": "strateji"}])
+        return message + f"\n\n📊 {config.PUBLIC_URL}/app/analizlerim?id={record_id}"
 
     async def plan_add_(p):
         key = await plan_key(str(p.get("kod", "")))
@@ -4963,7 +5268,7 @@ def register_panel_actions(bot):
         return f"📚 Panelden temel analiz {tick}: skor {f['puan']['skor']}/100, {label} (ayrıntı panelde)"
 
     web_sync.EXTRA_HANDLERS.update({
-        "analysis.request": analysis, "plan.add": plan_add_, "plan.remove": plan_remove, "firsat.run": firsat_run,
+        "analysis.request": analysis, "strategy.scan": strategy_scan, "plan.add": plan_add_, "plan.remove": plan_remove, "firsat.run": firsat_run,
         "target.set": target_set, "watch.rules": rules_set, "paper.open": paper_open_, "paper.close": paper_close_,
         "lesson.request": lesson,
         "check.request": check_req, "ind.create": ind_create_, "ind.delete": ind_delete_, "compare.request": compare_req,
@@ -5632,7 +5937,9 @@ def main():
     app.add_handler(CommandHandler("vadeli", vadeli))
     app.add_handler(CommandHandler("maliyet", maliyet))
     app.add_handler(CommandHandler("durum", durum))
-    app.add_handler(CommandHandler("tara", tara))
+    app.add_handler(CommandHandler("tara", tara_router))
+    app.add_handler(CommandHandler("kriz", kriz))
+    app.add_handler(CommandHandler("quant", quant_cmd))
     app.add_handler(CommandHandler("bist", bist_cmd))
     app.add_handler(CommandHandler("incele", incele))
     app.add_handler(CommandHandler("portfoy", portfoy))
@@ -5666,13 +5973,16 @@ def main():
     app.add_handler(CommandHandler("olaylar", olaylar))
     app.add_handler(CommandHandler("kontrol", kontrol))
     app.add_handler(CommandHandler("bagla", bagla))
+    app.add_handler(CommandHandler("ekle", web_ekle))
     app.add_handler(CommandHandler("galarm", galarm))
     app.add_handler(CommandHandler("karsilastir", karsilastir))
     app.add_error_handler(on_error)
+    app.add_handler(CallbackQueryHandler(quant_callback, pattern=r"^quant\|"))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo_message))
+    app.add_handler(MessageHandler(filters.VOICE, quant_voice))
     app.add_handler(MessageHandler(filters.Regex(r"(?i)^/portf[öo]y(@\w+)?(\s|$)"), portfoy_turkish))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, site_or_owner_text_message))
 
     if config.ALLOWED_CHAT_ID:
         now = time.time()
@@ -5723,9 +6033,10 @@ def main():
         if web_sync.enabled():
             app.job_queue.run_repeating(web_push_job, interval=config.WEB_SYNC_INTERVAL, first=10)
             app.job_queue.run_repeating(web_command_job, interval=config.WEB_COMMAND_INTERVAL, first=20)
+            log.info("Web panel sync enabled: %s", config.WEB_URL)
         if cloud_store.enabled():
             app.job_queue.run_repeating(cloud_state_job, interval=60, first=60, name="bulut_durum")
-            log.info("Web panel sync enabled: %s", config.WEB_URL)
+            app.job_queue.run_daily(backup_job, dtime(3, 30, tzinfo=macro.TR), name="db_backup")
     else:
         log.warning("ALLOWED_CHAT_ID empty: send /start to the bot to get your chat id.")
 

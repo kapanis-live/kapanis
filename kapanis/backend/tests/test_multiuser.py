@@ -201,5 +201,13 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
             identity.AUTH_MODE = old
 
 
+class ClerkAddressTest(unittest.TestCase):
+    def test_issuer_and_jwks_come_from_the_publishable_key(self):
+        pk = "pk_test_" + __import__("base64").b64encode(b"driven-panther-5032.clerk.accounts.dev$").decode()
+        self.assertEqual(identity.frontend_api(pk), "https://driven-panther-5032.clerk.accounts.dev")
+        for bad in ("", "pk_test_", "pk_test_!!!", "sk_test_" + __import__("base64").b64encode(b"evil.com/x$").decode()):
+            self.assertEqual(identity.frontend_api(bad), "", bad)
+
+
 if __name__ == "__main__":
     unittest.main()

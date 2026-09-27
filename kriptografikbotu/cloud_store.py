@@ -36,7 +36,9 @@ def _collection():
 
 
 def _files():
-    return [p for p in config.DATA_DIR.iterdir() if p.is_file() and p.suffix in (".json", ".jsonl")]
+    # atlas_yedek_*: local safety copies made by scripts/import_data_to_atlas.py, never uploaded back
+    return [p for p in config.DATA_DIR.iterdir()
+            if p.is_file() and p.suffix in (".json", ".jsonl") and not p.name.startswith("atlas_yedek_")]
 
 
 def _digest(data: bytes) -> str:

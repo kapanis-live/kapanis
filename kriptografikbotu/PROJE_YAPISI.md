@@ -1,6 +1,6 @@
 # Kapanış — Proje Yapısı (plan için)
 
-Son güncelleme: 26 Eylül 2026. Bu dosya projenin bütün parçalarını tek yerde gösterir. Modüllerin ayrıntılı anlatımı: `PROJE.md`.
+Son güncelleme: 27 Eylül 2026 (hesaplar, bulut). Bu dosya projenin bütün parçalarını tek yerde gösterir. Modüllerin ayrıntılı anlatımı: `PROJE.md`.
 
 ---
 
@@ -20,8 +20,9 @@ Temel kurallar:
 
 ```
 Desktop\
-├── kriptografikbotu\        ← Telegram botu (Python)       GitHub: valenciaennerman-cmd/kapanis-bot (private)
-├── kapanis\                 ← Web paneli                    GitHub: valenciaennerman-cmd/kapanis-panel (private)
+├── kriptografikbotu\        ← Telegram botu (Python)            bulutta: worker
+├── kapanis\                 ← Web paneli (FastAPI + React)      bulutta: web
+│   GitHub: valenciaennerman-cmd/kapanis (private, iki klasör birlikte; eski kapanis-bot / kapanis-panel yalnız arşiv)
 │   ├── backend\             ← FastAPI + MongoDB (port 8001), paneli de bu sunar
 │   └── frontend\            ← React arayüz (derlenmiş hali frontend\build)
 ├── HİSSEPNGYARATICI\        ← indirilen logo PNG'leri (kaynak; panel kopyasını kullanır)
@@ -90,11 +91,13 @@ Panel bota doğrudan bağlanmaz: bot veriyi panele **iter**, panel komutları **
 | `balance.py` (118) bakiye/K-Z · `risk.py` (188) yoğunlaşma, korelasyon · `discipline.py` (155) tilt koruması · `journal.py` (106) işlem günlüğü · `shadow.py` (113) gölge portföy · `benchmark.py` (225) kıyas · `dca.py` (106) birikim planı · `pf_alarm.py` (94) portföy alarmı · `assets.py` (70) altın/döviz · `exits.py` (206) çıkış/tepe analizi · `model_score.py` (55) model karnesi |
 
 **Diğer**
-| `tools.py` karar araçları (yapay zekâsız): alım öncesi kontrol (aynı kod kapısı), gösterge alarmları (SMA/RSI/hacim kesişmesi, yalnız kapanış), hisse karşılaştırma, temettü gelir planı · `features.py` panel dönemi özellikleri: plan listesi, 90 günlük portföy geçmişi, hedef dağılım, şirket takvimi (bilanço/temettü), KAP bildirimleri, takip kuralları, haftalık ders, sanal işlemler · `watchlist.py` (187) takip listesi · `opportunities.py` (335) "şu an ne alınır" taraması · `macro.py` (477) FRED/BLS/CFTC, rejim, takvim · `news.py` (239) RSS haberler · `risk_news.py` (152) riskli başlık uyarısı · `freshness.py` (158) veri güncelliği · `universe.py` (91) seçim listeleri · `costs.py` (61) harcama kaydı · `charts.py` (105) PNG grafik · `web_sync.py` (677) panel köprüsü |
+| `tools.py` karar araçları (yapay zekâsız): alım öncesi kontrol (aynı kod kapısı), gösterge alarmları (SMA/RSI/hacim kesişmesi, yalnız kapanış), hisse karşılaştırma, temettü gelir planı · `features.py` panel dönemi özellikleri: plan listesi, 90 günlük portföy geçmişi, hedef dağılım, şirket takvimi (bilanço/temettü), KAP bildirimleri, takip kuralları, haftalık ders, sanal işlemler · `watchlist.py` (187) takip listesi · `opportunities.py` (335) "şu an ne alınır" taraması · `macro.py` (477) FRED/BLS/CFTC, rejim, takvim · `news.py` (239) RSS haberler · `risk_news.py` (152) riskli başlık uyarısı · `freshness.py` (158) veri güncelliği · `universe.py` (91) seçim listeleri · `costs.py` (61) harcama kaydı · `charts.py` (105) PNG grafik · `web_sync.py` (677) panel köprüsü · `cloud_store.py` bulutta `data/`'yı MongoDB Atlas'ta tutar (`STATE_MONGO_URL`) · `scripts/import_data_to_atlas.py` bilgisayardaki `data/`'yı bir kez Atlas'a yükler |
 
-**Testler:** `test_features.py`, `test_bist.py`, `test_startup.py` (73 test). Çalıştırma: `.venv\Scripts\python -m unittest test_features test_bist test_startup`
+**Testler:** `test_features.py`, `test_bist.py`, `test_startup.py` (73 test) + `test_multiuser.py` (7 test: kullanıcı yetkisi, kişisel bağlam sızmaması, Telegram yönlendirme, bulut yedeği). Çalıştırma (ayrı süreçlerde): `.venv\Scripts\python -m unittest test_features test_bist test_startup` ve `.venv\Scripts\python -m unittest test_multiuser`
 
 ### 3.2 Veri dosyaları (`data\`)
+
+Kişisel veridir: **git'e girmez** (`.gitignore`). Bulutta MongoDB Atlas'taki `bot_files` koleksiyonunda tutulur.
 
 | Dosya | İçerik |
 |---|---|
@@ -139,7 +142,7 @@ Kripto: `/analiz /haber /vadeli /duygu /new_alert /backtest`
 BIST: `/incele /bist /guc /temel /gunsonu /temettu` · ABD: `/abd /temel AAPL`
 Portföy: `/grafik /risk /kiyas /palarm /birikim /hesap /pozisyonlar /sat /duzelt /kayitsil`
 Alarm: `/view_alerts /cancel_alert` · Takip/karne: `/rapor /haftalik /golge /karne /gunluk /disiplin`
-Yeni: `/hedef /sanal /ders /kap /olaylar /takip kural /kontrol /galarm /karsilastir /temettu gelir` · Makro: `/makro /takvim` · Sistem: `/model /maliyet /durum /okul /pozisyon /sil /sifirla /set_config /get_logs /start`
+Yeni: `/hedef /sanal /ders /kap /olaylar /takip kural /kontrol /galarm /karsilastir /temettu gelir` · Herkese açık tek komut: `/bagla KOD` (site hesabını Telegram'a bağlar) · Makro: `/makro /takvim` · Sistem: `/model /maliyet /durum /okul /pozisyon /sil /sifirla /set_config /get_logs /start`
 
 Düz yazı da anlaşılır: "BTC ne durumda", "portföy", "bakiye", "şu an alabileceğim bir şey var mı", "takip listem", "THYAO 300 üstünde kapanırsa haber ver", "astordan 4 tane 260 TL'den aldım". Ekran görüntüsü atılırsa portföy okunur (Kimi K3).
 
@@ -155,22 +158,29 @@ Düz yazı da anlaşılır: "BTC ne durumda", "portföy", "bakiye", "şu an alab
 
 | Dosya | Görev |
 |---|---|
-| `server.py` | FastAPI: giriş (JWT çerez), veri uçları, komut kuyruğu, derlenmiş arayüzü ve `/logos` klasörünü sunar |
+| `server.py` | FastAPI: veri uçları (sahibe özel olanlar `require_owner`), komut kuyruğu (kullanıcı ve istek kimliğiyle), derlenmiş arayüz, `/logos` |
+| `identity.py` | Kim giriş yaptı: Clerk jetonu (JWKS imza, süre, issuer, izinli site, doğrulanmış e-posta) ya da yerel yönetici; rol sahip/kullanıcı |
+| `user_api.py` | Kullanıcının kendi portföyü (nakit, pozisyonlar, işlemler; goalpost kuralı) ve Telegram bağlama kodları |
 | `chart_data.py` | Grafik sayfası verisi: Binance/Yahoo mumları + SMA 20/50/200, RSI 14, hacim ortalaması, VWAP (60 sn önbellek) |
-| `.env` | `MONGO_URL, DB_NAME, JWT_SECRET, BOT_API_KEY, ADMIN_EMAIL, ADMIN_PASSWORD, CORS_ORIGINS` |
+| `tests\test_multiuser.py` | 9 test: doğrulama, sahte/eskimiş jeton, iki kullanıcının ayrılması, goalpost, günlük sınır, analiz ayrımı, Telegram kodu, Clerk adresi |
+| `.env` | örnek: `.env.example` (`AUTH_MODE`, `STATE_MONGO_URL` / `MONGO_URL`, `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `OWNER_EMAIL`, `BOT_API_KEY`...) |
 
 **API uçları** (`/api/...`):
-- Giriş: `POST /auth/login`, `/auth/refresh`, `/auth/logout`, `GET /auth/me`
-- Okuma: `GET /overview /extras /alerts /positions /decisions /signals /signals/{id} /macro /derivatives /usage /report /backtest /settings /candles/{sembol} /chart/{kod}?tf=&market= /bot/status /commands`
+- Giriş: `GET /auth/config` (herkese açık: hangi giriş, Clerk publishable key), `POST /auth/login` (yalnız legacy), `/auth/refresh`, `/auth/logout`, `GET /auth/me`
+- Herkes (kendi verisi): `/portfolio...`, `GET /analyses`, `GET /commands`, `POST /actions` (kullanıcı: yalnız `analysis.request`), `GET /telegram/status`, `POST /telegram/link-code`, `DELETE /telegram/link`
+- Herkes (piyasa): `/macro /derivatives /candles/{sembol} /chart/{kod} /bot/status`
+- Yalnız sahip: `GET /overview /extras /alerts /positions /decisions /signals /signals/{id} /usage /report /backtest /settings /firsat /sonuclar/{tur}` ve aşağıdaki yazma uçları
 - Yazma (hepsi kuyruğa gider, bot uygular): `POST /alerts`, `DELETE /alerts/{id}`, `PATCH /positions/{id}/stop`, `POST /positions/{id}/close`, `POST /decisions/{id}/action`
-- Bot için: `POST /ingest/{koleksiyon}`, `GET /commands/pending`, `POST /commands/{id}/done`
+- Bot için (`X-Bot-Key`): `POST /ingest/{koleksiyon}`, `GET /commands/pending`, `POST /commands/{id}/done`, `POST /bot/telegram/link`
 
 ### 4.2 Frontend (`kapanis\frontend\src`)
 
 **Sayfalar** (`pages\panel\`):
 | Sayfa | Adres | Veri |
 |---|---|---|
-| Genel bakış | `/app` | overview, extras, macro, candles |
+| Portföyüm (herkes) | `/app/portfoyum` | portfolio, portfolio/quotes |
+| Hesap & Telegram (herkes) | `/app/hesap` | auth/me, telegram/status |
+| Genel bakış (sahip; kullanıcı Portföyüm'e yönlenir) | `/app` | overview, extras, macro, candles |
 | Portföy | `/app/portfoy` | extras (portföy, geçmiş grafiği, hedef dağılım, temettü planı, kıyas, kur) |
 | Takip listem | `/app/takip` | extras.takip_listesi, takip kuralları, seçili kodlar için yapay zekâ analizi |
 | Pozisyonlar | `/app/pozisyonlar` | positions (+ "Sattım"), Sanal sekmesi |
@@ -181,7 +191,9 @@ Düz yazı da anlaşılır: "BTC ne durumda", "portföy", "bakiye", "şu an alab
 | Alarmlar | `/app/alarmlar` | alerts (+ kur/sil), gösterge alarmları |
 | Disiplin | `/app/disiplin` | extras, report, haftanın dersi |
 | Rapor & karne, Backtest, Makro, Vadeli, Maliyet, Ayarlar | `/app/rapor` ... | report, backtest, macro, derivatives, usage, settings |
-| Giriş | `/giris` | auth |
+| Giriş / kayıt | `/giris`, `/kayit` | yerel form ya da Clerk (Google, e-posta + kod) |
+
+Kullanıcılar yalnız Portföyüm, Grafik & Analiz, Makro, Vadeli ve Hesap'ı görür; diğer sayfalar sahibe özel (`own(...)`).
 | Tanıtım sitesi | `/`, `/ozellikler`, `/nasil-calisir`, `/kurallar`, `/sss`, `/iletisim` | — |
 
 **Tasarım sistemi** (Claude Design "Kapanış" sisteminden):
@@ -204,11 +216,12 @@ Düz yazı da anlaşılır: "BTC ne durumda", "portföy", "bakiye", "şu an alab
 | Çalışıyor mu? | `kriptografikbotu\kapanis_surecler.ps1` |
 | Arayüzü elle derle | `kapanis\frontend` içinde `npx craco build` |
 | Testler | bölüm 3.1 |
-| Arşiv | GitHub private depolar (bölüm 2). `.env`, loglar, `.venv`, `node_modules`, `build` gitmez |
+| Arşiv | GitHub `valenciaennerman-cmd/kapanis` (bölüm 2). `.env`, `.env.atlas`, `data/`, loglar, `.venv`, `node_modules`, `build` gitmez |
+| Bulut | `BULUT_KURULUM.md` (birleşik depoda): Render ya da Linux VPS, Frankfurt, MongoDB Atlas, Clerk |
 
 Telefon: Tailscale kurulu. `kriptografikbotu\mobil-panel.ps1` paneli yalnız Tailscale ağına HTTPS ile açar; telefonda adres + `/app`, sonra "Ana ekrana ekle" (PWA).
 
-Sınırlar: bilgisayar kapalıyken bot ve panel çalışmaz. BIST verisi ~15 dk gecikmeli (Yahoo).
+Sınırlar: buluta geçilene kadar bilgisayar kapalıyken bot ve panel çalışmaz. BIST verisi ~15 dk gecikmeli (Yahoo).
 
 ---
 
@@ -234,6 +247,8 @@ Sınırlar: bilgisayar kapalıyken bot ve panel çalışmaz. BIST verisi ~15 dk 
 
 ## 7. Plan yaparken bakılacak açık konular
 
+- **Buluta geçiş:** Atlas ve Clerk hazır; sunucu (Render ya da VPS), alan adı ve Clerk production instance bekleniyor (`BULUT_KURULUM.md`).
+- **Kullanıcılara bot özellikleri:** alarm, takip listesi, sinyal gibi özellikler şimdilik yalnız sahipte; kullanıcılara açmak botu çok kullanıcılı yapmayı gerektirir.
 - **APK:** istenirse Capacitor ile PWA'dan paketlenebilir.
 - **Panelden yapılamayanlar** (yalnız Telegram): temel analiz (`/temel`), takip listesine ekleme/çıkarma.
 - **Vergi hesabı:** bilerek eklenmedi.

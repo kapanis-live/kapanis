@@ -1,6 +1,10 @@
-# Render Blueprint. Frankfurt: Binance's API refuses requests from US data centres.
-# The bot must run 24/7, so the worker cannot be on a plan that sleeps; Render's free plan has no
-# background workers and free web services sleep after 15 minutes idle (the site then wakes in ~1 min).
+# Render Blueprint (New -> Blueprint -> this repo). Both services in Frankfurt: Binance's API refuses
+# requests from US data centres, and the MongoDB Atlas cluster is in AWS Frankfurt (eu-central-1).
+#
+# web    = site + API. Starter plan: free web services sleep after 15 minutes idle.
+# worker = the Telegram bot, alarms and scheduled jobs. Must run 24/7; Render's free plan has no
+#          background workers, so this is a paid worker that never sleeps.
+# Values marked sync:false are entered in the Render dashboard (Environment), never in this file.
 services:
   - type: web
     name: kapanis-web
@@ -14,21 +18,17 @@ services:
         value: clerk
       - key: TRUST_PROXY
         value: "1"
-      - key: MONGO_URL
+      - key: STATE_MONGO_URL
         sync: false
-      - key: DB_NAME
+      - key: STATE_DB_NAME
         value: kapanis
       - key: JWT_SECRET
         generateValue: true
       - key: BOT_API_KEY
         sync: false
-      - key: CLERK_PUBLISHABLE_KEY
+      - key: VITE_CLERK_PUBLISHABLE_KEY
         sync: false
       - key: CLERK_SECRET_KEY
-        sync: false
-      - key: CLERK_JWKS_URL
-        sync: false
-      - key: CLERK_ISSUER
         sync: false
       - key: CLERK_AUTHORIZED_PARTIES
         sync: false
@@ -38,6 +38,8 @@ services:
         sync: false
       - key: TELEGRAM_BOT_USERNAME
         sync: false
+      - key: USER_DAILY_ANALYSES
+        value: "5"
   - type: worker
     name: kapanis-bot
     runtime: docker

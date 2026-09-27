@@ -25,9 +25,10 @@ import user_api
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-mongo_url = os.environ["MONGO_URL"]
+# The bot and the panel share one MongoDB (Atlas in the cloud): STATE_MONGO_URL works for both.
+mongo_url = os.environ.get("MONGO_URL") or os.environ["STATE_MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+db = client[os.environ.get("DB_NAME") or os.environ.get("STATE_DB_NAME") or "kapanis"]
 
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
@@ -133,7 +134,7 @@ class LoginBody(BaseModel):
 async def auth_config():
     """Public: which sign-in the panel should show. The Clerk publishable key is public by design."""
     return {"mode": identity.AUTH_MODE, "clerk": identity.clerk_enabled(),
-            "clerk_publishable_key": os.environ.get("CLERK_PUBLISHABLE_KEY", "") if identity.clerk_enabled() else "",
+            "clerk_publishable_key": identity.PUBLISHABLE_KEY if identity.clerk_enabled() else "",
             "legacy": identity.legacy_enabled(),
             "telegram_bot": os.environ.get("TELEGRAM_BOT_USERNAME", "").lstrip("@")}
 

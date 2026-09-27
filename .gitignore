@@ -22,3 +22,6 @@ __pycache__/
 # docker-compose env files with real keys
 deploy/web.env
 deploy/bot.env
+
+# Personal bot data never in git (kept on the PC and in MongoDB Atlas)
+kriptografikbotu/data/

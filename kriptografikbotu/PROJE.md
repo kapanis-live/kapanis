@@ -3,8 +3,11 @@
 Kişisel kripto ve BIST karar destek sistemi. İşlem **açmaz**, uyarır ve kayıt tutar.
 İki parçadan oluşur:
 
-- `bot/` (bu klasör, eski adı `kriptografikbotu`): Python Telegram botu. Asıl beyin.
-- `web/` (eski adı `kapanis`): FastAPI + MongoDB backend ve React panel. Botun verisini gösterir, paneldeki işlemleri bota iletir.
+- `kriptografikbotu/` (bu klasör): Python Telegram botu. Asıl beyin. Bulutta **worker** süreci.
+- `kapanis/`: FastAPI + MongoDB backend ve React panel. Botun verisini gösterir, paneldeki işlemleri bota iletir,
+  kullanıcı hesaplarını (Clerk) ve her kullanıcının kendi portföyünü tutar. Bulutta **web** süreci.
+
+GitHub: `valenciaennerman-cmd/kapanis` (private, iki klasör birlikte). Bulut kurulumu: o depodaki `BULUT_KURULUM.md`.
 
 Arayüz dili Türkçe. Kod yorumları İngilizce.
 
@@ -41,7 +44,7 @@ Yeni özellik bu kuralları bozmamalı:
 | `alert_engine.py` | Binance WebSocket; sadece `x: true` kapanmış mumda kapanış alarmı |
 | `alerts_store.py` | `alerts.json`, `settings.json` (sessiz saat, okul modu) |
 | `positions.py` | `positions.json`, `decisions.json` (karar günlüğü), son backtest |
-| `conversation_store.py` | `history.json` (son 15 tur), `state.json` (planlar) |
+| `conversation_store.py` | `history.json` (diskte son 100 tur; DeepSeek'e son 15 tur gider), `state.json` (planlar) |
 | `charts.py` | mplfinance grafik: mum+SMA, RSI, ATR, hacim |
 | `backtest.py` | Kapanış bazlı backtest ve karar sonucu değerlendirme |
 | `costs.py` | DeepSeek token/TL takibi (`usage.jsonl`), yoğun/indirimli tarife |
@@ -95,19 +98,50 @@ Veri: `data/` klasöründe JSON dosyaları. Veritabanı yok (bot tarafında).
 
 ## Web panel mimarisi
 
-- `web/backend/server.py`: FastAPI. JWT giriş (tek admin, kayıt yok). Panel verisi MongoDB'den okunur.
-- Bot → web: `POST /api/ingest/{collection}?replace=true` (`X-Bot-Key` başlığı).
-- Web → bot: paneldeki işlemler veriyi değiştirmez, `commands` kuyruğuna yazılır. Bot `GET /api/commands/pending` ile 15 sn'de bir alır, uygular, `POST /api/commands/{id}/done` der.
-- `web/frontend/src`: React + Tailwind + shadcn. Sayfalar `pages/panel/*` (10 sayfa) ve `pages/public/*` (tanıtım). Veri tipleri `types/index.ts`, API `lib/api.js`.
-- Tasarım: tamamen siyah tema, Inter + JetBrains Mono, renk sadece anlam için (yeşil yükseliş, kırmızı düşüş, sarı bekle).
+- `kapanis/backend/server.py`: FastAPI. Panel verisi MongoDB'den okunur.
+- Giriş (`identity.py`, `AUTH_MODE`):
+  - `legacy`: bu bilgisayardaki tek yönetici şifresi.
+  - `clerk`: Google, e-posta + şifre, e-posta doğrulama kodu.
+  - `both`: ikisi birlikte.
+  - Clerk jetonu imza (JWKS), süre, issuer ve izinli site ile doğrulanır. E-postası doğrulanmamış hesap kabul edilmez. Şifreler Kapanış'ta tutulmaz.
+- Roller:
+  - **Sahip** (`OWNER_EMAIL` ya da yerel yönetici): botun portföyü, sinyaller, alarmlar, ayarlar.
+  - **Kullanıcı**: kendi portföyü (`user_api.py`: `portfolios` = nakit, pozisyonlar, işlemler), piyasa sayfaları, kendi analizleri. Günde `USER_DAILY_ANALYSES` analiz hakkı.
+  - Sahibe özel uç noktalar diğerlerine 403 döner.
+- Bot → web: `POST /api/ingest/{collection}?replace=true` (`X-Bot-Key` başlığı, kullanıcı oturumundan ayrı).
+- Web → bot: paneldeki işlemler veriyi değiştirmez, `commands` kuyruğuna yazılır (`user_id`, `request_id`, `role`, `telegram_chat_id` ile).
+  - Bot `GET /api/commands/pending` ile 15 sn'de bir alır, uygular, `POST /api/commands/{id}/done` der.
+  - Sahip olmayan kullanıcının komutu yalnız `analysis.request` olabilir.
+  - Analiz `personal=False` ile çalışır: sahibin planı, pozisyonları ve sohbet geçmişi prompt'a girmez, geri yazılmaz.
+  - Sonuç yalnız o kullanıcının `analyses` kaydına ve (bağlıysa) kendi Telegram'ına gider.
+- Telegram bağlama: sitede tek kullanımlık kod (10 dk, hash'li) → bota `/bagla KOD` → `users.telegram_chat_id`.
+  Sahibin kişisel bildirimleri `ALLOWED_CHAT_ID`'ye gider.
+- `kapanis/frontend/src`: React 19 + Create React App/craco (Vite değil) + Tailwind + Claude Design "Kapanış" tasarım sistemi (`src/ds`).
+  - Sayfalar `pages/panel/*`, tanıtım `pages/public/*`, API `lib/api.js`.
+  - Clerk: `@clerk/react`. Publishable key tarayıcıya çalışırken `/api/auth/config` ile gelir; derleme gerekmez.
+- Tasarım: koyu/açık tema, büyük yazı (A−/A+), renk yalnız anlam için (yeşil yükseliş, kırmızı düşüş, sarı bekle).
 
 ## Çalıştırma
 
+**Bu bilgisayar**
 1. MongoDB yerel servis (`mongodb://127.0.0.1:27017`).
-2. Bot: `bot/.env` doldur (`.env.example`'a bak), `baslat.bat`.
-3. Panel: `web/backend/.env` doldur, `web/baslat-panel.bat` → http://localhost:3000
+2. `.env` dosyalarını doldur: `kriptografikbotu/.env` (`.env.example`) ve `kapanis/backend/.env` (`.env.example`).
+3. Masaüstündeki `KAPANIS-BASLAT.bat`:
+   - MongoDB, panel API'si ve bot açılır.
+   - Arayüz değiştiyse derlenir.
+   - Panel http://localhost:8001/app adresinde.
+   - Durdurmak için `KAPANIS-DURDUR.bat`.
+4. Telefon: Tailscale ile `https://gesellschaft.tailf4d432.ts.net/app`.
 
-Python 3.11, Node 24. Bot bağımlılıkları `requirements.txt`, panel `web/backend/requirements.txt` ve `web/frontend/package.json` (`npm install --legacy-peer-deps`).
+**Bulut** (bilgisayar kapalıyken): tek Docker imajı, `web` + `worker`, MongoDB Atlas (Frankfurt), Render ya da Linux VPS.
+- Adımlar: `BULUT_KURULUM.md`.
+- Botun `data/` klasörü Atlas'a `scripts/import_data_to_atlas.py` ile aktarılır.
+- Bulutta `cloud_store.py` onu dakikada bir yedekler.
+
+Python 3.11, Node 20+.
+- Bot bağımlılıkları: `requirements.txt`.
+- Panel backend'i: `kapanis/backend/requirements.txt` (buluttaki sade liste: `requirements.cloud.txt`).
+- Panel frontend'i: `kapanis/frontend/package.json` (`npm install --legacy-peer-deps`).
 
 ## Yeni özellik eklerken
 
@@ -115,7 +149,9 @@ Python 3.11, Node 24. Bot bağımlılıkları `requirements.txt`, panel `web/bac
 - Yeni sayısal kontrol → Python'da hesapla, DeepSeek'e hazır sonuç ver.
 - Yeni Telegram komutu → `main.py` içinde `@authorized` handler + `HELP` metni + gerekirse `BOT_MENU`.
 - Panelde yeni veri → `web_sync.py` içinde `build_*` fonksiyonu + backend `INGEST_COLLECTIONS` + frontend sayfası.
-- `.env`, `data/`, `.venv`, `node_modules` asla paylaşılmaz ve commit edilmez.
+- Panelde kullanıcıya özel veri → her sorguda oturumdaki `user["id"]` ile filtrele; kimliği istekten okuma.
+- Sahibe özel bir şey ekliyorsan backend'de `require_owner`, frontend'de `own(...)` rota koruması kullan.
+- `.env`, `.env.atlas`, `data/`, loglar, `.venv`, `node_modules` asla paylaşılmaz ve commit edilmez.
 
 
 ## Kripto ↔ BIST eşitliği

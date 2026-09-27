@@ -12,6 +12,7 @@ Roles
 Kapanış never stores Clerk passwords. A Clerk user is accepted only when Clerk reports the primary
 e-mail as verified (Google e-mails are verified by Google, e-mail sign-ups by the Clerk code).
 """
+import base64
 import os
 import time
 from datetime import datetime, timezone
@@ -20,8 +21,24 @@ import httpx
 import jwt
 
 AUTH_MODE = os.environ.get("AUTH_MODE", "legacy").lower()
-CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL", "")
-CLERK_ISSUER = os.environ.get("CLERK_ISSUER", "")
+# The panel is Create React App, not Vite; the publishable key reaches the browser at runtime through
+# /api/auth/config, so either variable name works and no rebuild is needed when it changes.
+PUBLISHABLE_KEY = os.environ.get("CLERK_PUBLISHABLE_KEY") or os.environ.get("VITE_CLERK_PUBLISHABLE_KEY") or ""
+
+
+def frontend_api(publishable_key: str) -> str:
+    """pk_test_/pk_live_ + base64("<frontend-api-host>$") -> "https://<frontend-api-host>" ("" if malformed)."""
+    try:
+        b64 = publishable_key.split("_", 2)[2]
+        host = base64.b64decode(b64 + "=" * (-len(b64) % 4)).decode("ascii").rstrip("$")
+    except Exception:
+        return ""
+    return f"https://{host}" if host and "." in host and "/" not in host else ""
+
+
+_FAPI = frontend_api(PUBLISHABLE_KEY)
+CLERK_ISSUER = os.environ.get("CLERK_ISSUER") or _FAPI
+CLERK_JWKS_URL = os.environ.get("CLERK_JWKS_URL") or (f"{_FAPI}/.well-known/jwks.json" if _FAPI else "")
 CLERK_SECRET_KEY = os.environ.get("CLERK_SECRET_KEY", "")
 CLERK_API = os.environ.get("CLERK_API_URL", "https://api.clerk.com/v1")
 # Origins allowed to have minted the token (Clerk "azp" claim), e.g. https://kapanis.app

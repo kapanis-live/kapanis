@@ -1,165 +1,176 @@
-# Kapanış'ı buluta taşıma (bilgisayar kapalıyken çalışsın)
+# Kapanış'ı buluta taşıma
 
-Bu belge, siteyi ve Telegram botunu kendi bilgisayarından çıkarıp bulutta 7/24 çalıştırmak için gereken
-adımları anlatır. Hesapları, kartı ve anahtarları **sen** oluşturur ve girersin. Depoda hiçbir gerçek anahtar yoktur.
+Amaç: site ve Telegram botu, bilgisayar kapalıyken de çalışsın; herkes kendi hesabını açabilsin.
+Hesapları, kartı ve anahtarları **sen** oluşturur ve girersin. Depoda hiçbir gerçek anahtar ya da şifre yoktur.
+
+Kararlar (27.09.2026):
+- Giriş: Clerk (Google, e-posta + şifre, e-posta kaydında doğrulama kodu).
+- Veritabanı: MongoDB Atlas, M0, AWS Frankfurt (eu-central-1).
+- Sunucu: Avrupa bölgesinde **Render** ya da **Linux VPS**. Heroku kullanılmıyor.
+- Telegram botu 7/24 çalışır, uyuyan ücretsiz bir plana konmaz.
+- Demo portföy ve sanal bakiye kapsam dışı.
 
 ## 1. Mimari
 
 ```
-                 ┌──────────────────────────────┐
- tarayıcı ──────▶│ web  (FastAPI + React panel) │──┐
- (Google / e-posta│  /app, /api  · port $PORT    │  │   MongoDB Atlas
-  Clerk ile giriş)└──────────────▲───────────────┘  ├──▶ kullanıcılar, portföyler, analizler,
-                                 │ X-Bot-Key         │    komut kuyruğu, botun data/ yedeği
-                 ┌───────────────┴──────────────┐  │
- Telegram ◀─────▶│ worker (Telegram botu,       │──┘
-                 │ alarmlar, zamanlanmış işler) │
-                 └──────────────────────────────┘
+                  ┌───────────────────────────────┐
+ tarayıcı ───────▶│ web: FastAPI + React panel     │──┐
+ (Clerk ile giriş)│ /app sayfaları, /api, $PORT    │  │
+                  └───────────────▲───────────────┘  │     MongoDB Atlas (Frankfurt)
+                                  │ X-Bot-Key         ├──▶  kullanıcılar, portföyler, analizler,
+                  ┌───────────────┴───────────────┐  │     komut kuyruğu, bot_files (botun data/ kopyası)
+ Telegram ◀──────▶│ worker: Telegram botu          │──┘
+                  │ alarmlar, zamanlanmış işler    │
+                  └───────────────────────────────┘
 ```
 
-- **web**: site ve API. Kullanıcı oturumunu Clerk doğrular. Şifreler Kapanış'ta tutulmaz.
-- **worker**: botun kendisi. 7/24 çalışmalı; uyuyan (sleep) bir plana konmamalı.
-- **MongoDB Atlas**: iki süreç aynı veritabanını kullanır. Botun `data/*.json` dosyaları da burada yedeklenir
-  (`cloud_store.py`), çünkü bulutta disk her yeniden başlatmada silinir.
-- Tek Docker imajı iki süreci de çalıştırır: `/app/start.sh web` ve `/app/start.sh worker`.
+Tek Docker imajı iki süreci çalıştırır:
 
-**Roller**
-- **Sistem sahibi** (`OWNER_EMAIL`): botun portföyünü, sinyallerini, alarmlarını ve ayarlarını görür. Bugünkü panelin tamamı.
-- **Kullanıcı** (kayıt olan herkes): kendi gerçek portföyü (Portföyüm), piyasa sayfaları, grafik ve günlük sınırlı yapay zekâ analizi.
-  Başkasının portföyünü, kararlarını ya da analizlerini göremez. Botun kişisel verisine erişemez.
+| Süreç | Komut | Ne yapar | Uyuyabilir mi? |
+|---|---|---|---|
+| **web** | `/app/start.sh web` | Siteyi ve API'yi sunar. Clerk oturumunu doğrular. Kullanıcının portföyünü ve analizlerini ayırır. | Evet, ama uyursa ilk açılış yaklaşık 1 dk sürer. |
+| **worker** | `/app/start.sh worker` | Telegram botu. Kapanış alarmları (Binance websocket), 15 dk plan takibi, BIST/ABD günlük işler, panel komut kuyruğunu 15 sn'de bir okur. | **Hayır.** Uyursa alarmlar ve Telegram cevapları durur. |
 
-## 2. Gerekli hesaplar
+Worker'ın verisi (`data/*.json`: portföy, alarmlar, kararlar, ayarlar) bulutta diskte kalıcı değildir. `cloud_store.py` bu dosyaları:
+- açılışta Atlas'tan geri yükler,
+- dakikada bir ve kapanırken Atlas'a yazar.
 
-| Servis | Ne için | Not |
-|---|---|---|
-| MongoDB Atlas | veritabanı | Ücretsiz M0 küme yeter. Bölge: Frankfurt (eu-central-1). |
-| Clerk | giriş (Google, e-posta + şifre, e-posta kodu) | Hobby planı. Canlı ortam (production) için kendi alan adın gerekir. |
-| Heroku **ya da** Render **ya da** bir Linux sunucu | web + worker | Aşağıda üç seçenek var. |
-| Alan adı | kapanis.app gibi | Clerk canlı ortamı ve HTTPS için. |
+Beklenmedik bir kapanmada en fazla yaklaşık 1 dakikalık değişiklik kaybolabilir. Loglar Atlas'a yazılmaz; içlerinde Telegram token'ı olabilir.
 
-Fiyatlar ve öğrenci paketi (GitHub Student Developer Pack) kredileri değişebilir. Karar vermeden önce her servisin güncel sayfasına bak.
+Web ve worker aynı Atlas veritabanını (`kapanis`) kullanır.
 
-**Bölge önemli:** Binance API'si ABD veri merkezlerinden gelen istekleri reddeder. Web ve worker'ı **Avrupa'da**
-(Heroku `eu`, Render `frankfurt`) çalıştır.
+## 2. Ortam değişkenleri
 
-## 3. MongoDB Atlas
+Tam liste ve açıklamalar: `deploy/web.env.example`, `deploy/bot.env.example`.
 
-1. Atlas'ta bir proje ve M0 (ücretsiz) küme aç, bölge Frankfurt.
-2. Database Access: bir kullanıcı oluştur (güçlü şifre).
-3. Network Access: bulut servislerinin IP'si sabit olmadığı için `0.0.0.0/0` gerekebilir. Bu durumda güvenlik şifreye dayanır;
-   şifreyi uzun ve rastgele seç.
-4. Connect → Drivers: bağlantı adresini al (`mongodb+srv://...`). Bu adres hem web'in `MONGO_URL`'i hem worker'ın
-   `STATE_MONGO_URL`'i olur.
+**Ortak (web ve worker)**
 
-## 4. Clerk
-
-1. Clerk'te bir uygulama oluştur.
-2. **User & Authentication → Email, phone, username**
-   - Email address: açık. **Verify at sign-up** açık, yöntem **Email verification code**.
-   - Password: açık.
-3. **SSO connections → Google**: açık. Canlı ortamda kendi Google OAuth bilgilerini girmen gerekir
-   (Clerk ekranı adım adım gösterir).
-4. **Domains**: canlı ortam için alan adını ekle (ör. `kapanis.app`). Clerk'in istediği DNS kayıtlarını alan adı sağlayıcına gir.
-5. **API keys** ekranından al:
-   - `CLERK_PUBLISHABLE_KEY` (`pk_live_...`, herkese açık olabilir)
-   - `CLERK_SECRET_KEY` (`sk_live_...`, **gizli**, yalnız web servisine)
-   - Frontend API URL (ör. `https://clerk.kapanis.app`)
-     - `CLERK_ISSUER` = bu adres
-     - `CLERK_JWKS_URL` = bu adres + `/.well-known/jwks.json`
-
-Backend, Clerk'in "e-posta doğrulandı" demediği hiçbir hesabı kabul etmez. Google ile girenlerin e-postası Google
-tarafından doğrulanmış sayılır; onlardan ayrıca kod istenmez.
-
-## 5. Ortam değişkenleri
-
-Tam liste ve açıklamalar: `deploy/web.env.example` ve `deploy/bot.env.example`.
-
-**web**
 | Değişken | Değer |
 |---|---|
-| `AUTH_MODE` | `clerk` |
-| `MONGO_URL`, `DB_NAME` | Atlas adresi, `kapanis` |
+| `STATE_MONGO_URL` | `mongodb+srv://kapanis_app:<URL-KODLU-ŞİFRE>@cluster0.3uqpipu.mongodb.net/?appName=Cluster0` |
+| `STATE_DB_NAME` | `kapanis` |
+| `BOT_API_KEY` | uzun rastgele metin, **iki tarafta aynı**. Yalnız bot ile site arasında kullanılır, kullanıcı oturumundan ayrıdır. |
+
+Şifrede `^ $ # ; < > @ : /` gibi karakterler varsa URL kodlanmalı:
+`python -c "import urllib.parse; print(urllib.parse.quote(input('şifre: '), safe=''))"`
+
+**Yalnız web**
+
+| Değişken | Değer |
+|---|---|
+| `AUTH_MODE` | `clerk`: eski yerel yönetici girişi tamamen kapanır |
+| `VITE_CLERK_PUBLISHABLE_KEY` | `pk_test_...` / `pk_live_...` (tarayıcıya gider, gizli değil) |
+| `CLERK_SECRET_KEY` | `sk_test_...` / `sk_live_...` (**gizli**, yalnız web'de) |
+| `CLERK_AUTHORIZED_PARTIES`, `CORS_ORIGINS` | sitenin adresi, ör. `https://kapanis.app` |
+| `OWNER_EMAIL` | `valenciaennerman@gmail.com`: botun portföyünü ve sinyallerini gören tek hesap |
 | `JWT_SECRET` | uzun rastgele metin |
-| `BOT_API_KEY` | uzun rastgele metin; worker'daki ile **aynı**. Kullanıcı oturumundan ayrıdır. |
-| `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_JWKS_URL`, `CLERK_ISSUER` | bölüm 4 |
-| `CLERK_AUTHORIZED_PARTIES`, `CORS_ORIGINS` | `https://kapanis.app` |
-| `OWNER_EMAIL` | `valenciaennerman@gmail.com` (sistem sahibi) |
 | `TRUST_PROXY` | `1` |
-| `USER_DAILY_ANALYSES` | kullanıcı başına günlük analiz hakkı (varsayılan 5; DeepSeek ücretli) |
-| `TELEGRAM_BOT_USERNAME` | botun kullanıcı adı (@ olmadan) |
+| `USER_DAILY_ANALYSES` | kullanıcı başına günlük yapay zekâ analizi (varsayılan 5; DeepSeek ücretli) |
+| `TELEGRAM_BOT_USERNAME` | botun kullanıcı adı, @ olmadan |
 
-**worker**: bugünkü `kriptografikbotu/.env` içindekilerin hepsi, ek olarak:
+Clerk'in adresi (issuer) ve imza anahtarları (JWKS) publishable key'in içinden otomatik çıkarılır. Ayrıca girmen gerekmez.
+
+Not: Panel Vite değil, Create React App (craco). Publishable key tarayıcıya derleme sırasında değil, çalışırken
+`/api/auth/config` üzerinden gider. Bu yüzden anahtar değişince yeniden derlemek gerekmez; `VITE_` adı da kabul edilir.
+
+**Yalnız worker**: bilgisayardaki `kriptografikbotu/.env` içindekilerin hepsi (`TELEGRAM_BOT_TOKEN`, `ALLOWED_CHAT_ID`,
+`DEEPSEEK_API_KEY`, `NVIDIA_API_KEY`, `TIINGO_API_KEY`, `FRED_API_KEY`, `BLS_API_KEY`, `CFTC_APP_TOKEN`, `SEC_USER_AGENT`), ek olarak:
+
 | Değişken | Değer |
 |---|---|
-| `WEB_URL` | web servisinin adresi, ör. `https://kapanis.app` |
-| `BOT_API_KEY` | web'deki ile aynı |
-| `STATE_MONGO_URL`, `STATE_DB_NAME` | Atlas adresi, `kapanis` |
+| `WEB_URL` | web'in adresi, ör. `https://kapanis.app` |
 
 Rastgele anahtar üretmek için: `python -c "import secrets; print(secrets.token_urlsafe(48))"`
 
-## 6. Botun verisini buluta aktarma (bir kez)
+## 3. Clerk ayarları (bir kez)
 
-Portföyün, alarmların ve kararların bugün `kriptografikbotu/data/` içinde. Bulut botu ilk açıldığında bunları
-Atlas'tan okur. Önce bilgisayarından yükle:
+- **User & Authentication → Email**: açık. *Verify at sign-up* açık, yöntem **Email verification code**.
+- **Password**: açık.
+- **SSO → Google**: açık.
+- Geliştirme anahtarları (`pk_test`/`sk_test`) `localhost`'ta çalışır.
+- Canlı site için Clerk'te **production instance** oluştur:
+  - Alan adını ekle ve DNS kayıtlarını gir.
+  - Google için kendi OAuth bilgilerini gir.
+  - Anahtarları `pk_live`/`sk_live` ile değiştir.
 
-```powershell
-cd C:\Users\etemk\OneDrive\Desktop\kriptografikbotu
-$env:STATE_MONGO_URL = "mongodb+srv://..."   # Atlas adresi
-$env:STATE_DB_NAME = "kapanis"
-.venv\Scripts\python -c "import cloud_store; print(cloud_store.sync(), 'dosya yüklendi')"
-```
+Backend, Clerk'in "e-posta doğrulandı" demediği hesabı kabul etmez. Google ile girenlerden ayrıca kod istenmez.
 
-Loglar yüklenmez (Telegram token'ı içeren satırlar olabilir).
+## 4. Seçenek A: Render
 
-## 7. Seçenek A: Heroku
+1. Render → **New → Blueprint** → bu depoyu seç. `render.yaml` iki servisi Frankfurt'ta oluşturur:
+   `kapanis-web` (web) ve `kapanis-bot` (worker).
+2. Her serviste **Environment** bölümüne bölüm 2'deki değerleri gir (`sync: false` yazanlar).
+3. Worker'ı henüz **başlatma** ya da **suspend** et. Önce bölüm 6'daki geçiş adımları.
+4. **Settings → Custom Domain**: alan adını web servisine bağla.
 
-```bash
-heroku create kapanis --region eu
-heroku stack:set container -a kapanis
-heroku config:set -a kapanis AUTH_MODE=clerk MONGO_URL=... BOT_API_KEY=... (bölüm 5'teki hepsi)
-git push heroku main
-heroku ps:scale web=1 worker=1 -a kapanis
-heroku domains:add kapanis.app -a kapanis
-```
+Render'ın ücretsiz planında arka plan worker'ı yok ve ücretsiz web servisi 15 dakika boşta kalınca uyur.
+Bu yüzden `render.yaml`'da iki servis de `starter` planında. Güncel fiyatı Render'da kontrol et.
 
-`heroku.yml` iki süreci aynı imajdan kurar. Uyuyan (eco) bir dyno'daki web birkaç saniye geç açılır; worker'ın uyumaması gerekir.
+## 5. Seçenek B: Linux VPS (Avrupa, ör. Frankfurt/Amsterdam)
 
-## 8. Seçenek B: Render
-
-Render'da **New → Blueprint** seçip bu depoyu bağla; `render.yaml` iki servisi (Frankfurt) oluşturur. `sync: false`
-yazan değişkenleri Render ekranından gir. Render'ın ücretsiz planında arka plan worker'ı yok ve ücretsiz web servisi
-15 dakika boşta kalınca uyur. Bu yüzden dosyada iki servis de `starter` planında.
-
-## 9. Seçenek C: Kendi Linux sunucun (ör. öğrenci kredisiyle bir droplet)
+Docker kurulu bir sunucuda:
 
 ```bash
 git clone https://github.com/valenciaennerman-cmd/kapanis.git && cd kapanis
-cp deploy/web.env.example deploy/web.env     # doldur
+cp deploy/web.env.example deploy/web.env     # doldur (bölüm 2)
 cp deploy/bot.env.example deploy/bot.env     # doldur
-DOMAIN=kapanis.app docker compose up -d --build
+docker compose up -d --build web caddy       # önce yalnız site
 ```
 
-Caddy, HTTPS sertifikasını kendisi alır ve yeniler. Alan adının A kaydı sunucunun IP'sini göstermeli.
+- `DOMAIN=kapanis.app` ortam değişkeniyle (ya da `.env` dosyasında) Caddy HTTPS sertifikasını kendisi alır ve yeniler.
+- Alan adının A kaydı sunucunun IP'sini göstermeli.
+- `deploy/web.env` ve `deploy/bot.env` git'e girmez (`.gitignore`).
+- Worker'ı (`docker compose up -d worker`) bölüm 6'daki sırayla aç.
+- Güncelleme: `git pull && docker compose up -d --build`.
 
-## 10. Geçiş günü (çakışmayı önle)
+## 6. Geçiş günü (sıra önemli)
 
-Telegram bir botun mesajlarını aynı anda **yalnız bir** sürece verir. Bulut worker'ını açmadan önce bilgisayardaki botu durdur:
-`KAPANIS-DURDUR.bat`. İkisi birlikte açık kalırsa Telegram "Conflict" hatası verir ve mesajlar karışır.
+Telegram bir botun mesajlarını aynı anda **yalnız bir** sürece verir. İki bot birlikte açık kalırsa Telegram
+"Conflict" hatası verir, mesajlar ve alarmlar karışır.
 
-Sonra kontrol et:
-1. `https://kapanis.app` açılıyor mu?
-2. Google ile giriş yapınca `OWNER_EMAIL` hesabı bugünkü paneli görüyor mu?
-3. Başka bir e-postayla kayıt olunca kod geliyor mu? Kodu girmeden panel açılmamalı.
-4. Telegram'da `/start` botta cevap veriyor mu?
-5. Panelden bir analiz iste; sonuç panelde ve (bağlıysa) Telegram'da görünmeli.
+1. **Bilgisayardaki botu durdur:** `KAPANIS-DURDUR.bat`. Görev yöneticisinde `python main.py` kalmadığından emin ol.
+2. **Son veriyi Atlas'a yükle** (bilgisayarda, `kriptografikbotu` klasöründe):
+   ```powershell
+   .venv\Scripts\python scripts\import_data_to_atlas.py          # önce deneme: ne yükleneceğini gösterir
+   .venv\Scripts\python scripts\import_data_to_atlas.py --yes    # yükle
+   ```
+   - Bağlantı adresini `.env.atlas` dosyasından okur ve adresi ekrana yazmaz.
+   - Atlas'ta daha yeni veri varsa durur; üzerine yazmak için `--overwrite` gerekir.
+   - Atlas'ta var olanın üzerine yazmadan önce onu `data/atlas_yedek_<zaman>.json` olarak bilgisayara yedekler.
+3. **Sunucudaki worker'ı başlat** (Render: *Resume/Deploy*; VPS: `docker compose up -d worker`).
+   Açılışta veriyi Atlas'tan geri yükler.
+4. **Kontrol et:**
+   - Telegram'da `/pozisyonlar` bugünkü portföyünü gösteriyor mu?
+   - Sitede Google ile `OWNER_EMAIL` hesabıyla girince bugünkü panel geliyor mu?
+   - Başka bir e-postayla kayıt olunca kod geliyor mu? Kodu girmeden panel açılmamalı.
+   - Panelden bir analiz iste: sonuç panelde ve (bağlıysa) Telegram'da görünmeli.
+5. Geri dönmek gerekirse:
+   - Önce sunucudaki worker'ı durdur.
+   - Sonra bilgisayarda `KAPANIS-BASLAT.bat`.
+   - Bulutta değişen veriyi bilgisayara almak için Atlas'taki `bot_files` gerekir. Bu durumda bana haber ver; bunun için ayrı bir betik yok.
 
-## 11. Telegram bağlama (kullanıcılar)
+## 7. Kullanıcılar ve veri ayrımı
 
-Kullanıcı sitede **Hesap → Telegram'ı bağla**'ya basar ve bir kod alır (10 dakika geçerli, tek kullanımlık, veritabanında
-özetlenmiş/hash olarak tutulur). Kodu bota `/bagla KP-XXXXXXXX` olarak yazar. O andan sonra sitede istediği analizler
-kendi Telegram'ına da gelir. Bağlamayan kullanıcı sonucu yalnız sitede görür. Bu bağlantı, kullanıcıya botun sahibe özel
-komutlarına erişim vermez.
+- **Sistem sahibi** (`OWNER_EMAIL`): bugünkü panelin tamamı. Botun portföyü, sinyaller, alarmlar, disiplin, raporlar.
+- **Kullanıcı** (kayıt olan herkes):
+  - Kendi gerçek portföyü (Portföyüm), Grafik & Analiz, Makro, Vadeli, Hesap.
+  - Başkasının portföyünü, analiz geçmişini ya da Telegram bağlantısını göremez.
+  - Botun kişisel verisine sunucu tarafında da erişemez (403).
+- **Analiz akışı** (her kullanıcı için aynı):
+  1. "Analiz et" → komut kuyruğuna kullanıcı kimliği ve istek kimliğiyle yazılır.
+  2. Worker aynı analiz motorunu çalıştırır.
+  3. Sonuç yalnız o kullanıcının paneline yazılır.
+  4. Telegram bağlıysa kullanıcının kendi sohbetine de gider.
+  5. Kullanıcı analizine senin portföyün, planların ya da sohbet geçmişin eklenmez.
+- **Telegram bağlama:**
+  1. Sitede Hesap → Telegram'ı bağla → kod (10 dk, tek kullanımlık, veritabanında hash'li).
+  2. Kullanıcı bota `/bagla KP-XXXXXXXX` yazar.
+  3. Bağlantı kullanıcıya botun sahibe özel komutlarını açmaz.
+- Şifreler Kapanış'ta tutulmaz (Clerk'te). Broker ya da borsa şifresi istenmez. Bot işlem yapmaz.
 
-## 12. Bilgisayarda çalıştırma (değişmedi)
+## 8. Bilgisayarda çalıştırma
 
-`KAPANIS-BASLAT.bat` ile her şey eskisi gibi çalışır (`AUTH_MODE=legacy`: tek yönetici şifresi). Aynı kod iki modda da çalışır.
+`KAPANIS-BASLAT.bat` eskisi gibi çalışır:
+- Yerel MongoDB kullanılır.
+- `AUTH_MODE=both`: yönetici şifresi geçerli.
+- `backend/.env`'e `CLERK_SECRET_KEY` eklenince Clerk girişi de açılır; Clerk geliştirme ortamı `localhost`'ta çalışır.

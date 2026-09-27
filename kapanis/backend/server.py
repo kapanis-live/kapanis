@@ -464,6 +464,20 @@ async def panel_action(body: ActionBody, user: dict = Depends(get_current_user))
     return {"queued": True, "command": cmd}
 
 
+@api.get("/quota")
+async def quota(user: dict = Depends(get_current_user)):
+    """Today's analysis allowance for the panel's QuotaMeter (the owner has no limit)."""
+    if identity.is_owner(user):
+        return {"sahip": True}
+    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    used = await db.commands.count_documents({"user_id": user["id"], "type": "analysis.request", "created_at": {"$gte": since}})
+    own = bool(user.get("kendi_anahtari"))
+    shared_used = await db.commands.count_documents({"role": "user", "own_keys": {"$ne": True}, "type": "analysis.request",
+                                                     "created_at": {"$gte": since}})
+    return {"sahip": False, "kullanilan": used, "sinir": USER_DAILY_ANALYSES, "anahtarla_sinir": USER_KEY_DAILY_ANALYSES,
+            "kendi_anahtari": own, "ortak_dolu": (not own) and shared_used >= GLOBAL_DAILY_ANALYSES}
+
+
 @api.get("/analyses")
 async def get_analyses(kod: Optional[str] = None, user: dict = Depends(get_current_user)):
     q = {"kodlar": kod.upper()} if kod else {}

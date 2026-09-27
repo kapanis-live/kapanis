@@ -2,22 +2,18 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { PublicLayout } from "@/components/PublicLayout";
 import { PanelLayout } from "@/components/PanelLayout";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, useTheme } from "@/lib/theme";
 
-import Home from "@/pages/public/Home";
-import Ozellikler from "@/pages/public/Ozellikler";
-import NasilCalisir from "@/pages/public/NasilCalisir";
-import Kurallar from "@/pages/public/Kurallar";
-import SSS from "@/pages/public/SSS";
 import Iletisim from "@/pages/public/Iletisim";
 import Gizlilik from "@/pages/public/Gizlilik";
+import { Home, Features, How, Rules, Faq, SitePage, Terms } from "@/pages/public/site";
 import Users from "@/pages/panel/Users";
 import Giris from "@/pages/Giris";
 import Kayit from "@/pages/Kayit";
 import MyPortfolio from "@/pages/panel/MyPortfolio";
+import MyAnalyses from "@/pages/panel/MyAnalyses";
 import Account from "@/pages/panel/Account";
 import { useAuth } from "@/context/AuthContext";
 
@@ -38,7 +34,6 @@ import ChartPage from "@/pages/panel/Chart";
 import Plans from "@/pages/panel/Plans";
 import Tools from "@/pages/panel/Tools";
 
-const pub = (el) => <PublicLayout>{el}</PublicLayout>;
 // panel(): her giriş yapan; own(): yalnız sistem sahibi (botun kendi verisi)
 const panel = (el) => (
   <ProtectedRoute>
@@ -67,18 +62,21 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          <Route path="/" element={pub(<Home />)} />
-          <Route path="/ozellikler" element={pub(<Ozellikler />)} />
-          <Route path="/nasil-calisir" element={pub(<NasilCalisir />)} />
-          <Route path="/kurallar" element={pub(<Kurallar />)} />
-          <Route path="/sss" element={pub(<SSS />)} />
-          <Route path="/iletisim" element={pub(<Iletisim />)} />
-          <Route path="/gizlilik" element={pub(<Gizlilik />)} />
+          <Route path="/" element={<Home />} />
+          <Route path="/ozellikler" element={<Features />} />
+          <Route path="/nasil-calisir" element={<How />} />
+          <Route path="/kurallar" element={<Rules />} />
+          <Route path="/sss" element={<Faq />} />
+          <Route path="/iletisim" element={<SitePage><Iletisim /></SitePage>} />
+          <Route path="/gizlilik" element={<SitePage><Gizlilik /></SitePage>} />
+          <Route path="/kvkk" element={<Navigate to="/gizlilik" replace />} />
+          <Route path="/kosullar" element={<Terms />} />
           <Route path="/giris/*" element={<Giris />} />
           <Route path="/kayit/*" element={<Kayit />} />
 
           <Route path="/app" element={panel(<Home0 />)} />
           <Route path="/app/portfoyum" element={panel(<MyPortfolio />)} />
+          <Route path="/app/analizlerim" element={panel(<MyAnalyses />)} />
           <Route path="/app/hesap" element={panel(<Account />)} />
           <Route path="/app/grafik" element={panel(<ChartPage />)} />
           <Route path="/app/makro" element={panel(<Macro />)} />

@@ -1,6 +1,5 @@
 /* eslint-disable */
-/* Kapanış tasarım sistemi bileşenleri: Claude Design 'Kapanış' sisteminden kopyalandı (window.Kapanis). */
-/* @ds-bundle: {"format":4,"namespace":"Kapanis","components":[{"name":"PageHeader"},{"name":"Card"},{"name":"StatCard"},{"name":"SignalCard"},{"name":"ChangeBadge"},{"name":"Trend"},{"name":"RsiMeter"},{"name":"RangeBar"},{"name":"Ticker"},{"name":"Button"},{"name":"Chip"},{"name":"Segmented"},{"name":"SearchField"},{"name":"FontScale"},{"name":"ThemeToggle"},{"name":"WatchlistTable"},{"name":"PositionCard"},{"name":"CandleChart"},{"name":"ChartPanel"},{"name":"Disclaimer"},{"name":"AppShell"},{"name":"LiveStatus"},{"name":"BrandMark"},{"name":"Icon"},{"name":"Tabs"},{"name":"DecisionBadge"},{"name":"GateList"},{"name":"SignalList"},{"name":"AiNote"},{"name":"OutcomeBox"},{"name":"RegimeGauge"},{"name":"FreshnessList"},{"name":"FeedList"},{"name":"MoverList"},{"name":"PulseList"},{"name":"MiniChart"},{"name":"MarketCard"},{"name":"DataTable"},{"name":"Donut"},{"name":"Callout"},{"name":"CompareCard"},{"name":"AlarmCard"},{"name":"AlarmForm"},{"name":"Field"},{"name":"TextInput"},{"name":"Select"},{"name":"ShieldStatus"},{"name":"LimitMeter"},{"name":"StreakStrip"},{"name":"FearGreedGauge"},{"name":"LineChart"}]} */
+/* @ds-bundle: {"format":4,"namespace":"Kapanis","components":[{"name":"PageHeader"},{"name":"Card"},{"name":"StatCard"},{"name":"SignalCard"},{"name":"ChangeBadge"},{"name":"Trend"},{"name":"RsiMeter"},{"name":"RangeBar"},{"name":"Ticker"},{"name":"Button"},{"name":"Chip"},{"name":"Segmented"},{"name":"SearchField"},{"name":"FontScale"},{"name":"ThemeToggle"},{"name":"WatchlistTable"},{"name":"PositionCard"},{"name":"CandleChart"},{"name":"ChartPanel"},{"name":"Disclaimer"},{"name":"AppShell"},{"name":"LiveStatus"},{"name":"BrandMark"},{"name":"Icon"},{"name":"Tabs"},{"name":"DecisionBadge"},{"name":"GateList"},{"name":"SignalList"},{"name":"AiNote"},{"name":"OutcomeBox"},{"name":"RegimeGauge"},{"name":"FreshnessList"},{"name":"FeedList"},{"name":"MoverList"},{"name":"PulseList"},{"name":"MiniChart"},{"name":"MarketCard"},{"name":"DataTable"},{"name":"Donut"},{"name":"Callout"},{"name":"CompareCard"},{"name":"AlarmCard"},{"name":"AlarmForm"},{"name":"Field"},{"name":"TextInput"},{"name":"Select"},{"name":"ShieldStatus"},{"name":"LimitMeter"},{"name":"StreakStrip"},{"name":"FearGreedGauge"},{"name":"LineChart"},{"name":"LevelBar"},{"name":"SiteHeader"},{"name":"SiteFooter"},{"name":"StepList"},{"name":"FeatureCard"},{"name":"RuleStrip"},{"name":"FaqList"},{"name":"CloseRuleDiagram"},{"name":"MessagePreview"},{"name":"AuthFrame"},{"name":"AuthBox"},{"name":"SetupChecklist"},{"name":"EmptyState"},{"name":"Skeleton"},{"name":"QuotaMeter"},{"name":"BuyForm"},{"name":"TelegramLink"},{"name":"ApiKeyList"},{"name":"DangerZone"}]} */
 (function () {
   var R = window.React, h = R.createElement;
   var useState = R.useState, useMemo = R.useMemo, useRef = R.useRef, useEffect = R.useEffect;
@@ -127,13 +126,14 @@
   }
 
   function TickerLogo(p) {
-    /* Kapanış paneli: logo her yerde aynı bileşenle (AssetLogo, window.KapanisLogo) çizilir.
-       p.src = { code, market } ise o bileşene yönlendirilir; yoksa baş harfler. */
+    /* Kapanış paneli: logo her yerde aynı bileşenle (AssetLogo, window.KapanisLogo) çizilir:
+       40px yuvarlak, dolu logolar daireyi doldurur, yazılı logolar beyaz rozette. p.src = { code, market }. */
     var size = p.size || 'md';
     if (p.src && p.src.code && window.KapanisLogo) {
       return h(window.KapanisLogo, { code: p.src.code, market: p.src.market, size: size === 'lg' ? 48 : 40 });
     }
-    return h('span', { className: cx('kp-logo', 'kp-logo--' + size), 'aria-hidden': true }, String(p.symbol || '?').slice(0, size === 'lg' ? 3 : 2));
+    return h('span', { className: cx('kp-logo', 'kp-logo--' + size), 'aria-hidden': true },
+      p.src && typeof p.src === 'string' ? h('img', { src: p.src, alt: '' }) : String(p.symbol || '?').slice(0, size === 'lg' ? 3 : 2));
   }
   function Ticker(p) {
     return h('span', { className: cx('kp-ticker', p.size === 'lg' && 'kp-ticker--lg') },
@@ -144,9 +144,12 @@
   }
 
   function Button(p) {
-    var rest = Object.assign({}, p); delete rest.variant; delete rest.className; delete rest.icon;
-    return h('button', Object.assign({ type: 'button' }, rest, { className: cx('kp-btn', 'kp-btn--' + (p.variant || 'secondary'), p.className) }),
-      p.icon ? h('span', { className: 'kp-btn__icon', 'aria-hidden': true }, p.icon) : null, p.children);
+    var rest = Object.assign({}, p); delete rest.variant; delete rest.className; delete rest.icon; delete rest.iconEnd;
+    var cls = cx('kp-btn', 'kp-btn--' + (p.variant || 'secondary'), p.className);
+    var kids = [p.icon ? h('span', { key: 'i', className: 'kp-btn__icon', 'aria-hidden': true }, p.icon) : null, p.children,
+      p.iconEnd ? h('span', { key: 'e', className: 'kp-btn__icon', 'aria-hidden': true }, p.iconEnd) : null];
+    if (p.href) return h.apply(null, ['a', Object.assign({}, rest, { className: cls })].concat(kids));
+    return h.apply(null, ['button', Object.assign({ type: 'button' }, rest, { className: cls })].concat(kids));
   }
 
   function Chip(p) {
@@ -255,31 +258,61 @@
   /* ---------- position ---------- */
   function PositionCard(p) {
     var cur = p.cur, invested = p.qty * p.cost, now = p.qty * p.price, pl = now - invested, plPct = invested ? pl / invested * 100 : 0;
-    var tone = pl > 0 ? 'up' : pl < 0 ? 'down' : 'flat';
-    var sell = useState(null), selling = sell[0] != null;
+    var tone = pl > 0 ? 'up' : pl < 0 ? 'down' : 'flat', hasStop = p.stop != null;
+    var mode = useState(null), val = useState(''), err = useState(null);
+    var nowLabel = p.priceLabel || (hasStop ? 'Son kapanış' : 'Şimdi');
+    function open(m) { var base = m === 'stop' ? p.stop : p.price; err[1](null); val[1](fmtNum(base, autoDigits(base)).replace(/\./g, '')); mode[1](m); }
+    function submit(e) {
+      e.preventDefault();
+      var v = parseTr(val[0]);
+      if (!(v > 0)) { err[1]('Geçerli bir fiyat yaz.'); return; }
+      if (mode[0] === 'stop') {
+        if (v <= p.stop) { err[1]('Stop yalnız yukarı taşınır. ' + fmtPrice(p.stop, cur) + ' üstünde bir değer yaz.'); return; }
+        if (v >= p.price) { err[1]('Stop son kapanışın (' + fmtPrice(p.price, cur) + ') altında olmalı.'); return; }
+        p.onRaiseStop && p.onRaiseStop({ symbol: p.symbol, stop: v });
+      } else if (p.onSold) p.onSold({ symbol: p.symbol, price: v, qty: p.qty });
+      mode[1](null);
+    }
+    function tile(k, v) { return h('div', { key: k, className: 'kp-tile' }, h('span', { className: 'kp-tile__label' }, k), h('span', { className: 'kp-tile__val' }, v)); }
+    var tiles = hasStop
+      ? [tile('Alış', fmtPrice(p.cost, cur)), tile(nowLabel, fmtPrice(p.price, cur)), tile('Değer', fmtPrice(now, cur, 2))]
+      : [tile('Yatırdığın', fmtPrice(invested, cur, 2)), tile('Şimdiki değeri', fmtPrice(now, cur, 2)),
+         h('div', { key: 'a', className: 'kp-tile' }, h('span', { className: 'kp-tile__label' }, 'Alış → şimdi'),
+           h('span', { className: 'kp-tile__val' }, fmtPrice(p.cost, cur), h('span', { className: 'kp-tile__arrow' }, ' → '), fmtPrice(p.price, cur)))];
+    var form = mode[0] ? h('form', { className: 'kp-pos__sell', onSubmit: submit, noValidate: true },
+        h(Field, { label: mode[0] === 'stop' ? 'Yeni stop' : 'Sattığın fiyat', error: err[0],
+          hint: mode[0] === 'stop' ? 'Şu an ' + fmtPrice(p.stop, cur) + ' · stop yalnız yukarı taşınır' : 'Son kapanışla dolu geldi; gerçekleşen fiyatı yaz' },
+          h(TextInput, { prefix: SYM[cur] || '', inputMode: 'decimal', value: val[0], autoFocus: true, onChange: function (e) { val[1](e.target.value); } })),
+        h('div', { className: 'kp-pos__actions' },
+          h(Button, { variant: 'ghost', onClick: function () { mode[1](null); } }, 'Vazgeç'),
+          h(Button, { variant: 'primary', type: 'submit' }, 'Kaydet'))) : null;
     return h('article', { className: 'kp-card kp-pos' },
       h('div', { className: 'kp-pos__head' },
         h(Ticker, { symbol: p.symbol, name: p.name, logo: p.logo, size: 'lg' }),
         h('span', { className: 'kp-pos__qty' }, new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 8 }).format(p.qty) + ' adet')),
       h('div', { className: 'kp-pos__pl' },
         h('span', { className: cx('kp-pos__plval', 'is-' + tone) }, fmtSignedMoney(pl, cur)),
-        h(ChangeBadge, { value: plPct, size: 'lg' })),
-      h('div', { className: 'kp-pos__tiles' },
-        h('div', { className: 'kp-tile' }, h('span', { className: 'kp-tile__label' }, 'Yatırdığın'), h('span', { className: 'kp-tile__val' }, fmtPrice(invested, cur, 2))),
-        h('div', { className: 'kp-tile' }, h('span', { className: 'kp-tile__label' }, 'Şimdiki değeri'), h('span', { className: 'kp-tile__val' }, fmtPrice(now, cur, 2))),
-        h('div', { className: 'kp-tile' }, h('span', { className: 'kp-tile__label' }, 'Alış → şimdi'),
-          h('span', { className: 'kp-tile__val' }, fmtPrice(p.cost, cur), h('span', { className: 'kp-tile__arrow' }, ' → '), fmtPrice(p.price, cur)))),
-      selling
-        ? h('form', { className: 'kp-pos__sell', onSubmit: function (e) { e.preventDefault(); var v = parseFloat(String(sell[0]).replace(/\./g, '').replace(',', '.')); if (p.onSold && v > 0) p.onSold({ symbol: p.symbol, price: v, qty: p.qty }); sell[1](null); } },
-            h('label', { className: 'kp-pos__selllabel' }, 'Sattığın fiyat',
-              h('span', { className: 'kp-input' }, h('span', { className: 'kp-input__sym' }, SYM[cur] || ''),
-                h('input', { inputMode: 'decimal', value: sell[0], autoFocus: true, onChange: function (e) { sell[1](e.target.value); } }))),
-            h('div', { className: 'kp-pos__actions' },
-              h(Button, { variant: 'ghost', onClick: function () { sell[1](null); } }, 'Vazgeç'),
-              h(Button, { variant: 'primary', type: 'submit' }, 'Kaydet')))
-        : h('div', { className: 'kp-pos__actions' },
-            h(Button, { variant: 'secondary', onClick: function () { p.onOpenChart && p.onOpenChart(p.symbol); } }, 'Grafiği aç'),
-            h(Button, { variant: 'secondary', onClick: function () { sell[1](fmtNum(p.price, autoDigits(p.price)).replace(/\./g, '')); } }, 'Sattım')));
+        h(ChangeBadge, { value: plPct, size: 'lg' }), hasStop ? h('span', { className: 'kp-pos__pllabel' }, 'açık K/Z') : null),
+      h('div', { className: 'kp-pos__tiles' }, tiles),
+      hasStop ? h(LevelBar, { stop: p.stop, target: p.target, cost: p.cost, price: p.price, cur: cur }) : null,
+      form || h('div', { className: 'kp-pos__actions' },
+        h(Button, { variant: 'secondary', onClick: function () { p.onOpenChart && p.onOpenChart(p.symbol); } }, 'Grafiği aç'),
+        hasStop && p.onRaiseStop !== false ? h(Button, { variant: 'secondary', onClick: function () { open('stop'); } }, 'Stopu yükselt') : null,
+        h(Button, { variant: 'secondary', onClick: function () { open('sell'); } }, 'Sattım')));
+  }
+
+  function signedPct(v) { return (v >= 0 ? '+' : '−') + '%' + fmtNum(Math.abs(v), 1); }
+  function LevelBar(p) {
+    var s = p.stop, t = p.target, x = p.price, c = p.cost, cur = p.cur, has = t != null && t > s;
+    function pos(v) { return has ? Math.max(0, Math.min(100, (v - s) / (t - s) * 100)) : 50; }
+    return h('div', { className: 'kp-levelbar' },
+      h('div', { className: 'kp-levelbar__track', role: 'img', 'aria-label': 'Stop ' + fmtPrice(s, cur) + (has ? ', hedef ' + fmtPrice(t, cur) : '') + ', son kapanış ' + fmtPrice(x, cur) },
+        has && c != null ? h('span', { className: 'kp-levelbar__cost', style: { left: pos(c) + '%' }, title: 'Alış ' + fmtPrice(c, cur) }) : null,
+        h('span', { className: 'kp-levelbar__dot', style: { left: pos(x) + '%' } })),
+      h('div', { className: 'kp-levelbar__labels' },
+        h('span', { className: 'kp-levelbar__stop' }, h('b', null, 'Stop '), fmtPrice(s, cur), h('span', { className: 'kp-levelbar__pct' }, signedPct((s / x - 1) * 100))),
+        has ? h('span', { className: 'kp-levelbar__target' }, h('b', null, 'Hedef '), fmtPrice(t, cur), h('span', { className: 'kp-levelbar__pct' }, signedPct((t / x - 1) * 100)))
+          : h('span', { className: 'kp-levelbar__pct' }, 'Hedef yok')));
   }
 
   /* ---------- candlestick chart ---------- */
@@ -387,7 +420,7 @@
       ticks.map(function (t) { return h('text', { key: 'a' + t, className: 'kp-ch-axis', x: plotW + 8, y: yP(t), dy: '0.35em' }, fmtNum(t, tdig)); }),
       h('text', { className: 'kp-ch-axis', x: plotW + 8, y: yR(70), dy: '0.35em' }, '70'),
       h('text', { className: 'kp-ch-axis', x: plotW + 8, y: yR(30), dy: '0.35em' }, '30'),
-      tlabels.map(function (i) { return h('text', { key: 't' + i, className: 'kp-ch-axis', x: x(i), y: H - timeH / 2 + 2, textAnchor: 'middle', dy: '0.35em' }, tlabel(i)); }),
+      tlabels.map(function (i) { return h('text', { key: 't' + i, className: 'kp-ch-axis', x: x(i), y: H - timeH / 2 + 2, textAnchor: x(i) < rem * 2.5 ? 'start' : 'middle', dy: '0.35em' }, tlabel(i)); }),
       h('g', { className: lastUp ? 'kp-ch-tag--up' : 'kp-ch-tag--down' },
         h('line', { className: 'kp-ch-lastline', x1: 0, x2: plotW, y1: lastY, y2: lastY }),
         h('rect', { x: plotW + 2, y: lastY - rem * 0.8, width: axisW - 4, height: rem * 1.6, rx: 4 }),
@@ -507,14 +540,16 @@
 
   var NAV = [['overview', 'Genel bakış', 'Genel', 'overview'], ['portfolio', 'Portföy', 'Portföy', 'portfolio'], ['chart', 'Grafik', 'Grafik', 'chart'],
     ['signals', 'Sinyaller', 'Sinyal', 'signals'], ['alarms', 'Alarmlar', 'Alarm', 'alarm'], ['discipline', 'Disiplin', 'Disiplin', 'shield']];
+  var USER_NAV = [['portfolio', 'Portföyüm', 'Portföy', 'portfolio'], ['analysis', 'Grafik & Analiz', 'Analiz', 'chart'],
+    ['macro', 'Makro', 'Makro', 'macro'], ['account', 'Hesap & Telegram', 'Hesap', 'account']];
   function AppShell(p) {
-    var act = p.active || 'overview';
+    var act = p.active || 'overview', items = p.items === 'user' ? USER_NAV : p.items || NAV;
     function go(k) { return function (e) { e.preventDefault(); p.onNavigate && p.onNavigate(k); }; }
-    function badge(k) { return k === 'signals' && p.pending ? p.pending : k === 'alarms' && p.alarms ? p.alarms : null; }
+    function badge(k) { return p.badges && p.badges[k] ? p.badges[k] : k === 'signals' && p.pending ? p.pending : k === 'alarms' && p.alarms ? p.alarms : null; }
     return h('div', { className: 'kp-shellwrap' }, h('div', { className: 'kp-shell' },
       h('aside', { className: 'kp-side' },
         h('div', { className: 'kp-side__brand' }, h(BrandMark, null)),
-        h('nav', { className: 'kp-side__nav', 'aria-label': 'Ana menü' }, NAV.map(function (n) {
+        h('nav', { className: 'kp-side__nav', 'aria-label': 'Ana menü' }, items.map(function (n) {
           var b = badge(n[0]);
           return h('a', { key: n[0], href: '#' + n[0], className: cx('kp-navlink', act === n[0] && 'is-active'), 'aria-current': act === n[0] ? 'page' : undefined, onClick: go(n[0]) },
             h(Icon, { name: n[3] }), h('span', { className: 'kp-navlink__label' }, n[1]), b ? h('span', { className: 'kp-navcount' }, b) : null);
@@ -522,7 +557,7 @@
         h('div', { className: 'kp-side__foot' }, p.status || null)),
       h('header', { className: 'kp-topbar' }, h(BrandMark, { size: 'sm' }), h('div', { className: 'kp-topbar__end' }, p.topbar || h(FontScale, null))),
       h('main', { className: 'kp-main' }, h('div', { className: 'kp-main__inner' }, p.children, h(Disclaimer, null))),
-      h('nav', { className: 'kp-bottomnav', 'aria-label': 'Ana menü' }, NAV.map(function (n) {
+      h('nav', { className: 'kp-bottomnav', 'aria-label': 'Ana menü' }, items.map(function (n) {
         return h('a', { key: n[0], href: '#' + n[0], className: cx('kp-tab', act === n[0] && 'is-active'), 'aria-current': act === n[0] ? 'page' : undefined, onClick: go(n[0]) },
           h('span', { className: 'kp-tab__icon' }, h(Icon, { name: n[3], size: 22 }), badge(n[0]) ? h('span', { className: 'kp-tab__dot' }, badge(n[0])) : null), n[2]);
       }))));
@@ -925,6 +960,310 @@
       p.note ? h('div', { className: 'kp-compare__note' }, p.note) : null);
   }
 
+
+  /* ================= public site + new-user panel ================= */
+  Object.assign(ICONS, {
+    account: [['circle', { cx: 10, cy: 7, r: 3.25 }], ['path', { d: 'M3.5 17c.9-3.3 3.4-5 6.5-5s5.6 1.7 6.5 5' }]],
+    macro: [['circle', { cx: 10, cy: 10, r: 7 }], ['path', { d: 'M3 10h14M10 3c2 2 3 4.4 3 7s-1 5-3 7c-2-2-3-4.4-3-7s1-5 3-7z' }]],
+    send: [['path', { d: 'M17 3L3 9l5.5 2.5L11 17l6-14z' }], ['path', { d: 'M8.5 11.5L12 8' }]],
+    key: [['circle', { cx: 7, cy: 13, r: 3.5 }], ['path', { d: 'M9.5 10.5L16 4M13.5 6.5l2 2' }]],
+    download: [['path', { d: 'M10 3v10M6 9l4 4 4-4M4 17h12' }]],
+    copy: [['rect', { x: 7, y: 7, width: 10, height: 10, rx: 2 }], ['path', { d: 'M13 4H5a1 1 0 0 0-1 1v8' }]],
+    menu: [['path', { d: 'M3 6h14M3 10h14M3 14h14' }]],
+    mail: [['rect', { x: 2.5, y: 4.5, width: 15, height: 11, rx: 2 }], ['path', { d: 'M3 5.5l7 5.5 7-5.5' }]],
+    lock: [['rect', { x: 4, y: 9, width: 12, height: 8.5, rx: 2 }], ['path', { d: 'M7 9V6.5a3 3 0 0 1 6 0V9' }]],
+    arrow: [['path', { d: 'M4 10h12M11 5l5 5-5 5' }]],
+    refresh: [['path', { d: 'M16 10a6 6 0 1 1-1.8-4.3M16 3.5v3.5h-3.5' }]],
+    stopup: [['path', { d: 'M3 16h4v-4h4V8h4V4' }], ['path', { d: 'M12.5 4H15v2.5' }]],
+    code: [['path', { d: 'M7 6l-4 4 4 4M13 6l4 4-4 4' }]]
+  });
+
+  /* ---------- public site ---------- */
+  var SITE_NAV = [['ozellikler', 'Özellikler'], ['nasil-calisir', 'Nasıl çalışır'], ['kurallar', 'Kurallar'], ['sss', 'SSS']];
+  function SiteHeader(p) {
+    var st = useState(false), open = st[0];
+    function go(k) { return function (e) { if (p.onNavigate) { e.preventDefault(); p.onNavigate(k); } st[1](false); }; }
+    function links() {
+      return SITE_NAV.map(function (n) {
+        return h('a', { key: n[0], href: '/' + n[0], className: cx('kp-sitenav__link', p.active === n[0] && 'is-active'), 'aria-current': p.active === n[0] ? 'page' : undefined, onClick: go(n[0]) }, n[1]);
+      });
+    }
+    return h('header', { className: 'kp-sitehead' },
+      h('div', { className: 'kp-sitehead__inner' },
+        h('a', { href: '/', className: 'kp-sitehead__brand', 'aria-label': 'Kapanış ana sayfa', onClick: go('') }, h(BrandMark, null)),
+        h('nav', { className: 'kp-sitenav', 'aria-label': 'Site menüsü' }, links()),
+        h('div', { className: 'kp-sitehead__actions' },
+          h(Button, { variant: 'ghost', href: '/giris', onClick: go('giris') }, 'Giriş yap'),
+          h(Button, { variant: 'primary', href: '/kayit', onClick: go('kayit') }, 'Ücretsiz hesap aç')),
+        h('button', { type: 'button', className: 'kp-sitehead__menu', 'aria-expanded': open, 'aria-controls': 'kp-sitemenu', 'aria-label': open ? 'Menüyü kapat' : 'Menüyü aç', onClick: function () { st[1](!open); } },
+          h(Icon, { name: open ? 'x' : 'menu', size: 22 }))),
+      open ? h('div', { id: 'kp-sitemenu', className: 'kp-sitemenu' }, links(),
+        h('div', { className: 'kp-sitemenu__actions' },
+          h(Button, { variant: 'secondary', href: '/giris', onClick: go('giris') }, 'Giriş yap'),
+          h(Button, { variant: 'primary', href: '/kayit', onClick: go('kayit') }, 'Ücretsiz hesap aç'))) : null);
+  }
+
+  function SiteFooter() {
+    function col(t, items) {
+      return h('div', { className: 'kp-sitefoot__col' }, h('div', { className: 'kp-sitefoot__h' }, t),
+        items.map(function (i) { return h('a', { key: i[1], href: i[1], className: 'kp-sitefoot__link' }, i[0]); }));
+    }
+    return h('footer', { className: 'kp-sitefoot' }, h('div', { className: 'kp-sitefoot__inner' },
+      h('div', { className: 'kp-sitefoot__brand' }, h(BrandMark, { size: 'sm' }), h('p', null, 'Dokunma değil, kapanış.')),
+      h('nav', { className: 'kp-sitefoot__cols', 'aria-label': 'Alt menü' },
+        col('Ürün', [['Özellikler', '/ozellikler'], ['Nasıl çalışır', '/nasil-calisir'], ['Kurallar', '/kurallar'], ['SSS', '/sss']]),
+        col('Hesap', [['Giriş yap', '/giris'], ['Ücretsiz hesap aç', '/kayit']]),
+        col('Yasal', [['Gizlilik ve KVKK', '/kvkk'], ['Kullanım koşulları', '/kosullar']])),
+      h('p', { className: 'kp-sitefoot__legal' }, 'Yatırım tavsiyesi değildir. Bot işlem yapmaz. Kapanış aracı kurum şifresi istemez; fiyatlar gecikmeli olabilir.')));
+  }
+
+  function StepList(p) {
+    return h('ol', { className: cx('kp-steps', p.layout === 'column' && 'kp-steps--col') }, (p.steps || []).map(function (s, i) {
+      return h('li', { key: i, className: 'kp-steps__item' },
+        h('span', { className: 'kp-steps__num', 'aria-hidden': true }, i + 1),
+        h('div', { className: 'kp-steps__body' },
+          h('div', { className: 'kp-steps__title' }, s.title),
+          s.detail ? h('div', { className: 'kp-steps__detail' }, s.detail) : null,
+          s.extra ? h('div', { className: 'kp-steps__extra' }, s.extra) : null));
+    }));
+  }
+
+  function FeatureCard(p) {
+    return h('div', { className: cx('kp-card kp-feature', p.className) },
+      p.icon ? h('span', { className: 'kp-feature__icon' }, h(Icon, { name: p.icon, size: 22 })) : null,
+      p.kicker ? h('div', { className: 'kp-feature__kicker' }, p.dot ? h('i', { style: { background: p.dot } }) : null, p.kicker) : null,
+      h('h3', { className: 'kp-feature__title' }, p.title),
+      p.children ? h('div', { className: 'kp-feature__text' }, p.children) : null,
+      p.items ? h('ul', { className: 'kp-feature__list' }, p.items.map(function (t, i) { return h('li', { key: i }, h(Icon, { name: 'check', size: 16, stroke: 2.25 }), h('span', null, t)); })) : null,
+      p.footer || null);
+  }
+
+  function RuleStrip(p) {
+    return h('ul', { className: 'kp-rules' }, (p.items || []).map(function (r, i) {
+      return h('li', { key: i, className: 'kp-rules__item' },
+        h('span', { className: 'kp-rules__icon' }, h(Icon, { name: r.icon || 'check', size: 20, stroke: 2 })),
+        h('div', null, h('div', { className: 'kp-rules__title' }, r.title), r.detail ? h('div', { className: 'kp-rules__detail' }, r.detail) : null));
+    }));
+  }
+
+  function FaqList(p) {
+    var st = useState(p.defaultOpen != null ? p.defaultOpen : -1), pre = p.id || 'faq';
+    return h('div', { className: 'kp-faq' }, (p.items || []).map(function (it, i) {
+      var open = st[0] === i, id = 'kp-' + pre + '-' + i;
+      return h('div', { key: i, className: cx('kp-faq__item', open && 'is-open') },
+        h('h3', { className: 'kp-faq__q' },
+          h('button', { type: 'button', 'aria-expanded': open, 'aria-controls': id, onClick: function () { st[1](open ? -1 : i); } },
+            h('span', null, it.q), h(Icon, { name: 'chevron', size: 20, className: 'kp-faq__chev' }))),
+        open ? h('div', { id: id, className: 'kp-faq__a', role: 'region' }, it.a) : null);
+    }));
+  }
+
+  function CloseRuleDiagram(p) {
+    return h('figure', { className: 'kp-closerule' },
+      h('svg', { viewBox: '0 0 320 168', role: 'img', 'aria-label': 'Solda fitili direnci geçen ama altında kapanan mum: sayılmaz. Sağda direncin üstünde kapanan mum: sayılır.' },
+        h('line', { x1: 8, x2: 312, y1: 62, y2: 62, className: 'kp-closerule__level' }),
+        h('text', { x: 10, y: 54, className: 'kp-ch-axis' }, p.levelLabel || 'Direnç'),
+        h('line', { x1: 95, x2: 95, y1: 26, y2: 150, className: 'kp-closerule__wick' }),
+        h('rect', { x: 80, y: 84, width: 30, height: 46, rx: 2, className: 'kp-closerule__body' }),
+        h('circle', { cx: 95, cy: 30, r: 10, className: 'kp-closerule__ring is-no' }),
+        h('line', { x1: 225, x2: 225, y1: 24, y2: 138, className: 'kp-closerule__wick' }),
+        h('rect', { x: 210, y: 42, width: 30, height: 78, rx: 2, className: 'kp-closerule__body' }),
+        h('circle', { cx: 225, cy: 42, r: 10, className: 'kp-closerule__ring is-yes' })),
+      h('figcaption', { className: 'kp-closerule__cap' },
+        h('div', null, h('span', { className: 'kp-closerule__tag is-no' }, h(Icon, { name: 'x', size: 14, stroke: 2.5 }), 'Sayılmaz'),
+          h('p', null, 'Fitil direnci geçti, mum altında kapandı.')),
+        h('div', null, h('span', { className: 'kp-closerule__tag is-yes' }, h(Icon, { name: 'check', size: 14, stroke: 2.5 }), 'Sayılır'),
+          h('p', null, 'Mum direncin üstünde kapandı.'))));
+  }
+
+  function MessagePreview(p) {
+    return h('div', { className: 'kp-msg', role: 'group', 'aria-label': 'Örnek bildirim' },
+      h('div', { className: 'kp-msg__head' }, h(BrandMark, { size: 'sm', wordmark: false }), h('div', null, h('div', { className: 'kp-msg__from' }, p.from || 'Kapanış botu'), h('div', { className: 'kp-msg__time' }, p.time))),
+      h('div', { className: 'kp-msg__body' }, p.children));
+  }
+
+  /* ---------- sign-in frame (the Clerk component mounts in the slot) ---------- */
+  function AuthFrame(p) {
+    return h('div', { className: 'kp-auth' }, h('div', { className: 'kp-auth__box' },
+      h('a', { href: '/', className: 'kp-auth__brand', 'aria-label': 'Kapanış ana sayfa' }, h(BrandMark, { size: 'lg' })),
+      h('p', { className: 'kp-auth__tag' }, p.tagline || 'Dokunma değil, kapanış.'),
+      h('div', { className: 'kp-auth__slot' }, p.children),
+      h('p', { className: 'kp-auth__foot' }, 'Bot işlem yapmaz', h('span', { 'aria-hidden': true }, ' · '), h('a', { href: '/kvkk', className: 'kp-link' }, 'Gizlilik ve KVKK'))));
+  }
+  function AuthBox(p) {
+    var mode = p.mode || 'giris', step = useState(p.step || 'start'), em = useState(p.email || ''), code = useState('');
+    var signup = mode === 'kayit';
+    if (step[0] === 'code') {
+      return h('div', { className: 'kp-card kp-authbox' },
+        h('h1', { className: 'kp-authbox__title' }, 'E-postanı kontrol et'),
+        h('p', { className: 'kp-authbox__sub' }, h('b', null, em[0] || 'ornek@eposta.com'), ' adresine 6 haneli doğrulama kodu gönderdik.'),
+        h('form', { className: 'kp-authbox__form', onSubmit: function (e) { e.preventDefault(); } },
+          h(Field, { label: 'Doğrulama kodu' }, h('input', { className: 'kp-otp', inputMode: 'numeric', autoComplete: 'one-time-code', maxLength: 6, placeholder: '000000', value: code[0], onChange: function (e) { code[1](e.target.value.replace(/\D/g, '').slice(0, 6)); } })),
+          h(Button, { variant: 'primary', type: 'submit', disabled: code[0].length < 6, className: 'kp-authbox__submit' }, 'Doğrula')),
+        h('div', { className: 'kp-authbox__row' },
+          h('button', { type: 'button', className: 'kp-linkbtn', onClick: function () { step[1]('start'); } }, 'E-postayı değiştir'),
+          h('span', { className: 'kp-authbox__muted' }, 'Yeni kod 0:45 sonra')),
+        h('p', { className: 'kp-authbox__note' }, 'Kod 10 dakika geçerli. Gelmediyse gereksiz klasörüne bak.'));
+    }
+    return h('div', { className: 'kp-card kp-authbox' },
+      h('h1', { className: 'kp-authbox__title' }, signup ? 'Ücretsiz hesap aç' : 'Giriş yap'),
+      h('p', { className: 'kp-authbox__sub' }, signup ? 'Google ya da e-postanla. Şifre gerekmez.' : 'Hoş geldin. Kaldığın yerden devam et.'),
+      h(Button, { variant: 'secondary', className: 'kp-authbox__google' }, 'Google ile devam et'),
+      h('div', { className: 'kp-authbox__or' }, h('span', null, 'ya da e-postayla')),
+      h('form', { className: 'kp-authbox__form', onSubmit: function (e) { e.preventDefault(); step[1]('code'); } },
+        h(Field, { label: 'E-posta' }, h(TextInput, { type: 'email', autoComplete: 'email', placeholder: 'ornek@eposta.com', value: em[0], onChange: function (e) { em[1](e.target.value); } })),
+        h(Button, { variant: 'primary', type: 'submit', className: 'kp-authbox__submit' }, 'Doğrulama kodu gönder')),
+      signup ? h('p', { className: 'kp-authbox__legal' }, 'Devam ederek ', h('a', { href: '/kosullar', className: 'kp-link' }, 'Kullanım koşullarını'), ' ve ', h('a', { href: '/kvkk', className: 'kp-link' }, 'KVKK aydınlatma metnini'), ' okuduğunu kabul edersin.') : null,
+      h('div', { className: 'kp-authbox__switch' }, signup ? 'Hesabın var mı? ' : 'Hesabın yok mu? ',
+        h('a', { href: signup ? '/giris' : '/kayit', className: 'kp-link' }, signup ? 'Giriş yap' : 'Ücretsiz hesap aç')),
+      h('p', { className: 'kp-authbox__note' }, h(Icon, { name: 'lock', size: 16 }), 'Giriş Clerk ile yapılır. Şifren ve kodun Kapanış’ta tutulmaz.'));
+  }
+
+  /* ---------- new-user panel ---------- */
+  function SetupChecklist(p) {
+    var steps = p.steps || [], done = steps.filter(function (s) { return s.done; }).length;
+    return h('section', { className: 'kp-card kp-setup' },
+      h('div', { className: 'kp-setup__head' },
+        h('div', null, h('h2', { className: 'kp-card__title' }, p.title || 'İlk kurulum'), h('p', { className: 'kp-setup__sub' }, done + '/' + steps.length + ' adım tamamlandı')),
+        h('div', { className: 'kp-setup__bar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': steps.length, 'aria-valuenow': done, 'aria-label': 'Kurulum ilerlemesi' },
+          steps.map(function (s, i) { return h('span', { key: i, className: cx('kp-setup__seg', s.done && 'is-done') }); }))),
+      h('ol', { className: 'kp-setup__list' }, steps.map(function (s, i) {
+        return h('li', { key: i, className: cx('kp-setup__item', s.done && 'is-done') },
+          h('span', { className: 'kp-setup__mark', 'aria-hidden': true }, s.done ? h(Icon, { name: 'check', size: 16, stroke: 2.5 }) : i + 1),
+          h('div', { className: 'kp-setup__body' },
+            h('div', { className: 'kp-setup__title' }, s.title, s.optional ? h('span', { className: 'kp-gate__tag' }, 'isteğe bağlı') : null),
+            s.detail ? h('div', { className: 'kp-setup__detail' }, s.detail) : null),
+          h('div', { className: 'kp-setup__action' }, s.done ? h('span', { className: 'kp-setup__done' }, h(Icon, { name: 'check', size: 16, stroke: 2.5 }), 'Tamamlandı') : s.action || null));
+      })));
+  }
+
+  function EmptyState(p) {
+    var t = p.tone || 'flat';
+    return h('div', { className: cx('kp-empty', 'is-' + t, p.bordered === false ? null : 'is-bordered'), role: t === 'down' ? 'alert' : undefined },
+      p.icon ? h('span', { className: 'kp-empty__icon' }, h(Icon, { name: p.icon, size: 24 })) : null,
+      h('div', { className: 'kp-empty__title' }, p.title),
+      p.children ? h('div', { className: 'kp-empty__text' }, p.children) : null,
+      p.action ? h('div', { className: 'kp-empty__action' }, p.action) : null);
+  }
+
+  function Skeleton(p) {
+    var rows = p.rows == null ? 3 : p.rows, widths = [92, 74, 84, 58, 68];
+    return h('div', { className: 'kp-skel', 'aria-busy': true },
+      p.chart ? h('div', { className: 'kp-skel__block', style: { height: p.chart } }) : null,
+      p.tiles ? h('div', { className: 'kp-skel__tiles' }, Array.apply(null, Array(p.tiles)).map(function (_, i) { return h('div', { key: i, className: 'kp-skel__tile' }); })) : null,
+      Array.apply(null, Array(rows)).map(function (_, i) { return h('div', { key: i, className: 'kp-skel__line', style: { width: widths[i % 5] + '%' } }); }),
+      h('div', { className: 'kp-skel__label', role: 'status' }, p.label || 'Yükleniyor…'));
+  }
+
+  function QuotaMeter(p) {
+    var limit = p.limit || 5, used = Math.min(limit, p.used || 0), left = limit - used, empty = left === 0;
+    return h('div', { className: cx('kp-quota', empty && 'is-empty') },
+      limit <= 12 ? h('div', { className: 'kp-quota__cells', 'aria-hidden': true }, Array.apply(null, Array(limit)).map(function (_, i) { return h('span', { key: i, className: cx('kp-quota__cell', i < left && 'is-left') }); }))
+        : h('div', { className: 'kp-limit__track', 'aria-hidden': true }, h('span', { className: 'kp-limit__fill', style: { width: left / limit * 100 + '%' } })),
+      h('div', { className: 'kp-quota__text' },
+        empty ? h('b', null, 'Bugünkü analiz hakkın doldu') : ['Bugün ', h('b', { key: 'b' }, left + '/' + limit), ' analiz hakkın kaldı'],
+        p.ownLimit ? h('span', { className: 'kp-quota__own' }, p.ownKey ? ' · kendi anahtarınla' : ' · kendi anahtarınla ' + p.ownLimit) : null),
+      p.reset ? h('div', { className: 'kp-quota__reset' }, p.reset) : null);
+  }
+
+  var BUY_MKTS = [{ value: 'kripto', label: 'Kripto', cur: 'USD', ph: 'BTC' }, { value: 'bist', label: 'BIST', cur: 'TRY', ph: 'THYAO' }, { value: 'abd', label: 'ABD', cur: 'USD', ph: 'AAPL' }];
+  function BuyForm(p) {
+    var d = p.defaults || {}, mk = useState(d.market || 'bist'), code = useState(d.code || ''), qty = useState(d.qty || ''), pr = useState(d.price || ''),
+      sl = useState(d.stop || ''), tg = useState(d.target || ''), saved = useState(null);
+    var m = BUY_MKTS.filter(function (x) { return x.value === mk[0]; })[0], cur = m.cur, sym = SYM[cur];
+    var Q = parseTr(qty[0]), P = parseTr(pr[0]), S = parseTr(sl[0]), T = parseTr(tg[0]);
+    var errC = code[0] && !/^[A-Z0-9.]{1,12}$/.test(code[0]) ? 'Kod yalnız harf ve rakam içerir.' : null;
+    var errQ = !isNaN(Q) && Q <= 0 ? 'Adet sıfırdan büyük olmalı.' : mk[0] !== 'kripto' && !isNaN(Q) && Q % 1 ? 'Hissede adet tam sayı olmalı.' : null;
+    var errS = !isNaN(S) && !isNaN(P) && S >= P ? 'Stop alış fiyatının altında olmalı.' : null;
+    var errT = !isNaN(T) && !isNaN(P) && T <= P ? 'Hedef alış fiyatının üstünde olmalı.' : null;
+    var total = Q > 0 && P > 0 ? Q * P : null, risk = total && S > 0 && !errS ? (P - S) * Q : null, rr = risk && T > 0 && !errT ? (T - P) / (P - S) : null;
+    var ok = code[0] && !errC && Q > 0 && !errQ && P > 0 && S > 0 && !errS && !errT;
+    function submit(e) {
+      e.preventDefault(); if (!ok) return;
+      var rec = { market: mk[0], code: code[0], qty: Q, price: P, stop: S, target: isNaN(T) ? null : T };
+      if (p.onSubmit) p.onSubmit(rec);
+      saved[1](code[0] + ' · ' + new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 8 }).format(Q) + ' adet kaydedildi.');
+    }
+    function money(v) { return v == null ? '—' : fmtPrice(v, cur, 2); }
+    return h('form', { className: 'kp-buyform', onSubmit: submit, noValidate: true },
+      h('div', { className: 'kp-field' }, h('span', { className: 'kp-field__label' }, 'Piyasa'),
+        h(Segmented, { ariaLabel: 'Piyasa', value: mk[0], onChange: function (v) { mk[1](v); saved[1](null); }, options: BUY_MKTS })),
+      h('div', { className: 'kp-buyform__grid' },
+        h(Field, { label: 'Kod', error: errC, hint: mk[0] === 'kripto' ? 'Yalnız spot · USDT paritesi' : null },
+          h(TextInput, { value: code[0], placeholder: m.ph, autoCapitalize: 'characters', onChange: function (e) { code[1](e.target.value.toUpperCase().replace(/\s/g, '')); saved[1](null); } })),
+        h(Field, { label: 'Adet', error: errQ }, h(TextInput, { inputMode: 'decimal', value: qty[0], placeholder: mk[0] === 'kripto' ? '0,05' : '100', onChange: function (e) { qty[1](e.target.value); } })),
+        h(Field, { label: 'Alış fiyatı' }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: pr[0], placeholder: '0,00', onChange: function (e) { pr[1](e.target.value); } })),
+        h(Field, { label: 'Stop', error: errS, hint: errS ? null : 'Zorunlu · sonra yalnız yukarı taşınır' }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: sl[0], placeholder: '0,00', onChange: function (e) { sl[1](e.target.value); } })),
+        h(Field, { label: 'Hedef', error: errT, hint: errT ? null : 'İsteğe bağlı' }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: tg[0], placeholder: '0,00', onChange: function (e) { tg[1](e.target.value); } }))),
+      h('dl', { className: 'kp-buyform__sum' },
+        h('div', null, h('dt', null, 'Tutar'), h('dd', null, money(total))),
+        h('div', null, h('dt', null, 'Stopa kadar risk'), h('dd', { className: risk ? 'is-down' : null }, risk ? '−' + fmtPrice(risk, cur, 2) : '—')),
+        h('div', null, h('dt', null, 'R/R'), h('dd', null, rr == null ? '—' : fmtNum(rr, 2)))),
+      saved[0] ? h('p', { className: 'kp-buyform__ok', role: 'status' }, h(Icon, { name: 'check', size: 16, stroke: 2.5 }), saved[0]) : null,
+      h('div', { className: 'kp-buyform__foot' },
+        h('span', { className: 'kp-buyform__note' }, 'Yalnız kayıttır. Kapanış işlem yapmaz; alımı aracı kurumunda sen yaparsın.'),
+        h(Button, { variant: 'primary', type: 'submit', disabled: !ok }, 'Alımı kaydet')));
+  }
+
+  function TelegramLink(p) {
+    var st = useState(p.state || 'bagli-degil'), copied = useState(false), code = p.code || 'KP-7Q4M2XHD', bot = p.bot || 'Kapanış botu';
+    if (st[0] === 'bagli') {
+      return h('div', { className: 'kp-tg' },
+        h('div', { className: 'kp-tg__status' }, h('span', { className: 'kp-live__dot is-up', 'aria-hidden': true }),
+          h('div', null, h('div', { className: 'kp-tg__title' }, 'Telegram bağlı'), h('div', { className: 'kp-tg__sub' }, (p.username || '@kullanici') + ' · ' + (p.since || '26 Eyl 2026') + ' tarihinden beri'))),
+        h('p', { className: 'kp-tg__text' }, 'Analiz sonuçların ve kendi alımlarının stop / hedef uyarıları bu sohbete gelir.'),
+        h('div', null, h(Button, { variant: 'ghost', onClick: function () { st[1]('bagli-degil'); } }, 'Bağlantıyı kaldır')));
+    }
+    if (st[0] === 'kod') {
+      return h('div', { className: 'kp-tg' },
+        h('ol', { className: 'kp-tg__steps' },
+          h('li', null, 'Telegram’da ', h('b', null, bot), ' sohbetini aç.'),
+          h('li', null, 'Aşağıdaki komutu olduğu gibi gönder.')),
+        h('div', { className: 'kp-tg__code' },
+          h('span', { className: 'kp-tg__cmd' }, '/bagla ' + code),
+          h(Button, { variant: 'secondary', icon: h(Icon, { name: copied[0] ? 'check' : 'copy', size: 18 }), onClick: function () { try { navigator.clipboard.writeText('/bagla ' + code); } catch (e) { /* clipboard unavailable */ } copied[1](true); } }, copied[0] ? 'Kopyalandı' : 'Kopyala')),
+        h('div', { className: 'kp-tg__meta' }, 'Tek kullanımlık kod · ', h('b', null, (p.expires || '9:42') + ' kaldı'), ' (10 dk geçerli)',
+          h('button', { type: 'button', className: 'kp-linkbtn', onClick: function () { copied[1](false); } }, 'Yeni kod al')));
+    }
+    return h('div', { className: 'kp-tg' },
+      h('div', { className: 'kp-tg__status' }, h('span', { className: 'kp-live__dot', 'aria-hidden': true }),
+        h('div', null, h('div', { className: 'kp-tg__title' }, 'Telegram bağlı değil'), h('div', { className: 'kp-tg__sub' }, 'Bağlarsan analiz sonucu ve stop / hedef uyarıları telefonuna da gelir.'))),
+      h('div', null, h(Button, { variant: 'secondary', icon: h(Icon, { name: 'send', size: 18 }), onClick: function () { st[1]('kod'); } }, 'Telegram’ı bağla')));
+  }
+
+  function ApiKeyRow(p) {
+    var k = p.item, st = useState(k.last4 ? 'saved' : 'empty'), v = useState(''), conf = useState(false), last = useState(k.last4);
+    return h('li', { className: 'kp-keys__row' },
+      h('div', { className: 'kp-keys__head' },
+        h('div', null, h('div', { className: 'kp-keys__name' }, k.provider), k.note ? h('div', { className: 'kp-keys__note' }, k.note) : null),
+        h('span', { className: cx('kp-keys__state', st[0] === 'saved' && 'is-on') }, st[0] === 'saved' ? 'Kayıtlı' : 'Eklenmedi')),
+      st[0] === 'saved'
+        ? h('div', { className: 'kp-keys__saved' }, h('span', { className: 'kp-keys__mask', 'aria-label': 'Son dört hane ' + last[0] }, '••••' + last[0]),
+            conf[0] ? h('div', { className: 'kp-confirm', role: 'group', 'aria-label': 'Silme onayı' }, h('span', { className: 'kp-confirm__q' }, 'Silinsin mi?'),
+                h(Button, { variant: 'ghost', onClick: function () { conf[1](false); } }, 'Vazgeç'),
+                h(Button, { variant: 'danger', onClick: function () { conf[1](false); st[1]('empty'); } }, 'Sil'))
+              : h('div', { className: 'kp-keys__actions' },
+                h(Button, { variant: 'ghost', onClick: function () { st[1]('edit'); } }, 'Değiştir'),
+                h(Button, { variant: 'ghost', icon: h(Icon, { name: 'trash', size: 18 }), onClick: function () { conf[1](true); } }, 'Sil')))
+        : h('form', { className: 'kp-keys__form', onSubmit: function (e) { e.preventDefault(); if (v[0].length >= 8) { last[1](v[0].slice(-4)); v[1](''); st[1]('saved'); } } },
+            h(TextInput, { type: 'password', autoComplete: 'off', placeholder: 'Anahtarı yapıştır', 'aria-label': k.provider + ' API anahtarı', value: v[0], onChange: function (e) { v[1](e.target.value.trim()); } }),
+            h(Button, { variant: 'secondary', type: 'submit', disabled: v[0].length < 8 }, 'Kaydet'),
+            st[0] === 'edit' ? h(Button, { variant: 'ghost', onClick: function () { st[1]('saved'); } }, 'Vazgeç') : null));
+  }
+  function ApiKeyList(p) {
+    return h('ul', { className: 'kp-keys' }, (p.keys || []).map(function (k) { return h(ApiKeyRow, { key: k.provider, item: k }); }));
+  }
+
+  function DangerZone(p) {
+    var v = useState(''), word = p.word || 'SİL', ok = v[0].trim().toLocaleUpperCase('tr-TR') === word;
+    return h('section', { className: 'kp-card kp-danger' },
+      h('h2', { className: 'kp-card__title' }, p.title || 'Hesabımı sil'),
+      h('p', { className: 'kp-danger__text' }, p.children || 'Portföyün, işlemlerin, analizlerin, kayıtlı anahtarların ve Telegram bağlantın kalıcı olarak silinir. Geri alınamaz. Önce verilerini indirmek isteyebilirsin.'),
+      h('form', { className: 'kp-danger__form', onSubmit: function (e) { e.preventDefault(); if (ok && p.onDelete) p.onDelete(); } },
+        h(Field, { label: 'Onaylamak için ' + word + ' yaz' }, h(TextInput, { value: v[0], autoComplete: 'off', placeholder: word, onChange: function (e) { v[1](e.target.value); } })),
+        h(Button, { variant: 'danger', type: 'submit', disabled: !ok }, 'Hesabımı kalıcı olarak sil')));
+  }
+
   var C = window;
   C.Kapanis = C.Kapanis || {};
   Object.assign(C.Kapanis, {
@@ -933,6 +1272,7 @@
     FontScale: FontScale, ThemeToggle: ThemeToggle, WatchlistTable: WatchlistTable, PositionCard: PositionCard, CandleChart: CandleChart,
     ChartPanel: ChartPanel, Disclaimer: Disclaimer,
     AppShell: AppShell, LiveStatus: LiveStatus, BrandMark: BrandMark, Icon: Icon, Tabs: Tabs, DecisionBadge: DecisionBadge, GateList: GateList, SignalList: SignalList, AiNote: AiNote, OutcomeBox: OutcomeBox, RegimeGauge: RegimeGauge, FreshnessList: FreshnessList, FeedList: FeedList, MoverList: MoverList, PulseList: PulseList, MiniChart: MiniChart, MarketCard: MarketCard, DataTable: DataTable, Donut: Donut, Callout: Callout, CompareCard: CompareCard, AlarmCard: AlarmCard, AlarmForm: AlarmForm, Field: Field, TextInput: TextInput, Select: Select, ShieldStatus: ShieldStatus, LimitMeter: LimitMeter, StreakStrip: StreakStrip, FearGreedGauge: FearGreedGauge, LineChart: LineChart,
+    LevelBar: LevelBar, SiteHeader: SiteHeader, SiteFooter: SiteFooter, StepList: StepList, FeatureCard: FeatureCard, RuleStrip: RuleStrip, FaqList: FaqList, CloseRuleDiagram: CloseRuleDiagram, MessagePreview: MessagePreview, AuthFrame: AuthFrame, AuthBox: AuthBox, SetupChecklist: SetupChecklist, EmptyState: EmptyState, Skeleton: Skeleton, QuotaMeter: QuotaMeter, BuyForm: BuyForm, TelegramLink: TelegramLink, ApiKeyList: ApiKeyList, DangerZone: DangerZone,
     util: { fmtNum: fmtNum, fmtPrice: fmtPrice, fmtPct: fmtPct, fmtSignedMoney: fmtSignedMoney, sma: sma, rsi: rsi, vwap: vwap, analyse: analyse, signals: signals, parseTr: parseTr, demoCandles: demoCandles, TF: TF, UNIVERSE: UNIVERSE }
   });
 })();

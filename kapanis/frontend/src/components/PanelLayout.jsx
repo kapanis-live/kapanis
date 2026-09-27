@@ -26,6 +26,7 @@ const NAV = [
     group: "Sinyaller",
     items: [
       { to: "/app/sinyaller", label: "Sinyaller & Analiz", icon: Activity },
+      { to: "/app/analizlerim", label: "Son Analizlerim", icon: FileBarChart },
       { to: "/app/planlar", label: "Planlar & Fırsatlar", icon: Target },
       { to: "/app/kontrol", label: "Kontrol & Karşılaştır", icon: ClipboardCheck },
       { to: "/app/alarmlar", label: "Alarmlar", icon: Bell },
@@ -65,6 +66,7 @@ const USER_NAV = [
     group: "Piyasa",
     items: [
       { to: "/app/grafik", label: "Grafik & Analiz", icon: CandlestickChart },
+      { to: "/app/analizlerim", label: "Son Analizlerim", icon: FileBarChart },
       { to: "/app/makro", label: "Makro", icon: Globe2 },
       { to: "/app/vadeli", label: "Vadeli", icon: LineChart },
     ],

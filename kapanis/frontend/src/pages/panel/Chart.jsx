@@ -4,6 +4,8 @@ import { createChart, createSeriesMarkers, CandlestickSeries, LineSeries, Histog
 import { K } from "@/ds";
 import { sendAction } from "@/lib/actions";
 import { useAuth } from "@/context/AuthContext";
+import { Quota } from "@/pages/panel/Account";
+import { useQueryClient } from "@tanstack/react-query";
 import { splitAi, relDay } from "@/lib/dsmap";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData, LIVE } from "@/lib/useData";
@@ -18,8 +20,19 @@ import { cn } from "@/lib/utils";
 
 const TFS = [["15m", "15 dk"], ["1h", "1 saat"], ["4h", "4 saat"], ["1d", "Günlük"], ["1w", "Haftalık"]];
 const MARKETS = ["KRIPTO", "BIST", "ABD"];
-const LINES = [["sma20", "SMA 20"], ["sma50", "SMA 50"], ["sma200", "SMA 200"], ["vwap", "VWAP"]];
-const DEFAULT_ON = { sma20: true, sma50: true, sma200: true, vwap: false, seviye: true, bolge: true, sinyal: true };
+const LINES = [["sma20", "SMA 20"], ["sma50", "SMA 50"], ["sma200", "SMA 200"],
+  ["ema9", "EMA 9"], ["ema21", "EMA 21"], ["ema50", "EMA 50"], ["ema100", "EMA 100"], ["ema200", "EMA 200"], ["vwap", "VWAP"]];
+const INDICATORS = [
+  { title: "Trend ve fiyat", items: [...LINES, ["bollinger", "Bollinger Bantları 20,2"]] },
+  { title: "Momentum", items: [["rsi", "RSI 14"], ["macd", "MACD 12,26,9"], ["stoch", "Stokastik 14,3"],
+    ["cci", "CCI 20"], ["roc", "ROC 12"], ["williams_r", "Williams %R 14"]] },
+  { title: "Hacim ve oynaklık", items: [["atr", "ATR 14"], ["obv", "OBV"], ["mfi", "MFI 14"]] },
+];
+const INDICATOR_COLORS = { sma20: "#d99d56", sma50: "#4eabdb", sma200: "#b18be5", ema9: "#ef7062",
+  ema21: "#e7bf59", ema50: "#57bdab", ema100: "#8c9dec", ema200: "#cf85c3", vwap: "#c9a851",
+  bollinger: "#8099d6", macd: "#6d9de7", stoch: "#d1a457", atr: "#8db9a2", cci: "#d38da0",
+  roc: "#a5a0dd", obv: "#83bcda", mfi: "#b6a67b", williams_r: "#92b888" };
+const DEFAULT_ON = { sma20: true, sma50: true, sma200: true, rsi: true, seviye: true, bolge: true, sinyal: true };
 const OVERLAYS = [["seviye", "Alış + plan"], ["bolge", "Destek / direnç"], ["sinyal", "Bot sinyalleri"]];
 
 function precisionFor(p) {
@@ -88,21 +101,40 @@ function CandleChart({ data, on, overlay }) {
     const line = (key, color, pane = 0, width = 2) => {
       const s = chart.addSeries(LineSeries, { color, lineWidth: width, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
         ...(pane ? {} : { priceFormat: fmt }) }, pane);
-      s.setData(data.candles.map((k, i) => (data[key][i] == null ? { time: k.t } : { time: k.t, value: data[key][i] })));
+      s.setData(data.candles.map((k, i) => (data[key]?.[i] == null ? { time: k.t } : { time: k.t, value: data[key][i] })));
       return s;
     };
-    LINES.forEach(([k]) => on[k] && line(k, c[k]));
+    LINES.forEach(([k]) => on[k] && line(k, c[k] || INDICATOR_COLORS[k]));
+    if (on.bollinger) {
+      line("bb_upper", INDICATOR_COLORS.bollinger, 0, 1);
+      line("bb_mid", INDICATOR_COLORS.bollinger, 0, 1);
+      line("bb_lower", INDICATOR_COLORS.bollinger, 0, 1);
+    }
     const vol = chart.addSeries(HistogramSeries, { priceFormat: { type: "custom", minMove: 1, formatter: (v) => formatCompact(v) }, priceLineVisible: false, lastValueVisible: false }, 1);
     vol.setData(data.candles.map((k) => ({ time: k.t, value: k.v, color: `${k.c >= k.o ? c.up : c.down}80` })));
     const vma = chart.addSeries(LineSeries, { color: c.line, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       priceFormat: { type: "custom", minMove: 1, formatter: (v) => formatCompact(v) } }, 1);
     vma.setData(data.candles.map((k, i) => (data.vol_ma[i] == null ? { time: k.t } : { time: k.t, value: data.vol_ma[i] })));
-    const rsi = chart.addSeries(LineSeries, { color: c.rsi, lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false,
-      priceFormat: { type: "custom", minMove: 1, formatter: (v) => String(Math.round(v)) } }, 2);
-    rsi.setData(data.candles.map((k, i) => (data.rsi[i] == null ? { time: k.t } : { time: k.t, value: data.rsi[i] })));
-    rsi.createPriceLine({ price: 70, color: c.down, lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" });
-    rsi.createPriceLine({ price: 30, color: c.up, lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" });
-    chart.panes().forEach((p, i) => p.setStretchFactor([65, 17, 18][i] || 17));
+    let pane = 2;
+    if (on.rsi) {
+      const rsi = line("rsi", c.rsi, pane);
+      rsi.createPriceLine({ price: 70, color: c.down, lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" });
+      rsi.createPriceLine({ price: 30, color: c.up, lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" });
+      pane += 1;
+    }
+    if (on.macd) {
+      line("macd", INDICATOR_COLORS.macd, pane);
+      line("macd_signal", c.down, pane, 1);
+      const hist = chart.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane);
+      hist.setData(data.candles.map((k, i) => data.macd_hist?.[i] == null ? { time: k.t } :
+        { time: k.t, value: data.macd_hist[i], color: data.macd_hist[i] >= 0 ? `${c.up}99` : `${c.down}99` }));
+      pane += 1;
+    }
+    if (on.stoch) { line("stoch_k", INDICATOR_COLORS.stoch, pane); line("stoch_d", c.down, pane, 1); pane += 1; }
+    ["atr", "cci", "roc", "williams_r", "obv", "mfi"].forEach((key) => {
+      if (on[key]) { line(key, INDICATOR_COLORS[key], pane); pane += 1; }
+    });
+    chart.panes().forEach((p, i) => p.setStretchFactor(i === 0 ? 65 : i === 1 ? 17 : 18));
     chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, data.candles.length - 140), to: data.candles.length + 3 });
 
     const index = new Map(data.candles.map((k, i) => [k.t, i]));
@@ -129,14 +161,15 @@ function CandleChart({ data, on, overlay }) {
         <div className="num flex flex-wrap gap-x-3.5 gap-y-1">
           {LINES.filter(([key]) => on[key]).map(([key, label]) => (
             <span key={key} className="inline-flex items-center gap-1.5">
-              <i className="h-0.5 w-3.5" style={{ background: c[key] }} />
-              {label} <b className="font-semibold text-t-1">{data[key][i] == null ? "—" : px(data[key][i])}</b>
+              <i className="h-0.5 w-3.5" style={{ background: c[key] || INDICATOR_COLORS[key] }} />
+              {label} <b className="font-semibold text-t-1">{data[key]?.[i] == null ? "—" : px(data[key][i])}</b>
             </span>
           ))}
-          <span><span className="text-t-3">RSI</span> <b className="font-semibold text-rsi">{data.rsi[i] == null ? "—" : Math.round(data.rsi[i])}</b></span>
+          {on.rsi && <span><span className="text-t-3">RSI</span> <b className="font-semibold text-rsi">{data.rsi[i] == null ? "—" : Math.round(data.rsi[i])}</b></span>}
         </div>
       </div>
-      <div ref={ref} style={{ height: 620 }} className="w-full" data-testid="tv-chart" />
+      <div ref={ref} style={{ height: 440 + 150 * (Number(!!on.rsi) + Number(!!on.macd) + Number(!!on.stoch) +
+        ["atr", "cci", "roc", "williams_r", "obv", "mfi"].filter((key) => on[key]).length) }} className="w-full" data-testid="tv-chart" />
     </div>
   );
 }
@@ -180,10 +213,18 @@ export function AiPanel({ code, market, codes, auto = false }) {
   const list = codes && codes.length ? codes : [code];
   const q = useData(["analyses", list[0]], `/analyses?kod=${encodeURIComponent(list[0])}`, LIVE);
   const [asked, setAsked] = useState(null);
+  const { owner } = useAuth();
+  const qc = useQueryClient();
+  // Sahip olmayan kullanıcı: günlük hak (kendi anahtarıyla daha fazla)
+  const quota = useData("quota", "/quota", { enabled: !owner, refetchInterval: 30_000 });
+  const qd = quota.data;
+  const limit = qd && !qd.sahip ? (qd.kendi_anahtari ? qd.anahtarla_sinir : qd.sinir) : null;
+  const exhausted = limit !== null && (qd.kullanilan >= limit || limit <= 0 || qd.ortak_dolu);
   const latest = (q.data || [])[0];
   const waiting = asked && (!latest || new Date(latest.zaman).getTime() < asked);
   const ask = async () => {
     if (await sendAction("analysis.request", { kodlar: list, piyasa: market }, `${list.join(", ")} için analiz istendi.`)) setAsked(Date.now());
+    qc.invalidateQueries({ queryKey: ["quota"] });
   };
   const started = useRef(false);
   useEffect(() => {
@@ -192,8 +233,15 @@ export function AiPanel({ code, market, codes, auto = false }) {
   }, [auto]); // eslint-disable-line react-hooks/exhaustive-deps
   const ai = latest ? splitAi(latest.metin) : null;
   return (
-    <K.Card title="Yapay zekâ analizi" actions={<K.Button variant="primary" onClick={ask} disabled={!!waiting}>{waiting ? "Hazırlanıyor…" : "Analiz et"}</K.Button>}>
-      {waiting && <p className="kp-note">Bot analizi hazırlıyor (genelde 20–60 sn). Sonuç Telegram'a da gelir.</p>}
+    <K.Card title="Yapay zekâ analizi" actions={<K.Button variant="primary" onClick={ask} disabled={!!waiting || exhausted}>{waiting ? "Hazırlanıyor…" : "Analiz et"}</K.Button>}>
+      {!owner && qd && <div style={{ marginBottom: "1rem" }}><Quota q={qd} /></div>}
+      {!owner && exhausted && (
+        <K.EmptyState tone="warn" icon="info" title={qd.ortak_dolu ? "Bugünkü ortak analiz kapasitesi doldu" : "Bugünkü analiz hakkın doldu"}
+          action={!qd.kendi_anahtari ? <K.Button variant="secondary" icon={<K.Icon name="key" size={18} />} href="/app/hesap">Kendi anahtarını ekle</K.Button> : null}>
+          {qd.kendi_anahtari ? "Hakkın son 24 saate göre yenilenir." : `Kendi yapay zekâ anahtarınla günde ${qd.anahtarla_sinir} analiz yapabilirsin.`}
+        </K.EmptyState>
+      )}
+      {waiting && <p className="kp-note">Bot analizi hazırlıyor (genelde 20–60 sn). {owner ? "Sonuç Telegram'a da gelir." : "Telegram'ı bağladıysan sonuç oraya da gelir."}</p>}
       {ai ? (
         <K.AiNote model={ai.model || "Yapay zekâ"} time={relDay(latest.zaman)} title={latest.kodlar?.length > 1 ? `Karşılaştırma: ${latest.kodlar.join(", ")}` : "Son analiz"}>
           {ai.body.split(/\n{2,}/).map((t, i) => <p key={i} style={{ whiteSpace: "pre-wrap" }}>{t}</p>)}
@@ -209,7 +257,13 @@ export default function ChartPage() {
   const market = MARKETS.includes(params.get("piyasa")) ? params.get("piyasa") : "KRIPTO";
   const tf = TFS.some(([k]) => k === params.get("tf")) ? params.get("tf") : "1d";
   const [draft, setDraft] = useState(code);
-  const [on, setOn] = useState(DEFAULT_ON);
+  const [on, setOn] = useState(() => {
+    try { return { ...DEFAULT_ON, ...JSON.parse(localStorage.getItem("kapanis.chart.indicators") || "{}") }; }
+    catch { return DEFAULT_ON; }
+  });
+  const [showIndicators, setShowIndicators] = useState(false);
+  const [indicatorSearch, setIndicatorSearch] = useState("");
+  useEffect(() => localStorage.setItem("kapanis.chart.indicators", JSON.stringify(on)), [on]);
   const { colors: c } = useTheme();
   useEffect(() => setDraft(code), [code]);
 
@@ -295,17 +349,35 @@ export default function ChartPage() {
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                {LINES.map(([k, label]) => (
-                  <Chip key={k} color={c[k]} active={on[k]} onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}>{label}</Chip>
+                <button type="button" className="rounded-lg border border-hairline px-3 py-2 text-sm font-semibold text-t-1 hover:bg-raised"
+                  aria-expanded={showIndicators} onClick={() => setShowIndicators((v) => !v)}>＋ İndikatör ekle</button>
+                {INDICATORS.flatMap((group) => group.items).filter(([key]) => on[key]).map(([key, label]) => (
+                  <Chip key={key} color={c[key] || INDICATOR_COLORS[key]} active onClick={() => setOn((o) => ({ ...o, [key]: false }))}>{label} ×</Chip>
                 ))}
                 <span className="mx-1 w-px self-stretch bg-hairline" />
                 {OVERLAYS.map(([k, label]) => (
                   <Chip key={k} active={on[k]} onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}>{label}</Chip>
                 ))}
               </div>
+              {showIndicators && <div className="rounded-xl border border-hairline bg-raised p-4">
+                <input aria-label="İndikatör ara" value={indicatorSearch} onChange={(e) => setIndicatorSearch(e.target.value)}
+                  placeholder="İndikatör ara: EMA, MACD, ATR..." className="mb-3 w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-t-1" />
+                {INDICATORS.map((group) => {
+                  const items = group.items.filter(([, label]) => label.toLocaleLowerCase("tr-TR").includes(indicatorSearch.toLocaleLowerCase("tr-TR")));
+                  return items.length ? <div key={group.title} className="mb-3">
+                    <p className="mb-2 text-sm font-semibold text-t-2">{group.title}</p>
+                    <div className="flex flex-wrap gap-2">{items.map(([key, label]) =>
+                      <button key={key} type="button" aria-pressed={!!on[key]} onClick={() => setOn((o) => ({ ...o, [key]: !o[key] }))}
+                        className={cn("rounded-lg border px-3 py-2 text-sm", on[key] ? "border-strong bg-surface font-semibold text-t-1" : "border-hairline text-t-2 hover:bg-surface")}>
+                        {on[key] ? "✓ " : "+ "}{label}
+                      </button>)}</div>
+                  </div> : null;
+                })}
+                <p className="m-0 text-xs text-t-3">Seçimlerin bu tarayıcıda saklanır. Göstergeler yalnız grafiği değiştirir; botun karar kurallarını değiştirmez.</p>
+              </div>}
               <CandleChart data={d} on={on} overlay={overlay} />
               <p className="m-0 text-sm text-t-3">
-                Saatler İstanbul saati. {d.note} VWAP: {d.vwap_note}. Alt bölmeler: hacim (20'lik ortalama ince çizgi) ve RSI 14 (70 kırmızı, 30 yeşil kesikli çizgi).
+                Saatler İstanbul saati. {d.note} VWAP: {d.vwap_note}. Hacim altta gösterilir; seçtiğin diğer göstergeler ayrı bölmelerde açılır.
               </p>
             </section>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))" }}>

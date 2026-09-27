@@ -1,22 +1,13 @@
 import { SignIn, SignUp } from "@clerk/react";
 import { K } from "@/ds";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 
 // Clerk giriş ve kayıt kutuları: Google ile giriş, e-posta + şifre, e-postaya gelen doğrulama kodu.
 // Şifre ve kod Clerk'te işlenir; Kapanış yalnız doğrulanmış e-postayı görür.
+// Claude Design AuthFrame: logo, slogan, ortada Clerk kutusu, altta "Bot işlem yapmaz · Gizlilik ve KVKK"
 function Frame({ children, tag }) {
-  return (
-    <div className="kp-login">
-      <div className="kp-login__box">
-        <div className="kp-login__brand">
-          <K.BrandMark size="lg" />
-          <p className="kp-login__tag">{tag}</p>
-        </div>
-        <div className="flex justify-center">{children}</div>
-        <p className="kp-login__foot">Bot işlem yapmaz · broker ya da borsa şifresi istenmez · <a href="/gizlilik" className="underline">Gizlilik ve KVKK</a></p>
-        <K.Disclaimer />
-      </div>
-    </div>
-  );
+  return <K.AuthFrame tagline={tag}><div className="flex justify-center">{children}</div></K.AuthFrame>;
 }
 
 export function ClerkSignIn() {
@@ -28,8 +19,11 @@ export function ClerkSignIn() {
 }
 
 export default function Kayit() {
+  const { mode } = useAuth();
+  // Kayıt yalnız Clerk ile (sitede). Bu bilgisayardaki yerel modda tek yönetici hesabı var.
+  if (mode !== "clerk") return <Navigate to="/giris" replace />;
   return (
-    <Frame tag="Hesap aç: Google ile ya da e-posta ve doğrulama koduyla.">
+    <Frame tag="Dokunma değil, kapanış. Google ile ya da e-posta ve doğrulama koduyla hesap aç.">
       <SignUp routing="path" path="/kayit" signInUrl="/giris" fallbackRedirectUrl="/app" />
     </Frame>
   );

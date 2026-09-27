@@ -9,7 +9,7 @@ import { Search } from "lucide-react";
 export function Segmented({ options, value, onChange, ariaLabel, className }) {
   return (
     <div role="tablist" aria-label={ariaLabel}
-      className={cn("inline-flex gap-0.5 rounded-[10px] border border-hairline bg-ink p-[3px]", className)}>
+      className={cn("inline-flex max-w-full gap-0.5 overflow-x-auto rounded-[10px] border border-hairline bg-ink p-[3px]", className)}>
       {options.map((o) => {
         const opt = typeof o === "string" ? { value: o, label: o } : o;
         const active = opt.value === value;

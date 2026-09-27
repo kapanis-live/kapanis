@@ -55,7 +55,8 @@ function LegacyAuthProvider({ children }) {
 
 // Clerk oturumu: her API isteğine Clerk'in kısa ömürlü oturum jetonu eklenir; backend imzayı ve doğrulanmış
 // e-postayı kontrol edip kullanıcıyı ve rolünü döner. Şifreler Kapanış'ta değil, Clerk'te.
-function ClerkBridge({ children }) {
+// legacy: AUTH_MODE=both, the local admin password also works (its session is an HttpOnly cookie)
+function ClerkBridge({ children, legacy }) {
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const clerk = useClerk();
   const [user, setUser] = useState(null);
@@ -75,6 +76,15 @@ function ClerkBridge({ children }) {
   const refresh = useCallback(async () => {
     if (!isLoaded) return;
     if (!isSignedIn) {
+      if (legacy) {
+        try {
+          const { data } = await api.get("/auth/me"); // the local admin cookie, if any
+          setUser(data);
+          return;
+        } catch {
+          /* no local session either */
+        }
+      }
       setUser(false);
       return;
     }
@@ -86,31 +96,42 @@ function ClerkBridge({ children }) {
       setError(formatApiErrorDetail(e.response?.data?.detail) || "Oturum doğrulanamadı.");
       setUser(false);
     }
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, legacy]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   const logout = async () => {
-    await clerk.signOut();
+    if (isSignedIn) await clerk.signOut();
+    if (legacy) await api.post("/auth/logout").catch(() => {});
     setUser(false);
   };
 
+  const login = legacy ? async (email, password) => {
+    try {
+      const { data } = await api.post("/auth/login", { email, password });
+      setUser(data);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
+    }
+  } : undefined;
+
   return (
-    <AuthContext.Provider value={{ mode: "clerk", user: isLoaded ? user : null, owner: isOwner(user), error, logout, refresh }}>
+    <AuthContext.Provider value={{ mode: "clerk", legacy: !!legacy, user: isLoaded ? user : null, owner: isOwner(user), error, logout, login, refresh }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-function ClerkAuthProvider({ publishableKey, children }) {
+function ClerkAuthProvider({ publishableKey, legacy, children }) {
   const navigate = useNavigate();
   return (
     <ClerkProvider publishableKey={publishableKey} localization={trTR}
       routerPush={(to) => navigate(to)} routerReplace={(to) => navigate(to, { replace: true })}
       signInUrl="/giris" signUpUrl="/kayit" signInFallbackRedirectUrl="/app" signUpFallbackRedirectUrl="/app" afterSignOutUrl="/">
-      <ClerkBridge>{children}</ClerkBridge>
+      <ClerkBridge legacy={legacy}>{children}</ClerkBridge>
     </ClerkProvider>
   );
 }
@@ -129,7 +150,7 @@ export function AuthProvider({ children }) {
     );
   }
   if (cfg.clerk && cfg.clerk_publishable_key) {
-    return <ClerkAuthProvider publishableKey={cfg.clerk_publishable_key}>{children}</ClerkAuthProvider>;
+    return <ClerkAuthProvider publishableKey={cfg.clerk_publishable_key} legacy={cfg.legacy}>{children}</ClerkAuthProvider>;
   }
   return <LegacyAuthProvider>{children}</LegacyAuthProvider>;
 }

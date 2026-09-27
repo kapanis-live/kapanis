@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 
 import httpx
+import technical_indicators
 
 BINANCE = ["https://api.binance.com", "https://data-api.binance.vision"]
 YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/"
@@ -197,6 +198,7 @@ async def chart(symbol: str, tf: str = "1d", market: str | None = None) -> dict:
         "rsi": rsi(closes), "vol_ma": sma([r["v"] for r in rows], 20),
         "vwap": vwap(rows, intraday=tf in ("15m", "1h", "4h")),
     }
+    series.update(technical_indicators.calculate(rows))
     rows_out = rows[-SHOW:]
     cut = len(rows) - len(rows_out)
     last, prev = rows[-1], rows[-2]

@@ -83,33 +83,6 @@ def save_settings(s: dict):
     _save(config.SETTINGS_FILE, s)
 
 
-def set_school(on: bool, start: str = "09:00", end: str = "16:00") -> dict | None:
-    """Switch school mode on for today, or for tomorrow when today's window has already ended."""
-    s = load_settings()
-    now = now_tr()
-    day = now.date() if now.strftime("%H:%M") < end else now.date() + timedelta(days=1)
-    s["okul"] = {"tarih": day.isoformat(), "baslangic": start, "bitis": end} if on else None
-    save_settings(s)
-    return s["okul"]
-
-
-def school_window(upcoming: bool = False) -> dict | None:
-    """Today's school window (or a scheduled future one with upcoming=True), else None."""
-    o = load_settings().get("okul")
-    if not o:
-        return None
-    today = now_tr().date().isoformat()
-    return o if o["tarih"] == today or (upcoming and o["tarih"] > today) else None
-
-
-def is_school(when: datetime | None = None) -> bool:
-    o = school_window()
-    if not o:
-        return False
-    hhmm = (when or now_tr()).strftime("%H:%M")
-    return o["baslangic"] <= hhmm < o["bitis"]
-
-
 def parse_quiet_hours(text: str) -> tuple[str, str] | None:
     m = re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)", text)
     return (f"{m[1]}:{m[2]}", f"{m[3]}:{m[4]}") if m else None

@@ -18,6 +18,7 @@ import macro
 import market
 import positions
 import sentiment
+import signal_life
 
 log = logging.getLogger(__name__)
 
@@ -93,9 +94,14 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
 
     atr = None if candle is None else candle.atr14
     if not _nan(atr) and iptal is not None and entry > iptal:
+        # Mandatory: a stop closer than one ATR is hit by normal noise (wicks), whatever the R/R looks like.
         wide = entry - iptal >= atr
-        checks.append(_check("ATR stop", wide, f"stop mesafesi {entry - iptal:.4g} {'≥' if wide else '<'} 1×ATR {atr:.4g}"
-                             + ("" if wide else " — gürültü riski"), blocking=False))
+        checks.append(_check("ATR stop", wide, f"stop mesafesi {entry - iptal:.4g} (%{(entry - iptal) / entry * 100:.1f}) "
+                             f"{'≥' if wide else '<'} 1×ATR {atr:.4g}" + ("" if wide else " — iğneye takılır, stopu genişlet")))
+
+    cooldown = signal_life.stop_cooldown(pair)
+    if cooldown:
+        checks.append(_check("bekleme", False, cooldown))
 
     if volume_ok is None and candle is not None:
         avg = candle.vol_avg20
@@ -164,6 +170,9 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
     checks.append(_check("bütçe", tranche > 0,
                          f"ilk kademe {tranche:g} USD" + (f" ({'; '.join(tranche_notes)})" if tranche_notes else "")
                          if tranche > 0 else "; ".join(tranche_notes) or "limit dolu, pas"))
+    heavy = portfolio_weight_warning(pair, tranche)
+    if heavy:
+        checks.append(_check("portföy", False, heavy, blocking=False))
 
     ok = all(c["durum"] != "kaldi" for c in checks)
     try:
@@ -183,13 +192,50 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
             "zaman_dilimi": timeframe, "kapanis": float(candle.close),
             "hacim": float(candle.volume), "hacim_ort20": None if _nan(candle.vol_avg20) else float(candle.vol_avg20)},
         "korelasyon": [p["pair"] for p in positions.open_positions() if p["pair"] != pair],
+        "atr": None if _nan(atr) else float(atr),
+        "adet": round(tranche / entry, 6) if tranche > 0 and entry > 0 else None,
+        "midas_stop": signal_life.midas_stop(iptal, None if _nan(atr) else float(atr)),
     }
+
+
+def portfolio_weight_warning(pair: str, tranche: float) -> str | None:
+    """Open crypto positions by cost: one coin above MAX_ASSET_PCT of the crypto book is a warning on every new signal."""
+    book: dict[str, float] = {}
+    for p in positions.open_positions():
+        if p.get("piyasa", "KRIPTO") == "KRIPTO":
+            book[p["pair"]] = book.get(p["pair"], 0.0) + float(p.get("miktar_usd") or 0)
+    if tranche > 0:
+        book[pair] = book.get(pair, 0.0) + tranche
+    total = sum(book.values())
+    if total <= 0 or len(book) < 2:
+        return None
+    heavy = [(k, v / total * 100) for k, v in book.items() if v / total * 100 > config.MAX_COIN_PCT]
+    if not heavy:
+        return None
+    k, pct = max(heavy, key=lambda x: x[1])
+    return (f"{k.split('/')[0]} kripto portföyünün %{pct:.0f}'i (sınır %{config.MAX_COIN_PCT}): "
+            + ("bu alımla tek coine yükleniyorsun" if k == pair else "yeni pozisyon açmadan önce yoğunlaşmayı düşün"))
+
+
+def card_lines(g: dict) -> list[str]:
+    """Size and broker-stop lines under a passed signal (numbers from code, never from the model)."""
+    out = []
+    entry = g.get("giris") or g.get("close")
+    if g.get("adet") and g.get("iptal") is not None and entry and entry > g["iptal"]:
+        risk = g["kademe_usd"] * (entry - g["iptal"]) / entry
+        out.append(f"📦 Öneri: {g['kademe_usd']:g} USD ≈ {g['adet']:.6g} adet · stopa kadar risk ≈ {risk:.2f} USD")
+    if g.get("midas_stop"):
+        lo, hi = g["midas_stop"]
+        out.append(f"🛡 Midas stop önerisi: {hi:.6g} – {lo:.6g} (iptal − 0,5…1 ATR). Bot iptali kapanışla verir; "
+                   "borsa stopu dokununca çalışır, o yüzden biraz aşağıda dursun.")
+    return out
 
 
 def summary_line(g: dict) -> str:
     """One authoritative line under every AI analysis."""
     if g["ok"]:
-        return f"🔒 Kod kapısı: GEÇTİ — ilk kademe {g['kademe_usd']:g} USD, R/R {g['rr']}"
+        return "\n".join([f"🔒 Kod kapısı: GEÇTİ — ilk kademe {g['kademe_usd']:g} USD, R/R {g['rr']}", *card_lines(g),
+                          signal_life.track_line("KRIPTO")])
     return "🔒 Kod kapısı: KALDI — " + ", ".join(g["kalan"]) + " (AL yok)"
 
 

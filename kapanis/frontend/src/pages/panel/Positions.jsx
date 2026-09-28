@@ -27,6 +27,7 @@ function PositionCard({ p, queued, onQueued }) {
   const navigate = useNavigate();
   const [selling, setSelling] = useState(false);
   const [price, setPrice] = useState(String(p.current ?? ""));
+  const [when, setWhen] = useState(""); // boş = şimdi; önceden sattıysan gün/saat seç
   const [busy, setBusy] = useState(false);
   const invested = p.entry * p.size;
   const value = (p.current ?? p.entry) * p.size;
@@ -41,7 +42,7 @@ function PositionCard({ p, queued, onQueued }) {
     }
     setBusy(true);
     try {
-      await api.post(`/positions/${p.id}/close`, { price: n });
+      await api.post(`/positions/${p.id}/close`, when ? { price: n, when } : { price: n });
       toast.success(`${code(p.symbol)} satışı bota iletildi.`, { description: "Telegram'a onay mesajı gelecek." });
       onQueued(p.id);
       setSelling(false);
@@ -91,6 +92,13 @@ function PositionCard({ p, queued, onQueued }) {
               <input type="text" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} autoFocus
                 className="num w-36 border-0 bg-transparent text-lg font-bold text-t-1 outline-none" data-testid={`position-sold-price-${p.id}`} />
             </span>
+          </label>
+          <label className="flex flex-col gap-1.5 text-[0.9375rem] font-medium text-t-2">
+            Ne zaman? <span className="text-[0.8125rem] font-normal text-t-3">boş bırakırsan şimdi</span>
+            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)}
+              max={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+              className="h-11 rounded-[10px] border border-strong bg-ink px-3.5 text-t-1 outline-none focus:border-info"
+              data-testid={`position-sold-when-${p.id}`} />
           </label>
           <div className="flex gap-3">
             <KButton variant="ghost" onClick={() => setSelling(false)}>Vazgeç</KButton>

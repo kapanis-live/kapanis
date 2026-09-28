@@ -129,7 +129,7 @@ def build_decisions() -> list[dict]:
     out = []
     for d in positions.load_decisions()[-SIGNALS_SHOWN:]:
         verdict = {"aldi": "Aldım", "pas": "Pas"}.get(d["aksiyon"])
-        note = f"Bot kararı: {d['karar']}"
+        note = f"Sinyal: {SIGNAL_WORDS.get(d['karar'], d['karar'])}"
         if d.get("piyasa") == "BIST":
             note += f" · ilk kademe {d.get('lot', 0)} adet / {d.get('kademe_usd', 0):g} TL · Yahoo verisi gecikmeli"
         elif d.get("kademe_usd"):
@@ -213,7 +213,7 @@ def build_signals() -> list[dict]:
             "id": f"sig_{d['id']}", "symbol": d["pair"], "timeframe": d["timeframe"],
             "market": d.get("piyasa", "KRIPTO"), "currency": "TL" if d.get("piyasa") == "BIST" else "USD",
             "type": f"Kapanış {'ABOVE' if d['yon'] == 'ABOVE' else 'BELOW'}", "score": score,
-            "summary": _first_line(d.get("analiz")) or f"Bot kararı: {d['karar']}",
+            "summary": _first_line(d.get("analiz")) or f"Sinyal: {SIGNAL_WORDS.get(d['karar'], d['karar'])}",
             "created_at": d["zaman"],
             "analysis": {"panels": panels,
                          "bot_decision": {"verdict": d["karar"], "confidence": None, "reason": reason},
@@ -743,10 +743,19 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
                 price = (await _prices(client, {pos["symbol"]})).get(pos["symbol"], 0)
             if price <= 0:
                 return f"❌ Panel: #{pos_id} için güncel fiyat alınamadı, satış fiyatını yazarak tekrar dene"
-        pos = positions.close_position(pos_id, price, "panel")
+        when = None
+        if p.get("when"):
+            try:
+                when = datetime.fromisoformat(p["when"]).astimezone(alerts_store.TR).isoformat()
+            except ValueError:
+                return f"❌ Panel: #{pos_id} için satış zamanı okunamadı"
+            if when < pos.get("acilis", ""):
+                return f"❌ Panel: #{pos_id} satış zamanı alış zamanından önce olamaz"
+        pos = positions.close_position(pos_id, price, "panel", when=when)
         r = positions.pnl(pos, price)
-        return (f"💰 Panelden kapatıldı: #{pos_id} {pos['pair']} @ {price:g}: "
-                f"{r['pnl_usd']:+.2f} {pos.get('para', 'USD')}")
+        return (f"💰 Panelden kapatıldı: #{pos_id} {pos['pair']} @ {price:g}"
+                + (f" ({datetime.fromisoformat(when).strftime('%d.%m %H:%M')})" if when else "")
+                + f": {r['pnl_usd']:+.2f} {pos.get('para', 'USD')}")
 
     if t == "decision.action":
         dec_id = int(str(p["id"]).removeprefix("dec_"))
@@ -769,6 +778,9 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
     if t in EXTRA_HANDLERS:
         return await EXTRA_HANDLERS[t]({**p, "_komut": command_meta(cmd)})
     return f"❌ Panel: bilinmeyen komut {t}"
+
+
+SIGNAL_WORDS = {"AL": "alım adayı (karar senin)", "BEKLE": "bekle", "PAS": "pas"}
 
 
 USER_COMMANDS = {"analysis.request", "strategy.scan"}

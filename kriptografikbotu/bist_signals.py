@@ -175,8 +175,8 @@ async def evaluate(client: httpx.AsyncClient, *, symbol: str, entry: float, ipta
                              f"maliyet sonrası R/R {rr:.2f}, eşik {config.BIST_MIN_RR:g} (orta/uzun vade)"))
         if atr_d:
             wide = entry - iptal >= 0.5 * atr_d
-            checks.append(_check("ATR stop", wide, f"stop mesafesi {entry - iptal:.4g} vs 0.5×günlük ATR {0.5 * atr_d:.4g}",
-                                 blocking=False))
+            checks.append(_check("ATR stop", wide, f"stop mesafesi {entry - iptal:.4g} vs 0.5×günlük ATR {0.5 * atr_d:.4g}"
+                                 + ("" if wide else " — iğneye takılır, stopu genişlet")))
 
     if volume_ok is None:
         volume_ok = not _nan(d_last.vol_avg20) and d_last.volume > d_last.vol_avg20

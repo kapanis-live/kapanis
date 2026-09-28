@@ -28,6 +28,21 @@ class StartupTest(unittest.TestCase):
         dupes = sorted({n for n in names if names.count(n) > 1})
         self.assertEqual(dupes, [], f"defined twice in main.py: {dupes}")
 
+    def test_no_undefined_names(self):
+        # A name used but never defined only fails when that line runs (this silenced crypto AL cards once).
+        try:
+            from pyflakes import api, reporter
+        except ImportError:
+            self.skipTest("pyflakes not installed")
+        import io
+        out = io.StringIO()
+        for f in ("main.py", "web_sync.py", "quiet.py", "positions.py", "gate.py", "signal_life.py"):
+            path = pathlib.Path(__file__).parent / f
+            if path.exists():
+                api.checkPath(str(path), reporter.Reporter(out, out))
+        undefined = [ln for ln in out.getvalue().splitlines() if "undefined name" in ln]
+        self.assertEqual(undefined, [])
+
     def test_main_imports(self):
         import main  # noqa: F401  (import-time errors would stop the bot too)
 

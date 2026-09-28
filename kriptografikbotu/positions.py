@@ -90,30 +90,33 @@ def delete_position(pos_id: int) -> dict | None:
     return pos
 
 
-def close_position(pos_id: int, price: float, reason: str) -> dict | None:
+def close_position(pos_id: int, price: float, reason: str, when: str | None = None) -> dict | None:
+    """when: ISO time the user actually sold (default now), so an older sale is recorded on its real day."""
     items = load()
     pos = next((p for p in items if p["id"] == pos_id and p["durum"] == "acik"), None)
     if not pos:
         return None
-    pos.update(durum="kapali", kapanis_fiyat=price, kapanis_zamani=now_tr().isoformat(), neden=reason)
+    pos.update(durum="kapali", kapanis_fiyat=price, kapanis_zamani=when or now_tr().isoformat(), neden=reason)
     save(items)
     return pos
 
 
-def partial_close(pos_id: int, qty: float, price: float, reason: str) -> tuple[dict | None, dict | None]:
+def partial_close(pos_id: int, qty: float, price: float, reason: str,
+                  when: str | None = None) -> tuple[dict | None, dict | None]:
     """Sell part of an open position. The sold part becomes its own closed record (so reports count
     the realized P/L), and the open position keeps the rest with the same entry, stop and target."""
     items = load()
     pos = next((p for p in items if p["id"] == pos_id and p["durum"] == "acik"), None)
     if not pos or qty <= 0:
         return None, None
+    when = when or now_tr().isoformat()
     if qty >= pos["adet"] - 1e-12:
-        pos.update(durum="kapali", kapanis_fiyat=price, kapanis_zamani=now_tr().isoformat(), neden=reason)
+        pos.update(durum="kapali", kapanis_fiyat=price, kapanis_zamani=when, neden=reason)
         save(items)
         return pos, None
     share = qty / pos["adet"]
     part = {**pos, "id": max(p["id"] for p in items) + 1, "adet": qty, "miktar_usd": pos["miktar_usd"] * share,
-            "durum": "kapali", "kapanis_fiyat": price, "kapanis_zamani": now_tr().isoformat(),
+            "durum": "kapali", "kapanis_fiyat": price, "kapanis_zamani": when,
             "neden": reason, "kaynak": f"kısmi satış #{pos_id}", "kural_ihlali": []}
     pos["adet"] -= qty
     pos["miktar_usd"] *= 1 - share

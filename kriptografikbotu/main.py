@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import types
 import functools
 import logging
@@ -13,7 +14,7 @@ from logging.handlers import RotatingFileHandler
 import httpx
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest, NetworkError, TimedOut
-from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, ContextTypes, ExtBot,
+from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, ContextTypes, ExtBot, TypeHandler,
                           MessageHandler, filters)
 from telegram.request import HTTPXRequest
 
@@ -65,6 +66,9 @@ import market
 import watcher
 import web_sync
 import voice_quant
+import quiet
+import signal_life
+import advisor
 from alert_engine import AlertEngine
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO,
@@ -90,6 +94,7 @@ HELP = """📋 KOMUTLAR (menü: mesaj kutusundaki / tuşu)
   /takip kural destek=1.5 rsi_alti=30 rsi_ustu=75 hacim=2 — son kapanışa göre koşullu uyarılar
 /portfoy — portföy: adet, değer, günlük/toplam %, TUT/SAT (➕ Ekle butonu, çoklu seçim)
 /portfoy detay — satış/tepe analizi · /portfoy analiz — yapay zekâ yorumu
+/ne ASTOR — elindeki bir varlık için adım adım plan (düz yazı: "ASTOR çok arttı ne yapayım")
 /portföy astordan 4 tane var 260 tl iken almıştım, europower 5 adet 70 tl — doğal yazıyla ekle (onay sorar)
 /bakiye — bakiye (varlık + nakit), bugün / bu hafta / toplam K/Z · /bakiye bist · /bakiye kripto
 /bakiye nakit 5000 tl · /bakiye nakit 120 usdt — nakdini gir
@@ -154,7 +159,8 @@ Düz yazı: "THYAO 300 üstünde kapanırsa haber ver", "kripto portföyüm %10 
 🧠 YAPAY ZEKÂ VE SİSTEM
 /model — Kimi K3 → DeepSeek V4.1 Flash → GLM 5.3 (15 dk'da bir sırayla) · /model kimi|deepseek|glm|sira
 /maliyet — harcama · /durum — veri güncelliği
-/okul — 09-16 sessiz, 16:05 rapor (/okul kapat) · /set_config — sessiz saat
+/sessizlik — bildirim gelmeyecek saatler, düz yazıyla: /sessizlik hafta içi 12.00-14.30 (/sessizlik sil 1)
+/sessiz — hiç bildirim gelmez, açmak için /plan · /plan 45dk — plan güncellemesi aralığı
 /pozisyon BTC acik|kapali · /sil BTC — plan · /sifirla — sohbet geçmişi · /get_logs — hatalar
 
 💬 Düz yazı da olur: "BTC ne durumda", "THYAO ne durumda", "hype'a 60 dolar yatırdım", "portföy"."""
@@ -221,7 +227,9 @@ BOT_MENU = [
     ("model", "Kimi K3 / DeepSeek Flash / GLM 5.3 sırası"),
     ("maliyet", "Yapay zekâ harcaması"),
     ("durum", "Veri güncelliği"),
-    ("okul", "Okul modu (09-16 sessiz, 16:05 rapor)"),
+    ("sessizlik", "Bildirim gelmeyecek saatler: /sessizlik hafta içi 12.00-14.30"),
+    ("sessiz", "Hiç bildirim gelmesin (açmak için /plan)"),
+    ("ne", "Elindeki bir varlık için plan: /ne ASTOR"),
     ("pozisyon", "Plan için pozisyon işareti: /pozisyon BTC acik"),
     ("sil", "Plan sil: /sil BTC"),
     ("sifirla", "Sohbet geçmişini temizle"),
@@ -247,13 +255,45 @@ async def _retry_send(send, *args, **kwargs):
             await asyncio.sleep(min(3 * 2 ** attempt, 30))  # 3, 6, 12, 24, 30 s: rides out a ~75 s outage
 
 
+# True while the bot handles something the owner just did (command, message, button): those replies always
+# arrive. Background jobs run outside it, so their messages follow /sessiz and /sessizlik.
+USER_TURN: contextvars.ContextVar[bool] = contextvars.ContextVar("user_turn", default=False)
+
+
+class HeldMessage:
+    """Stands in for a message held back while quiet, so callers can still .edit_text() / .delete() it."""
+    message_id = 0
+
+    def __getattr__(self, name):
+        async def noop(*args, **kwargs):
+            return None
+        return noop
+
+
+def _held(chat_id) -> bool:
+    return bool(config.ALLOWED_CHAT_ID) and chat_id == config.ALLOWED_CHAT_ID and not USER_TURN.get() and quiet.muted()
+
+
+async def mark_user_turn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Runs first for every update (group -1)."""
+    USER_TURN.set(bool(update.effective_chat) and update.effective_chat.id == config.ALLOWED_CHAT_ID)
+
+
 class RetryBot(ExtBot):
     """Every send in the bot (also message.reply_text) goes through here."""
 
     async def send_message(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        if _held(chat_id):
+            quiet.hold(kwargs.get("text", args[1] if len(args) > 1 else ""))
+            return HeldMessage()
         return await _retry_send(super().send_message, *args, **kwargs)
 
     async def send_photo(self, *args, **kwargs):
+        chat_id = kwargs.get("chat_id", args[0] if args else None)
+        if _held(chat_id):
+            quiet.hold(kwargs.get("caption") or "", "foto")
+            return HeldMessage()
         return await _retry_send(super().send_photo, *args, **kwargs)
 
     async def edit_message_text(self, *args, **kwargs):
@@ -292,25 +332,18 @@ def authorized(handler):
 
 
 def silent() -> bool:
-    """During school hours messages still arrive, but without sound or vibration."""
-    return alerts_store.is_school()
-
-
-def school_log(kind: str, text: str):
-    """Remember what happened during school hours for the 16:05 report."""
-    if not alerts_store.is_school():
-        return
-    s = alerts_store.load_settings()
-    s.setdefault("okul_olaylari", []).append({"saat": alerts_store.now_tr().strftime("%H:%M"), "tur": kind,
-                                              "metin": text[:300]})
-    alerts_store.save_settings(s)
+    """Inside a quiet window replies to the owner's own commands still arrive, but without sound."""
+    return quiet.muted()
 
 
 async def send_long(bot, chat_id: int, text: str, reply_markup=None):
+    """Split at Telegram's limit; returns the last message (the one with the buttons)."""
     chunks = [text[i:i + 4000] for i in range(0, len(text), 4000)] or [""]
+    last = None
     for i, chunk in enumerate(chunks):
-        await bot.send_message(chat_id, chunk, reply_markup=reply_markup if i == len(chunks) - 1 else None,
-                               disable_notification=silent())
+        last = await bot.send_message(chat_id, chunk, reply_markup=reply_markup if i == len(chunks) - 1 else None,
+                                      disable_notification=silent())
+    return last
 
 
 def plan_alarm_buttons(reply: str, plan_coins: list[str]):
@@ -344,7 +377,8 @@ async def build_market_data(coins: list[str]) -> tuple[dict, list[str]]:
 
 async def run_analysis(bot, chat_id: int | None, user_text: str, coins: list[str],
                        data: dict | None = None, footer: str = "", buttons=plan_alarm_buttons,
-                       allow_state_update: bool = True, personal: bool = True, keys: dict | None = None) -> str | None:
+                       allow_state_update: bool = True, personal: bool = True, keys: dict | None = None,
+                       on_sent=None) -> str | None:
     """DeepSeek analysis. Pass `data` to send prepared market data instead of coin snapshots.
 
     `buttons(reply, plan_coins)` returns the inline keyboard for the reply, or None.
@@ -368,8 +402,10 @@ async def run_analysis(bot, chat_id: int | None, user_text: str, coins: list[str
         if status:
             await status.delete()
         if chat_id:
-            await send_long(bot, chat_id, "\n\n".join([reply, *warnings, *([footer] if footer else [])]),
-                            reply_markup=buttons(reply, plan_coins) if buttons else None)
+            msg = await send_long(bot, chat_id, "\n\n".join([reply, *warnings, *([footer] if footer else [])]),
+                                  reply_markup=buttons(reply, plan_coins) if buttons else None)
+            if on_sent and msg is not None:
+                on_sent(msg)
         return reply
 
 
@@ -645,7 +681,11 @@ async def incele(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 PLAN_FOLLOW_JOB = "plan_takip"
-PLAN_FOLLOW_SECONDS = 15 * 60
+PLAN_FOLLOW_MINUTES = (5, 240)  # allowed range for /plan 45dk
+
+
+def plan_follow_minutes() -> int:
+    return int(alerts_store.load_settings().get("plan_aralik_dk") or 15)
 
 
 def _pct(a: float, b: float) -> str:
@@ -814,7 +854,7 @@ async def plan_follow_job(context: ContextTypes.DEFAULT_TYPE):
     text = await plan_status_text()
     if text is None:
         context.job.schedule_removal()
-        await context.bot.send_message(config.ALLOWED_CHAT_ID, "Gösterilecek plan kalmadı, 15 dk'lık plan takibi durdu.",
+        await context.bot.send_message(config.ALLOWED_CHAT_ID, "Gösterilecek plan kalmadı, plan takibi durdu.",
                                        disable_notification=silent())
         return
     await context.bot.send_message(config.ALLOWED_CHAT_ID, text + "\n\nDurdurmak için: /plan dur",
@@ -824,19 +864,37 @@ async def plan_follow_job(context: ContextTypes.DEFAULT_TYPE):
 def start_plan_follow(app: Application):
     for job in app.job_queue.get_jobs_by_name(PLAN_FOLLOW_JOB):
         job.schedule_removal()
-    app.job_queue.run_repeating(plan_follow_job, interval=PLAN_FOLLOW_SECONDS, first=PLAN_FOLLOW_SECONDS,
-                                name=PLAN_FOLLOW_JOB)
+    seconds = plan_follow_minutes() * 60
+    app.job_queue.run_repeating(plan_follow_job, interval=seconds, first=seconds, name=PLAN_FOLLOW_JOB)
 
 
 @authorized
 async def plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    unmuted = ""
+    if quiet.is_muted_all():  # /plan is also how the user turns /sessiz off
+        quiet.set_muted_all(False)
+        unmuted = "🔔 Sessiz mod kapandı, bildirimler yeniden geliyor.\n\n"
+        await send_held(context.bot)
     s = alerts_store.load_settings()
+    m = re.fullmatch(r"(?:aral[ıi]k\s*)?(\d{1,3})\s*(?:dk|dakika|m|min)?", " ".join(context.args).lower()) if context.args else None
+    if m:
+        minutes = int(m[1])
+        lo, hi = PLAN_FOLLOW_MINUTES
+        if not lo <= minutes <= hi:
+            await update.message.reply_text(f"Aralık {lo}-{hi} dakika arasında olmalı. Örnek: /plan 45dk")
+            return
+        s["plan_aralik_dk"] = minutes
+        s["plan_takip"] = True
+        alerts_store.save_settings(s)
+        start_plan_follow(context.application)
+        await update.message.reply_text(f"{unmuted}🔁 Plan güncellemesi artık {minutes} dk'da bir gelecek. Durdurmak için: /plan dur")
+        return
     if context.args and context.args[0].lower() in ("dur", "kapat", "durdur", "stop"):
         for job in context.application.job_queue.get_jobs_by_name(PLAN_FOLLOW_JOB):
             job.schedule_removal()
         s["plan_takip"] = False
         alerts_store.save_settings(s)
-        await update.message.reply_text("⏹ 15 dk'lık plan takibi durdu. Tetik/teyit/ŞİMDİ AL uyarıları yine gelir.")
+        await update.message.reply_text(f"{unmuted}⏹ Plan takibi durdu. Tetik/teyit/ŞİMDİ AL uyarıları yine gelir.")
         return
     sub = context.args[0].lower() if context.args else ""
     if sub == "ekle":
@@ -877,9 +935,11 @@ async def plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_plan_follow(context.application)
     s["plan_takip"] = True
     alerts_store.save_settings(s)
-    next_at = (alerts_store.now_tr() + timedelta(seconds=PLAN_FOLLOW_SECONDS)).strftime("%H:%M")
+    minutes = plan_follow_minutes()
+    next_at = (alerts_store.now_tr() + timedelta(minutes=minutes)).strftime("%H:%M")
     await send_long(context.bot, update.effective_chat.id,
-                    text + f"\n\n🔁 Takip açık: 15 dk'da bir güncelleme (sıradaki {next_at}). Durdurmak için: /plan dur\n"
+                    unmuted + text + f"\n\n🔁 Takip açık: {minutes} dk'da bir güncelleme (sıradaki {next_at}). "
+                    "Aralığı değiştir: /plan 45dk · durdur: /plan dur\n"
                     "Liste: /plan ekle BTC THYAO · /plan cikar BTC · /plan hepsi",
                     reply_markup=plan_buttons())
 
@@ -957,6 +1017,14 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, mkt, sym = pending.split("|", 2)
         if await sell_holding(update, context, mkt, sym, text):
             return
+    if re.search(r"bildirim\w*\s+(atma|gönderme|gonderme|yollama|gelmesin|istemiyorum)|sessizlik", text.lower()) \
+            and await add_quiet_window(update, text):
+        return
+    if re.search(r"ne yap|sat(ay)?[ıi]m m[ıi]|tutay[ıi]m m[ıi]|kâr m[ıi] alay|kar m[ıi] alay|ne öneri", text.lower()):
+        held_code = next((w for w in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü0-9]{2,10}", text) if advisor.holdings(w)), None)
+        if held_code:
+            await advice_reply(context.bot, update.effective_chat.id, held_code, text)
+            return
     if wants_opportunities(text):
         await opportunity_report(update, context)
         return
@@ -984,7 +1052,7 @@ async def text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await balance_report(update, context)
         return
     if text.strip().lower() in ("okul", "okul modu", "okuldayım", "okuldayim"):
-        await enable_school(update.message)
+        await update.message.reply_text(OKUL_MOVED)
         return
     words = {w.upper() for w in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşü]{2,6}", text)}
     coins = [c for c in config.WATCHLIST if c in words]
@@ -1127,11 +1195,10 @@ async def watch_job(context: ContextTypes.DEFAULT_TYPE):
         return
     auto_plans = {c for c, p in store.load_state()["planlar"].items() if p.get("otomatik")}
     for coin, event, is_close_event, buy in alerts:
-        if not is_close_event and (alerts_store.is_quiet() or alerts_store.is_school()):
+        if not is_close_event and alerts_store.is_quiet():
             log.info("Quiet/school hours, suppressed pre-alert %s: %s", coin, event)
             continue
         log.info("Alert %s: %s", coin, event)
-        school_log("plan", f"{coin}: {event}")
         if coin in auto_plans:
             # Scanner plans stay cheap: no DeepSeek for intermediate events, only when ŞİMDİ AL passes.
             if buy is None:
@@ -1172,7 +1239,6 @@ async def run_scanner(bot, announce_empty_to: int | None = None):
                 f"Otomatik plan: tetik/teyit {_g(c['tetik'])} | iptal {_g(c['iptal'])} | hedef {_g(c['hedef'])}\n"
                 "Henüz AL değil: sonraki 15m mum direncin üstünde kalırsa kod kapısı kontrol eder, "
                 "geçerse 🟢 ŞİMDİ AL gelir.")
-        school_log("aday", text)
         await bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=True)
     if announce_empty_to and not found:
         await bot.send_message(announce_empty_to, "Tarama bitti: son kapanan 15m mumda yeni kırılım adayı yok.")
@@ -1220,7 +1286,6 @@ async def event_job(context: ContextTypes.DEFAULT_TYPE):
         open_pos = [f"  {c}: iptal {p.get('iptal')}" for c, p in plans.items() if p.get("pozisyon")]
         if open_pos:
             lines += ["Açık pozisyonlar, iptal seviyeleri:", *open_pos]
-        school_log("veri", lines[0])
         await context.bot.send_message(config.ALLOWED_CHAT_ID, "\n".join(lines), disable_notification=silent())
         return
 
@@ -1260,7 +1325,6 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
     try:
         png = await asyncio.to_thread(charts.render, df, f"{pair} {tf}", levels)
         await bot.send_photo(chat, photo=png, caption=caption, disable_notification=silent())
-        school_log("alarm", caption)
     except Exception:
         log.exception("Chart failed for %s", pair)
         await bot.send_message(chat, caption + "\n(grafik üretilemedi, /get_logs)")
@@ -1300,6 +1364,8 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
 
     alarm_analysis_id = f"alarm_{pair.replace('/', '')}_{alert['id']}_{int(time.time())}"
 
+    card = {}
+
     def decision_buttons(reply: str, _plan_coins):
         verdict = re.search(r"KARAR:\s*\**\s*(AL|BEKLE|PAS)", reply)
         d = positions.log_decision({
@@ -1314,7 +1380,12 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
             "analiz": reply,
             "uyarilar": warns,
             "gostergeler": {c: _num(last_row[c]) for c in
-                            ("close", "sma20", "sma50", "sma200", "rsi14", "atr14", "volume", "vol_avg20", "vwap")}})
+                            ("close", "sma20", "sma50", "sma200", "rsi14", "atr14", "volume", "vol_avg20", "vwap")},
+            "kart": {"alarm": [pair, alert["id"]],
+                     "link": f"{config.PUBLIC_URL}/app/analizlerim?id={alarm_analysis_id}" if web_sync.enabled() else None}})
+        card["id"] = d["id"]
+        if d["karar"] == "AL" and g["ok"]:
+            return signal_markup(d, None)
         rows = [[InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
                  InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")],
                 [InlineKeyboardButton("🗑 Alarmı sil", callback_data=f"asil|{pair}|{alert['id']}")]]
@@ -1324,7 +1395,9 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
         return InlineKeyboardMarkup(rows)
 
     reply = await run_analysis(bot, chat, f"[ALARM TETİKLENDİ] {pair} {tf} kapanış {close:g} {op} tetik {alert['tetik']:g}.",
-                               [], data=data, footer=footer, buttons=decision_buttons)
+                               [], data=data, footer=footer, buttons=decision_buttons,
+                               on_sent=lambda m: card.get("id") and not isinstance(m, HeldMessage)
+                               and positions.update_decision(card["id"], mesaj_id=m.message_id))
     if reply and web_sync.enabled():  # the owner's panel keeps the alarm analysis next to its chart
         try:
             await web_sync.push_docs("analyses", [{
@@ -1336,7 +1409,6 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
 
 
 async def on_alert_notice(bot, pair: str, alert: dict, text: str):
-    school_log("alarm", text)
     await bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
 
 
@@ -1586,6 +1658,51 @@ async def _open_from_decision(query, dec_id: int):
     await query.message.reply_text("Yanlışlıkla mı bastın?", reply_markup=_undo_button(pos))
 
 
+def signal_markup(d: dict, life: dict | None) -> InlineKeyboardMarkup:
+    """Buy-signal card buttons: live status on top (tap = refresh), Aldım/Pas while it is still worth acting on."""
+    status = signal_life.status_text(life) if life else "🟢 Aktif · yeni · dokun: güncelle"
+    rows = [[InlineKeyboardButton(status, callback_data=f"omur|{d['id']}")]]
+    if not life or life["durum"] not in signal_life.FINAL:
+        rows.append([InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
+                     InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")])
+    kart = d.get("kart") or {}
+    if kart.get("alarm"):
+        rows.append([InlineKeyboardButton("🗑 Alarmı sil", callback_data=f"asil|{kart['alarm'][0]}|{kart['alarm'][1]}")])
+    if kart.get("link"):
+        rows.append([InlineKeyboardButton("📊 Panelde aç", url=kart["link"])])
+    return InlineKeyboardMarkup(rows)
+
+
+async def _signal_life_or_none(d: dict | None) -> dict | None:
+    if not d or d.get("karar") != "AL" or (d.get("piyasa") or "KRIPTO") != "KRIPTO" or not d.get("kapanis"):
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            return await signal_life.evaluate(client, d)
+    except Exception as e:
+        log.warning("Signal life for decision %s failed: %s", d.get("id"), e)
+        return None
+
+
+async def signal_life_job(context: ContextTypes.DEFAULT_TYPE):
+    """Keeps the status button of recent buy-signal cards current (age, live price, valid/late/expired)."""
+    now = alerts_store.now_tr()
+    cards = [d for d in positions.load_decisions()[-40:]
+             if d.get("mesaj_id") and d.get("karar") == "AL" and not d.get("aksiyon")
+             and (d.get("omur") or {}).get("durum") not in signal_life.FINAL
+             and now - datetime.fromisoformat(d["zaman"]) < timedelta(hours=signal_life.WATCH_HOURS)]
+    for d in cards:
+        life = await _signal_life_or_none(d)
+        if not life:
+            continue
+        positions.update_decision(d["id"], omur={"durum": life["durum"], "ts": now.isoformat()})
+        try:
+            await context.bot.edit_message_reply_markup(config.ALLOWED_CHAT_ID, d["mesaj_id"], reply_markup=signal_markup(d, life))
+        except BadRequest as e:
+            if "not modified" not in str(e).lower():
+                log.warning("Signal card %s not updated: %s", d["id"], e)
+
+
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if update.effective_chat.id != config.ALLOWED_CHAT_ID:
@@ -1596,6 +1713,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if kind == "al":
             decision = positions.get_decision(int(rest[0]))
+            life = await _signal_life_or_none(decision)
+            if life and life["durum"] != "aktif" and rest[1:] != ["onay"]:
+                await query.message.reply_text(
+                    f"⚠️ Bu sinyal artık {life['etiket']}: giriş {decision['kapanis']:g}, şimdi {life['fiyat']:.6g} "
+                    f"({life['fark_yuzde']:+.2f}%), {life['yas_dk']} dk önce verildi. Eski sinyalin peşinden girmiş olursun.\n"
+                    "Gerçekten aldıysan kaydederim ve 'geç giriş' notu düşerim.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("✅ Evet, aldım", callback_data=f"al|{rest[0]}|onay"),
+                        InlineKeyboardButton("❌ Hayır", callback_data="alno")]]))
+                return
             if decision and decision.get("karar") != "AL" and rest[1:] != ["onay"]:
                 await query.message.reply_text(
                     f"⚠️ Bot bu alarmda {decision.get('karar')} dedi. Gerçekten aldın mı? (yanlışlıkla bastıysan Hayır)",
@@ -1609,6 +1736,22 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await query.edit_message_reply_markup(None)
                 await _open_from_decision(query, int(rest[0]))
+            if life and life["durum"] != "aktif":
+                pos = next((p for p in reversed(positions.open_positions()) if p.get("karar_id") == int(rest[0])), None)
+                if pos:
+                    positions.add_violation(pos["id"], f"{life['etiket']} sinyalden giriş ({life['fark_yuzde']:+.2f}%)", "gec_giris")
+        elif kind == "omur":
+            d = positions.get_decision(int(rest[0]))
+            life = await _signal_life_or_none(d)
+            if d and life and not d.get("aksiyon"):
+                positions.update_decision(d["id"], omur={"durum": life["durum"], "ts": alerts_store.now_tr().isoformat()})
+                try:
+                    await query.edit_message_reply_markup(signal_markup(d, life))
+                except BadRequest:
+                    pass
+        elif kind == "ne":
+            await query.edit_message_reply_markup(None)
+            await advice_reply(context.bot, update.effective_chat.id, rest[0], f"{rest[0]} için ne yapayım?")
         elif kind == "alno":
             await query.edit_message_reply_markup(None)
             await query.message.reply_text("👍 Kayıt açılmadı.")
@@ -1665,7 +1808,22 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state["planlar"][coin]["alarm_id"] = alert["id"]  # watcher leaves this plan to the alarm engine
             store.save_state(state)
             await query.message.reply_text("⏰ Alarm kuruldu:\n" + _alert_line(pair, alert))
-        elif kind == "sat":
+        elif kind == "sat" and query.message.date and \
+                (datetime.now(query.message.date.tzinfo) - query.message.date).total_seconds() > STALE_SELL_BUTTON_S:
+            p = positions.get(int(rest[0]))
+            if not p or p["durum"] != "acik":
+                await query.message.reply_text("Bu pozisyon zaten kapalı.")
+                return
+            now_price = await _price(p["symbol"])
+            age_h = (datetime.now(query.message.date.tzinfo) - query.message.date).total_seconds() / 3600
+            await query.message.reply_text(
+                f"Bu mesaj {age_h:.1f} saat önce geldi; içindeki {float(rest[1]):g} artık satış fiyatın olmayabilir.\n"
+                f"Gerçek satışını yaz: /sat {p['id']} FİYAT [TARİH] (ör. /sat {p['id']} 11,04 dün ya da 25.09 14:30)\n"
+                "ya da seç:",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(f"Mesajdaki fiyat {float(rest[1]):g}", callback_data=f"satk|{rest[0]}|{rest[1]}|{rest[2]}")],
+                    [InlineKeyboardButton(f"Şu anki fiyat {now_price:g}", callback_data=f"satk|{rest[0]}|{now_price}|{rest[2]}")]]))
+        elif kind in ("sat", "satk"):
             pos = positions.close_position(int(rest[0]), float(rest[1]), rest[2])
             await query.edit_message_reply_markup(None)
             if pos:
@@ -1706,6 +1864,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await risk_report(_shim(update), context)
             elif action == "bakiye":
                 await balance_report(_shim(update), context)
+            elif action == "ne":
+                await ask_advice(query.message)
             else:
                 await portfolio_summary(_shim(update), context)
         elif kind == "pfsat":
@@ -1732,8 +1892,13 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 s["adet"] = float(rest[1])
                 await sell_ask_price(query.message, context)
             elif rest[0] == "fiyat":
+                s["satis_fiyati"] = s["fiyat"]
+                await sell_ask_when(query.message, context)
+            elif rest[0] == "zaman":
                 context.user_data.pop("satis", None)
-                await sell_holding(_shim(update), context, s["mkt"], s["sym"], f"{s['adet']:g} {s['fiyat']:g}")
+                when = parse_when(rest[1])
+                await sell_holding(_shim(update), context, s["mkt"], s["sym"], f"{s['adet']:g} {s['satis_fiyati']:g}",
+                                   when=when)
         elif kind == "wz" and rest[0] in ("sec", "sayfa", "yok", "devam"):
             w = context.user_data.get("sihirbaz")
             if not w or w.get("adim") != "kod":
@@ -1902,7 +2067,8 @@ async def aldim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @authorized
 async def sat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or not context.args[0].isdigit():
-        await update.message.reply_text("Kullanım: /sat ID [FIYAT] [adet=N | yuzde=50]  (fiyat yoksa şu anki fiyat; adet/yuzde = kısmi satış)")
+        await update.message.reply_text("Kullanım: /sat ID [FIYAT] [TARİH] [adet=N | yuzde=50]\n"
+                                        "Fiyat yoksa şu anki fiyat; tarih: dün, 25.09 ya da 25.09 14:30 (yoksa şimdi).")
         return
     pos = positions.get(int(context.args[0]))
     if not pos or pos["durum"] != "acik":
@@ -1913,6 +2079,13 @@ async def sat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     rest_args, kv = _opts(context.args[1:])
     price = _float(rest_args[0]) if rest_args else await _price(pos["symbol"])
+    when = parse_when(" ".join(rest_args[1:])) if len(rest_args) > 1 else None
+    if len(rest_args) > 1 and not when:
+        await update.message.reply_text("Tarihi anlayamadım. Örnek: /sat 13 11,04 dün ya da /sat 13 11,04 25.09 14:30")
+        return
+    if when and when < pos.get("acilis", ""):
+        await update.message.reply_text("Satış tarihi alış tarihinden önce olamaz.")
+        return
     if "lot" in kv or "yuzde" in kv or "adet" in kv:
         qty = _float(kv.get("lot") or kv.get("adet")) if ("lot" in kv or "adet" in kv) else pos["adet"] * _float(kv["yuzde"]) / 100
         if pos.get("piyasa") == "BIST":
@@ -1920,7 +2093,7 @@ async def sat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if qty <= 0:
             await update.message.reply_text("Satılacak miktar 0 olamaz.")
             return
-        part, rest = positions.partial_close(pos["id"], qty, price, "kısmi")
+        part, rest = positions.partial_close(pos["id"], qty, price, "kısmi", when=when)
         r = positions.pnl(part, price)
         await update.message.reply_text(
             f"💰 #{pos['id']} {pos['pair']}: {qty:g} adet satıldı @ {price:g} → "
@@ -1928,7 +2101,7 @@ async def sat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             + (f"\nKalan: {rest['adet']:g} · stop {rest['stop']} · hedef {rest['hedef']}" if rest else " (pozisyon tamamen kapandı)"))
         await ask_sell_reason(update.message, [part["id"]])
         return
-    pos = positions.close_position(pos["id"], price, "elle")
+    pos = positions.close_position(pos["id"], price, "elle", when=when)
     r = positions.pnl(pos, price)
     await update.message.reply_text(f"💰 #{pos['id']} {pos['pair']} kapatıldı @ {price:g}: {r['pnl_usd']:+.2f} {pos.get('para', 'USD')}"
                                     + (f", {r['R']:+.2f}R" if r["R"] is not None else ""))
@@ -2177,6 +2350,7 @@ def _g(x) -> str:
 async def send_buy_signal(bot, coin: str, buy: dict):
     """The plan's trigger and confirmation closed; say plainly whether every rule passes."""
     pair = f"{coin}/{config.QUOTE}"
+    chart_url = f"{config.PUBLIC_URL}/app/grafik?kod={coin}&piyasa=KRIPTO"
     if buy["ok"]:
         try:
             async with httpx.AsyncClient() as client:
@@ -2184,7 +2358,7 @@ async def send_buy_signal(bot, coin: str, buy: dict):
             await send_chart(bot, cdf, f"{pair} 15m", {k: buy.get(k) for k in ("iptal", "hedef")}, f"📈 {pair} 15m")
         except Exception:
             log.exception("Crypto chart failed")
-    lines = [f"🟢 ŞİMDİ AL — {pair}" if buy["ok"] else f"🟡 {pair}: teyit geldi ama ŞİMDİ AL değil",
+    lines = [f"🟢 SİNYAL AKTİF (alım adayı) — {pair}" if buy["ok"] else f"🟡 {pair}: teyit geldi ama kurallar geçmedi",
              f"Kapanış {_g(buy['close'])} | iptal {_g(buy['iptal'])} | hedef {_g(buy['hedef'])}", "", *buy["maddeler"]]
     markup = None
     if buy["ok"]:
@@ -2194,84 +2368,153 @@ async def send_buy_signal(bot, coin: str, buy: dict):
             lines.append("Kademe küçültüldü: " + "; ".join(buy["kademe_notlari"]))
         if buy["korelasyon"]:
             lines.append(f"⚠️ Açık pozisyon var ({', '.join(buy['korelasyon'])}): korelasyonlu, tek işlem sayılır.")
+        lines += [*gate.card_lines(buy), signal_life.track_line("KRIPTO"),
+                  f"⏳ Geçerlilik: {signal_life.LIFE_CANDLES['15m']} mum (2 saat); fiyat girişten %{signal_life.LATE_PCT['KRIPTO']:g} "
+                  "yukarı kaçarsa GEÇ KALDIN. Karar senin; üstteki buton sinyalin güncel durumunu gösterir."]
         d = positions.log_decision({
             "pair": pair, "symbol": alerts_store.pair_to_symbol(pair), "timeframe": "15m", "yon": "ABOVE",
             "alarm_id": 0, "kapanis": buy["close"], "mum_ms": int(time.time() * 1000) - 900_000,
             "iptal": buy["iptal"], "hedef": buy["hedef"], "karar": "AL", "kademe_usd": float(buy["kademe_usd"]),
             "analiz": "\n".join(lines), "uyarilar": [m for m in buy["maddeler"] if not m.startswith("✅")],
             "kapi": {k: buy[k] for k in ("ok", "rr", "kademe_usd", "kademe_notlari", "risk_off", "hacim_ok", "acgozluluk",
-                                         "kurallar", "kalan", "mum", "veri")}})
-        markup = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
-                                        InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")],
-                                       [InlineKeyboardButton("📊 Web Panelinde Gör", url=f"{config.PUBLIC_URL}/app/grafik?kod={tick}&piyasa=BIST")]])
+                                         "kurallar", "kalan", "mum", "veri")},
+            "kart": {"link": chart_url}})
+        markup = signal_markup(d, None)
     else:
-        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📊 Web Panelinde Gör", url=f"{config.PUBLIC_URL}/app/grafik?kod={tick}&piyasa=BIST")]])
-        lines.append("\nKesinlik yok: kurallar geçti demektir. Kapanıştan sonra fiyat değişmiş olabilir, "
-                     "butona basmadan fiyatı kontrol et.")
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📊 Web Panelinde Gör", url=chart_url)]])
     text = "\n".join(lines)
-    school_log("simdi_al" if buy["ok"] else "plan", text)
-    await bot.send_message(config.ALLOWED_CHAT_ID, text, reply_markup=markup, disable_notification=silent())
+    msg = await bot.send_message(config.ALLOWED_CHAT_ID, text, reply_markup=markup, disable_notification=silent())
+    if buy["ok"] and not isinstance(msg, HeldMessage):
+        positions.update_decision(d["id"], mesaj_id=msg.message_id)
     if buy["ok"]:
         _spawn(run_council(bot, "KRIPTO", coin, d["id"], buy))
 
 
+OKUL_MOVED = ("Okul modu yerine artık /sessizlik var: bildirim istemediğin saatleri kendin yazarsın.\n"
+              "Örnek: /sessizlik hafta içi 09.00-16.00 ya da düz yazı: \"her hafta içi 12.00 14.30 arası bildirim atma\".\n"
+              "Hiç bildirim istemezsen: /sessiz (açmak için /plan).")
+
+QUIET_HELP = ("Örnekler:\n/sessizlik hafta içi 12.00-14.30\n/sessizlik her gün 23:00-07:30\n"
+              "/sessizlik pazartesi çarşamba 09.00-12.00\nDüz yazı da olur: \"hafta sonu 10-13 arası bildirim atma\"\n"
+              "Sil: /sessizlik sil 1 · hepsini sil: /sessizlik temizle")
+
+
+@authorized
+async def ne_yapayim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/ne ASTOR — a staged plan for one holding (code) + a short explanation (model)."""
+    if not context.args:
+        await ask_advice(update.message)
+        return
+    await advice_reply(context.bot, update.effective_chat.id, context.args[0], " ".join(context.args))
+
+
+async def ask_advice(message):
+    groups = {}
+    for p in positions.open_positions():
+        if p.get("piyasa") != assets.MARKET:
+            code = bist.ticker(p["symbol"]) if p.get("piyasa") == "BIST" else us.ticker(p["symbol"]) \
+                if p.get("piyasa") == "ABD" else p["pair"].split("/")[0]
+            groups[code] = True
+    if not groups:
+        await message.reply_text("Portföyünde danışılacak pozisyon yok.")
+        return
+    btns = [InlineKeyboardButton(c, callback_data=f"ne|{c}") for c in groups]
+    await message.reply_text("Hangisi için plan istiyorsun? (ya da yaz: /ne ASTOR)",
+                             reply_markup=InlineKeyboardMarkup([btns[i:i + 3] for i in range(0, len(btns), 3)]))
+
+
+async def advice_reply(bot, chat_id: int, code: str, question: str):
+    status = await bot.send_message(chat_id, f"⏳ {code.upper()} için plan hesaplanıyor...")
+    try:
+        res = await advisor.advise(code)
+    except Exception as e:
+        log.exception("Advice failed for %s", code)
+        await status.edit_text(f"❌ {code.upper()} için veri alınamadı: {str(e)[:80]}")
+        return
+    await status.delete()
+    if res is None:
+        await bot.send_message(chat_id, f"{code.upper()} portföyünde yok (ya da yeterli fiyat geçmişi yok). Liste: /portfoy")
+        return
+    text, data = res
+    await send_long(bot, chat_id, f"🤔 {code.upper()} — NE YAPAYIM?\n\n{text}")
+    await run_analysis(bot, chat_id, f"[POZİSYON DANIŞMA] Kullanıcının sorusu: {question}", [], data=data,
+                       buttons=None, allow_state_update=False)
+
+
 @authorized
 async def okul(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    arg = (context.args[0].lower() if context.args else "")
-    if arg in ("kapat", "bitti", "off"):
-        alerts_store.set_school(False)
-        await update.message.reply_text("🏠 Okul modu kapandı. Bildirimler sesli.")
+    await update.message.reply_text(OKUL_MOVED)
+
+
+def quiet_list_text() -> str:
+    items = quiet.windows()
+    lines = ["🔕 Sessizlik saatlerin:" if items else "🔕 Sessizlik saati yok."]
+    lines += [f"{i}. {quiet.describe(w)}" for i, w in enumerate(items, 1)]
+    if quiet.is_muted_all():
+        lines.append("\n/sessiz açık: şu an hiç bildirim gelmiyor. Açmak için /plan")
+    lines.append("\nBu saatlerde otomatik bildirim gelmez; saat bitince birikenlerin özeti tek mesajla gelir. "
+                 "Senin yazdığın komutlara cevap her zaman gelir.")
+    return "\n".join(lines)
+
+
+async def add_quiet_window(update, text: str) -> bool:
+    w = quiet.parse_window(text)
+    if not w:
+        return False
+    quiet.add_window(w)
+    now = " Şu an bu aralıktasın: bildirimler bekletiliyor." if quiet.in_window(w, alerts_store.now_tr()) else ""
+    await update.message.reply_text(f"✅ Tamam: {quiet.describe(w)} arası bildirim göndermeyeceğim.{now}\n\n" + quiet_list_text())
+    return True
+
+
+@authorized
+async def sessizlik(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw = " ".join(context.args).strip()
+    low = raw.lower()
+    if not raw:
+        await update.message.reply_text(quiet_list_text() + "\n\n" + QUIET_HELP)
         return
-    await enable_school(update.message)
-
-
-async def enable_school(message):
-    o = alerts_store.set_school(True)
-    s = alerts_store.load_settings()
-    s["okul_olaylari"] = []
-    alerts_store.save_settings(s)
-    day = "bugün" if o["tarih"] == alerts_store.now_tr().date().isoformat() else "yarın"
-    await message.reply_text(
-        f"🎒 Okul modu açık: {day} {o['baslangic']}–{o['bitis']}.\n"
-        "- Alarmlar ve planlar izlenmeye devam eder; tetik mesajları sessiz gelir (ses/titreşim yok).\n"
-        "- 'Yaklaşıyor' ön-uyarıları gönderilmez.\n"
-        "- 16:05'te okuldayken olanların raporu ve şimdiki durum gelir.\n"
-        "Kapatmak için: /okul kapat")
-
-
-async def school_report_job(context: ContextTypes.DEFAULT_TYPE):
-    o = alerts_store.school_window()
-    if not o:
+    if low in ("temizle", "kapat", "sil hepsi", "hepsini sil"):
+        quiet.clear_windows()
+        await update.message.reply_text("🔔 Tüm sessizlik saatleri silindi.")
+        await send_held(context.bot)
         return
-    s = alerts_store.load_settings()
-    events = s.get("okul_olaylari", [])
-    s["okul"] = None
-    alerts_store.save_settings(s)
-    summary = "\n".join(f"{e['saat']} [{e['tur']}] {e['metin']}" for e in events) or "Okul saatinde tetik, teyit veya pozisyon olayı olmadı."
-    coins = sorted({*re.findall(r"\b([A-Z0-9]{2,10})/USDT", summary),
-                    *re.findall(r"\b([A-Z0-9]{4,6}\.IS)\b", summary),
-                    *store.load_state()["planlar"],
-                    *(p["pair"].split("/")[0] for p in positions.open_positions()),
-                    *(pair.split("/")[0] for pair, items in alerts_store.load_alerts().items()
-                      if any(a["durum"] in alerts_store.ACTIVE_STATES for a in items))})
-    await send_long(context.bot, config.ALLOWED_CHAT_ID,
-                    f"🎒 OKUL RAPORU ({o['baslangic']}–{o['bitis']})\n\n{summary}")
-    crypto = [c for c in coins if not c.endswith(".IS")][:5]
-    stocks = [c for c in coins if c.endswith(".IS")][:4]
-    data, _ = await build_market_data(crypto)
-    if stocks:
-        async with httpx.AsyncClient() as client:
-            for sym in stocks:
-                try:
-                    data[f"BIST_{bist.ticker(sym)}"] = await bist.snapshot(client, bist.ticker(sym))
-                except Exception as e:
-                    data[f"BIST_{bist.ticker(sym)}"] = {"hata": str(e)[:60]}
-            data["BIST100_KAPI"] = await bist.index_gate(client)
-    await run_analysis(context.bot, config.ALLOWED_CHAT_ID,
-                       "[OKUL RAPORU] Kullanıcı okuldaydı ve şimdi döndü. Okuldayken olanlar:\n" + summary +
-                       "\nHer coin ve BIST hissesi için: olan olay hâlâ geçerli mi (şu anki fiyat iptalin üstünde mi), "
-                       "ŞU AN ne yapmalı, akşam/yarın için tetik/iptal/hedef. BIST'te 15 dk gecikme ve seans saatini hatırlat. "
-                       "Kısa tut.", [], data=data)
+    m = re.fullmatch(r"sil\s+(\d+)", low)
+    if m:
+        gone = quiet.remove_window(int(m[1]))
+        await update.message.reply_text((f"🗑 Silindi: {quiet.describe(gone)}\n\n" if gone else "Bu numarada sessizlik yok.\n\n")
+                                        + quiet_list_text())
+        return
+    if not await add_quiet_window(update, raw):
+        await update.message.reply_text("Saatleri anlayamadım.\n" + QUIET_HELP)
+
+
+@authorized
+async def sessiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args and context.args[0].lower() in ("kapat", "kapa", "off", "bitti"):
+        quiet.set_muted_all(False)
+        await update.message.reply_text("🔔 Sessiz mod kapandı.")
+        await send_held(context.bot)
+        return
+    quiet.set_muted_all(True)
+    await update.message.reply_text("🔕 Sessiz mod açık: hiçbir otomatik bildirim gelmeyecek (alarmlar, sinyaller, plan "
+                                    "güncellemeleri). Olanlar biriktirilir.\nAçmak için /plan yaz; birikenlerin özeti gelir.")
+
+
+async def send_held(bot):
+    """Everything held while quiet, as one message (as soon as nothing is muted any more)."""
+    if quiet.muted():
+        return
+    held = quiet.take_held()
+    if held:
+        await send_long(bot, config.ALLOWED_CHAT_ID, quiet.digest(held))
+
+
+async def held_digest_job(context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await send_held(context.bot)
+    except Exception as e:
+        log.warning("Held notification digest failed: %s", e)
 
 
 @authorized
@@ -2365,8 +2608,8 @@ async def send_bist_signal(bot, sym: str, g: dict):
     """BIST gate result for a confirmed 1h close: ŞİMDİ AL with whole lots, or what failed."""
     tick = bist.ticker(sym)
     tf_label = "günlük" if (g.get("mum") or {}).get("zaman_dilimi") == "1d" else "1s"
-    head = (f"🟢 AL (BIST, orta/uzun vade) — {tick}" if g["ok"] and tf_label == "günlük" else
-            f"🟢 ŞİMDİ AL (BIST) — {tick}" if g["ok"] else f"🟡 {tick} (BIST): {tf_label} kapanış geldi ama AL değil")
+    head = (f"🟢 ALIM ADAYI (BIST, orta/uzun vade) — {tick}" if g["ok"] and tf_label == "günlük" else
+            f"🟢 SİNYAL AKTİF (BIST, alım adayı) — {tick}" if g["ok"] else f"🟡 {tick} (BIST): {tf_label} kapanış geldi ama kurallar geçmedi")
     lines = [head, f"Kapanış {_g(g['giris'])} TL (veri ~15 dk gecikmeli) | iptal {_g(g['iptal'])} | hedef {_g(g['hedef'])}",
              "", *g["maddeler"]]
     markup = None
@@ -2391,7 +2634,6 @@ async def send_bist_signal(bot, sym: str, g: dict):
         markup = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
                                         InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")]])
     text = "\n".join(lines)
-    school_log("bist", text)
     await bot.send_message(config.ALLOWED_CHAT_ID, text, reply_markup=markup, disable_notification=silent())
     if g["ok"]:
         _spawn(run_council(bot, "BIST", tick, d["id"], g))
@@ -2415,7 +2657,6 @@ async def bist_alarm_fire(bot, pair: str, alert: dict, df):
     caption = (f"🔔 {tick} (BIST) {alert['timeframe']} KAPANIŞ {alert['yon']}\n"
                f"Tetik {alert['tetik']:g} | Kapanış {close:g} ({op} tetik) · veri ~15 dk gecikmeli")
     await send_chart(bot, df, f"{tick} {alert['timeframe']}", {k: alert.get(k) for k in ("tetik", "iptal", "hedef")}, caption)
-    school_log("bist", caption)
     async with httpx.AsyncClient() as client:
         g = await bist_signals.evaluate(client, symbol=pair, entry=close, iptal=alert.get("iptal"), hedef=alert.get("hedef"),
                                         level=alert["tetik"], hour_bar=last if alert["timeframe"] == "1h" else None)
@@ -2574,10 +2815,9 @@ async def send_bist_events(bot, events: list[dict], tf: str):
                                    "Orta/uzun vade için kısa yorum yap.",
                                    [], data=data, buttons=None, allow_state_update=False)
         else:
-            if e["tur"] == "yaklasiyor" and (alerts_store.is_quiet() or alerts_store.is_school()):
+            if e["tur"] == "yaklasiyor" and alerts_store.is_quiet():
                 continue
             text = f"🇹🇷 {tick}: {'👀 YAKLAŞIYOR — ' if e['tur'] == 'yaklasiyor' else ''}{e['metin']}"
-            school_log("bist", text)
             await bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
 
 
@@ -3032,7 +3272,7 @@ PORTFOLIO_BUTTONS = InlineKeyboardMarkup([
     [InlineKeyboardButton("➕ Ekle", callback_data="pf|ekle"), InlineKeyboardButton("💰 Sat", callback_data="pf|sat")],
     [InlineKeyboardButton("📋 Detay (TUT/SAT)", callback_data="pf|detay"), InlineKeyboardButton("🔄 Yenile", callback_data="pf|yenile")],
     [InlineKeyboardButton("📊 Grafik", callback_data="pf|grafik"), InlineKeyboardButton("⚖️ Risk", callback_data="pf|risk")],
-    [InlineKeyboardButton("💰 Bakiye / K-Z", callback_data="pf|bakiye")]])
+    [InlineKeyboardButton("💰 Bakiye / K-Z", callback_data="pf|bakiye"), InlineKeyboardButton("🤔 Ne yapayım?", callback_data="pf|ne")]])
 
 
 def parse_holdings(text: str) -> list[tuple[str, float, float | None]]:
@@ -3094,8 +3334,9 @@ async def ask_sell(query, context):
     await query.message.reply_text("Hangisini sattın?", reply_markup=InlineKeyboardMarkup(rows))
 
 
-async def sell_holding(update, context, mkt: str, sym: str, text: str) -> bool:
-    """Answer to "how much, at what price": "5 300", "hepsi", "yarısı 305", "5" (price = now)."""
+async def sell_holding(update, context, mkt: str, sym: str, text: str, when: str | None = None) -> bool:
+    """Answer to "how much, at what price": "5 300", "hepsi", "yarısı 305", "5" (price = now).
+    when: the time of the real sale (ISO), default now."""
     items = sorted((p for p in positions.open_positions() if p["symbol"] == sym), key=lambda p: p["id"])
     if not items:
         context.user_data.pop("bekleyen", None)
@@ -3125,7 +3366,7 @@ async def sell_holding(update, context, mkt: str, sym: str, text: str) -> bool:
         if left <= 1e-12:
             break
         take = min(left, p["adet"])
-        part, _ = positions.partial_close(p["id"], take, price, "elle")
+        part, _ = positions.partial_close(p["id"], take, price, "elle", when=when)
         realized += positions.pnl(part, price)["pnl_usd"]
         sold_ids.append(part["id"])
         left -= take
@@ -3133,7 +3374,9 @@ async def sell_holding(update, context, mkt: str, sym: str, text: str) -> bool:
     unit = assets.ASSETS[sym]["birim"] if mkt == assets.MARKET else "adet"
     await update.message.reply_text(
         f"💰 {bist.ticker(sym) if mkt == 'BIST' else assets.name(sym) if mkt == assets.MARKET else sym}: {qty:g} {unit} satıldı @ {price:g} → "
-        f"{realized:+,.2f} {cur} gerçekleşen K/Z. Kalan {total - qty:g} {unit}.",
+        f"{realized:+,.2f} {cur} gerçekleşen K/Z. Kalan {total - qty:g} {unit}."
+        + (f"\nSatış zamanı: {datetime.fromisoformat(when).strftime('%d.%m %H:%M')}" if when else "")
+        + "\nSitedeki portföy 1 dakika içinde güncellenir.",
         reply_markup=PORTFOLIO_BUTTONS)
     if any(positions.is_trade(p) for p in items):
         await ask_sell_reason(update.message, sold_ids)
@@ -3495,6 +3738,40 @@ async def sell_ask_price(msg, context):
                              [InlineKeyboardButton("❌ İptal", callback_data="st|iptal")]]))
 
 
+STALE_SELL_BUTTON_S = 20 * 60  # an older "Sattım @ X" button asks for the real price first
+
+
+def parse_when(text: str) -> str | None:
+    """'az önce' / 'bugün' / 'dün' / '25.09' / '25.09 14:30' / '25.09.2026 14:30' -> ISO time (TR). None = not a time."""
+    t = text.strip().lower()
+    now = alerts_store.now_tr()
+    if t in ("simdi", "şimdi", "az önce", "az once", "bugün", "bugun"):
+        return now.isoformat()
+    if t in ("dün", "dun"):
+        return (now - timedelta(days=1)).isoformat()
+    m = re.fullmatch(r"(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?:\s+(\d{1,2})[:.](\d{2}))?", t)
+    if not m:
+        return None
+    year = int(m[3]) + (2000 if m[3] and len(m[3]) == 2 else 0) if m[3] else now.year
+    try:
+        when = now.replace(year=year, month=int(m[2]), day=int(m[1]),
+                           hour=int(m[4]) if m[4] else 12, minute=int(m[5]) if m[5] else 0, second=0)
+    except ValueError:
+        return None
+    if when > now:
+        when = when.replace(year=when.year - 1) if not m[3] else when
+    return when.isoformat() if when <= now else None
+
+
+async def sell_ask_when(msg, context):
+    context.user_data["satis"]["adim"] = "zaman"
+    await msg.reply_text("Ne zaman sattın? (butona bas ya da yaz: 25.09 veya 25.09 14:30)",
+                         reply_markup=InlineKeyboardMarkup([
+                             [InlineKeyboardButton("Az önce", callback_data="st|zaman|simdi"),
+                              InlineKeyboardButton("Dün", callback_data="st|zaman|dun")],
+                             [InlineKeyboardButton("❌ İptal", callback_data="st|iptal")]]))
+
+
 async def sell_text(update, context, text: str) -> bool:
     s = context.user_data.get("satis")
     if not s:
@@ -3502,6 +3779,14 @@ async def sell_text(update, context, text: str) -> bool:
     if text.strip().lower() in ("iptal", "vazgeç", "vazgec"):
         context.user_data.pop("satis", None)
         await update.message.reply_text("❌ Satış iptal.", reply_markup=PORTFOLIO_BUTTONS)
+        return True
+    if s["adim"] == "zaman":
+        when = parse_when(text)
+        if not when:
+            await update.message.reply_text("Tarihi anlayamadım. Örnek: 25.09 ya da 25.09 14:30 ya da dün")
+            return True
+        context.user_data.pop("satis", None)
+        await sell_holding(update, context, s["mkt"], s["sym"], f"{s['adet']:g} {s['satis_fiyati']:g}", when=when)
         return True
     try:
         num = float(text.strip().replace(",", "."))
@@ -3515,8 +3800,11 @@ async def sell_text(update, context, text: str) -> bool:
         s["adet"] = num
         await sell_ask_price(update.message, context)
     else:
-        context.user_data.pop("satis", None)
-        await sell_holding(update, context, s["mkt"], s["sym"], f"{s['adet']:g} {num:g}")
+        if num <= 0:
+            await update.message.reply_text("Fiyat 0'dan büyük olmalı.")
+            return True
+        s["satis_fiyati"] = num
+        await sell_ask_when(update.message, context)
     return True
 
 def _date_unknown(p: dict) -> bool:
@@ -3745,7 +4033,6 @@ async def exit_job(context: ContextTypes.DEFAULT_TYPE):
                                               "stop_onerisi": max(sugg or 0, prev.get("stop_onerisi") or 0)})
         if not (new_verdict or new_stop):
             continue
-        school_log("cikis", body)
         await context.bot.send_message(config.ALLOWED_CHAT_ID, body, reply_markup=exit_buttons(p, a),
                                        disable_notification=silent() or a["karar"] == "TUT")
 
@@ -4255,7 +4542,6 @@ async def corporate_job(context: ContextTypes.DEFAULT_TYPE):
         log.exception("Corporate actions check failed")
         return
     for m in msgs:
-        school_log("temettu", m)
         await context.bot.send_message(config.ALLOWED_CHAT_ID, m, disable_notification=silent())
 
 
@@ -4340,7 +4626,6 @@ async def risk_news_job(context: ContextTypes.DEFAULT_TYPE):
         log.exception("Risk news check failed")
         return
     for m in msgs:
-        school_log("risk_haber", m)
         await context.bot.send_message(config.ALLOWED_CHAT_ID, m, disable_notification=silent(),
                                        disable_web_page_preview=True)
 
@@ -5798,7 +6083,6 @@ async def pf_alarm_job(context: ContextTypes.DEFAULT_TYPE):
         log.exception("Portfolio alarm check failed")
         return
     for m in msgs:
-        school_log("portfoy_alarm", m)
         await context.bot.send_message(config.ALLOWED_CHAT_ID, m, disable_notification=silent())
 
 
@@ -5838,7 +6122,6 @@ async def position_job(context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton("🗑 Hiç almadım, kaydı sil", callback_data=f"psil|{p['id']}")])
         r = positions.pnl(p, close)
         text += f"\nK/Z: {r['pnl_usd']:+.2f} {p.get('para', 'USD')}" + (f", {r['R']:+.2f}R" if r["R"] is not None else "")
-        school_log("pozisyon", text)
         await context.bot.send_message(config.ALLOWED_CHAT_ID, text, reply_markup=InlineKeyboardMarkup(kb),
                                        disable_notification=silent())
 
@@ -5913,6 +6196,7 @@ def main():
     app = Application.builder().bot(bot).post_init(start_engine).post_stop(stop_engine).build()
     engine = AlertEngine(on_trigger=lambda *a: on_alert_trigger(app.bot, *a),
                          on_notice=lambda *a: on_alert_notice(app.bot, *a))
+    app.add_handler(TypeHandler(Update, mark_user_turn), group=-1)
     app.add_handler(CommandHandler(["start", "yardim"], start))
     app.add_handler(CommandHandler(["komutlar", "komut", "help"], komutlar))
     app.add_handler(CommandHandler("analiz", analiz))
@@ -5945,6 +6229,9 @@ def main():
     app.add_handler(CommandHandler("portfoy", portfoy))
     app.add_handler(CommandHandler("haber", haber))
     app.add_handler(CommandHandler("okul", okul))
+    app.add_handler(CommandHandler("sessizlik", sessizlik))
+    app.add_handler(CommandHandler("sessiz", sessiz))
+    app.add_handler(CommandHandler(["ne", "neyapayim"], ne_yapayim))
     app.add_handler(CommandHandler("risk", risk_cmd))
     app.add_handler(CommandHandler("grafik", grafik))
     app.add_handler(CommandHandler("duygu", duygu))
@@ -5993,7 +6280,8 @@ def main():
         app.job_queue.run_daily(brief_job, dtime(config.BRIEF_HOUR, config.BRIEF_MINUTE, tzinfo=macro.TR))
         app.job_queue.run_once(lambda ctx: schedule_events(ctx.application), when=5)
         schedule_quiet_summary(app)
-        app.job_queue.run_daily(school_report_job, dtime(16, 5, tzinfo=macro.TR), name="school_report")
+        app.job_queue.run_repeating(held_digest_job, interval=60, first=30, name="bekleyen_bildirim")
+        app.job_queue.run_repeating(signal_life_job, interval=300, first=90, name="sinyal_omru")
         # BIST: 1h bars close at :30 (+~16 min data delay) -> check every 15 min; daily scan after the final close.
         app.job_queue.run_repeating(bist_hourly_job, interval=15 * 60, first=first + 40)
         app.job_queue.run_daily(bist_daily_job, dtime(18, 35, tzinfo=macro.TR), name="bist_daily")

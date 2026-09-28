@@ -400,6 +400,7 @@ async def update_stop(position_id: str, body: StopBody, user: dict = Depends(req
 
 class CloseBody(BaseModel):
     price: Optional[float] = None
+    when: Optional[str] = None  # ISO time of the real sale; default now (the bot's clock)
 
 
 @api.post("/positions/{position_id}/close")
@@ -416,6 +417,17 @@ async def close_position(position_id: str, body: Optional[CloseBody] = None,
         if not 0 < body.price < 1e9:
             raise HTTPException(status_code=400, detail="Satış fiyatı geçersiz.")
         payload["price"] = body.price
+    if body is not None and body.when:
+        try:
+            when = datetime.fromisoformat(body.when.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Satış zamanı okunamadı.")
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone(timedelta(hours=3)))  # the form sends Turkish local time
+        now = datetime.now(timezone.utc)
+        if when > now + timedelta(minutes=5) or when < now - timedelta(days=366):
+            raise HTTPException(status_code=400, detail="Satış zamanı gelecekte ya da bir yıldan eski olamaz.")
+        payload["when"] = when.isoformat()
     cmd = await _queue_command("position.close", payload, user)
     return {"queued": True, "command": cmd}
 

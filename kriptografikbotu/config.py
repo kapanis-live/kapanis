@@ -113,6 +113,7 @@ FEAR_EXTREME = 20               # at or below: warning only (breakouts fail more
 # --- Concentration (risk.py) ---
 MAX_ASSET_PCT = 40              # one asset above this share of the whole portfolio = warning
 MAX_SECTOR_PCT = 50
+MAX_COIN_PCT = 30               # one coin above this share of the open crypto book = warning on every new signal
 HIGH_CORR = 0.8                 # 30-day daily-return correlation treated as "the same position"
 
 # --- Accumulation plans (dca.py) ---

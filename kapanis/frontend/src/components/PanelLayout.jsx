@@ -64,6 +64,7 @@ const NAV = [
 // Sistem sahibi olmayan kullanıcı: kendi portföyü, piyasa sayfaları, hesabı (botun kişisel verisi kapalı)
 const USER_NAV = [
   { group: "Portföy", items: [{ to: "/app/portfoyum", label: "Portföyüm", icon: Briefcase },
+    { to: "/app/alarmlarim", label: "Alarmlarım", icon: Bell },
     { to: "/app/kriz", label: "Kriz Planı", icon: ShieldCheck }] },
   {
     group: "Piyasa",
@@ -81,7 +82,7 @@ const USER_NAV = [
 const USER_MOBILE_NAV = [
   { to: "/app/portfoyum", label: "Portföy", icon: Briefcase },
   { to: "/app/grafik", label: "Grafik", icon: CandlestickChart },
-  { to: "/app/makro", label: "Makro", icon: Globe2 },
+  { to: "/app/alarmlarim", label: "Alarm", icon: Bell },
   { to: "/app/hesap", label: "Hesap", icon: UserRound },
 ];
 

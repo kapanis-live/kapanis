@@ -2471,6 +2471,31 @@ async def send_held(bot):
         await send_long(bot, config.ALLOWED_CHAT_ID, quiet.digest(held))
 
 
+async def user_alarm_job(context: ContextTypes.DEFAULT_TYPE):
+    """Site users' own alarms (checked by the web service on closed candles): deliver to their linked chat."""
+    try:
+        events = await web_sync.alarm_events()
+    except Exception as e:
+        log.warning("User alarm events not fetched: %s", e)
+        return
+    for ev in events:
+        link = f"{config.PUBLIC_URL}/app/grafik?kod={ev['kod']}&piyasa={ev['piyasa']}"
+        try:
+            await context.bot.send_message(ev["chat_id"], ev["metin"] + "\nGerçek emir gönderilmedi; karar senin.",
+                                           reply_markup=InlineKeyboardMarkup([[
+                                               InlineKeyboardButton("📊 Grafiği aç", url=link),
+                                               InlineKeyboardButton("⏰ Alarmlarım", url=f"{config.PUBLIC_URL}/app/alarmlarim")]]))
+        except BadRequest as e:  # chat gone / blocked the bot: do not retry forever
+            log.warning("User alarm %s not delivered: %s", ev["id"], e)
+        except Exception as e:
+            log.warning("User alarm %s delivery failed, will retry: %s", ev["id"], e)
+            continue
+        try:
+            await web_sync.alarm_event_sent(ev["id"])
+        except Exception as e:
+            log.warning("User alarm %s not marked sent: %s", ev["id"], e)
+
+
 async def held_digest_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         await send_held(context.bot)
@@ -6287,6 +6312,7 @@ def main():
             app.job_queue.run_repeating(web_push_job, interval=config.WEB_SYNC_INTERVAL, first=10)
             app.job_queue.run_repeating(web_command_job, interval=config.WEB_COMMAND_INTERVAL, first=20)
             log.info("Web panel sync enabled: %s", config.WEB_URL)
+            app.job_queue.run_repeating(user_alarm_job, interval=60, first=40, name="kullanici_alarmlari")
         if cloud_store.enabled():
             app.job_queue.run_repeating(cloud_state_job, interval=60, first=60, name="bulut_durum")
             app.job_queue.run_daily(backup_job, dtime(3, 30, tzinfo=macro.TR), name="db_backup")

@@ -581,6 +581,19 @@ async def telegram_linked(chat_id: int) -> bool:
     return linked
 
 
+async def alarm_events() -> list[dict]:
+    """Site users' fired alarms waiting for Telegram delivery."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(f"{config.WEB_URL}/api/bot/alarm-events", headers=_headers())
+    r.raise_for_status()
+    return r.json()
+
+
+async def alarm_event_sent(event_id: str):
+    async with httpx.AsyncClient(timeout=15) as client:
+        (await client.post(f"{config.WEB_URL}/api/bot/alarm-events/{event_id}/sent", headers=_headers())).raise_for_status()
+
+
 async def link_telegram(code: str, chat_id: int, username: str | None) -> tuple[bool, str]:
     """/bagla KOD: ask the web backend to bind this chat to the account that created the one-time code."""
     async with httpx.AsyncClient(timeout=15) as client:

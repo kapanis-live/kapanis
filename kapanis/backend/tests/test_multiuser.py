@@ -14,7 +14,7 @@ from pathlib import Path
 os.environ.update({
     "MONGO_URL": os.environ.get("TEST_MONGO_URL", "mongodb://127.0.0.1:27017"), "DB_NAME": "kapanis_test_multiuser",
     "JWT_SECRET": "test-secret-not-real", "BOT_API_KEY": "test-bot-key", "ADMIN_EMAIL": "owner@example.com",
-    "ADMIN_PASSWORD": "owner-test-password", "OWNER_EMAIL": "owner@example.com", "AUTH_MODE": "both",
+    "ADMIN_PASSWORD": "owner-test-password", "OWNER_EMAIL": "owner@example.com", "AUTH_MODE": "both", "ALARM_LOOP": "0",
     "CLERK_JWKS_URL": "https://clerk.test.invalid/.well-known/jwks.json", "CLERK_SECRET_KEY": "sk_test_dummy",
     "CLERK_ISSUER": "https://clerk.test.invalid", "CLERK_AUTHORIZED_PARTIES": "https://kapanis.test",
     "CLERK_PUBLISHABLE_KEY": "pk_test_dummy", "USER_DAILY_ANALYSES": "3", "USER_KEY_DAILY_ANALYSES": "4",
@@ -426,6 +426,73 @@ class OwnKeysAndAccountTest(MultiUserTest.__bases__[0]):
         r = (await self.c.get("/api/admin/users", headers=auth("owner_clerk"))).json()
         self.assertIn("a@example.com", [u["email"] for u in r["kullanicilar"]])
         self.assertNotIn("positions", str(r))  # counts only, no portfolio contents
+
+
+class UserAlarmTest(MultiUserTest.__bases__[0]):
+    """Close-based user alarms: checked by the web service, delivered by the bot."""
+    asyncSetUp = MultiUserTest.asyncSetUp
+    asyncTearDown = MultiUserTest.asyncTearDown
+
+    def _fake_chart(self, closes, start, step=3600):
+        async def chart(symbol, tf="1d", market=None):
+            if symbol == "YOKBOYLE":
+                raise server.chart_data.ChartError("yok")
+            return {"candles": [{"t": start + i * step, "c": c} for i, c in enumerate(closes)],
+                    "rsi": [50.0] * (len(closes) - 1) + [25.0]}
+        return chart
+
+    async def test_price_alarm_fires_once_on_a_new_close_and_is_delivered(self):
+        import unittest.mock as um
+        h = auth("user_a")
+        code = (await self.c.post("/api/telegram/link-code", headers=h)).json()["kod"]
+        await self.c.post("/api/bot/telegram/link", headers=BOT, json={"code": code, "chat_id": 4242})
+        start = int(time.time()) - 5 * 3600 - 60  # 5 closed 1h candles + one forming
+        closes = [100, 101, 102, 103, 104, 110]
+        with um.patch.object(server.user_alerts.chart_data, "chart", self._fake_chart(closes, start)):
+            bad = await self.c.post("/api/alarms", headers=h, json={"piyasa": "BIST", "kod": "THYAO", "tur": "fiyat",
+                                                                   "yon": "ustu", "seviye": 105, "tf": "1h"})
+            self.assertEqual(bad.status_code, 400)  # BIST: daily only
+            self.assertEqual((await self.c.post("/api/alarms", headers=h, json={
+                "piyasa": "KRIPTO", "kod": "YOKBOYLE", "seviye": 1, "tf": "1h"})).status_code, 404)
+            a = (await self.c.post("/api/alarms", headers=h, json={"piyasa": "KRIPTO", "kod": "btc", "tur": "fiyat",
+                                                                  "yon": "ustu", "seviye": 105, "tf": "1h"})).json()
+            self.assertEqual((a["kod"], a["son_kapanis"]), ("BTC", 104))
+            # the forming candle (110) never counts, and the old closes were before the alarm existed
+            self.assertEqual(await server.user_alerts.run_once(server.db), 0)
+            # an hour later the 110 candle has closed after the alarm was created: fires once
+            later = time.time() + 3600
+            self.assertEqual(await server.user_alerts.run_once(server.db, now=later), 1)
+            self.assertEqual(await server.user_alerts.run_once(server.db, now=later), 0)
+        mine = (await self.c.get("/api/alarms", headers=h)).json()
+        self.assertEqual(mine["alarmlar"][0]["durum"], "tetiklendi")
+        self.assertIn("BTC", mine["olaylar"][0]["metin"])
+        self.assertEqual((await self.c.get("/api/alarms", headers=auth("user_b"))).json()["alarmlar"], [])
+        self.assertEqual((await self.c.delete(f"/api/alarms/{a['id']}", headers=auth("user_b"))).status_code, 404)
+        events = (await self.c.get("/api/bot/alarm-events", headers=BOT)).json()
+        self.assertEqual([(e["chat_id"], e["kod"]) for e in events], [(4242, "BTC")])
+        self.assertEqual((await self.c.get("/api/bot/alarm-events", headers={**BOT, "X-Kapanis-Public": "1"})).status_code, 404)
+        await self.c.post(f"/api/bot/alarm-events/{events[0]['id']}/sent", headers=BOT)
+        self.assertEqual((await self.c.get("/api/bot/alarm-events", headers=BOT)).json(), [])
+
+    async def test_position_stop_warning_once_per_level_and_limit(self):
+        import unittest.mock as um
+        h = auth("user_b")
+        await self.c.post("/api/portfolio/positions", headers=h,
+                          json={"piyasa": "KRIPTO", "kod": "ETH", "adet": 1, "maliyet": 100, "stop": 95})
+        start = int(time.time()) - 2 * 86400 - 60
+        # daily crypto candles: yesterday closed at 90 (< stop 95); today's is still forming
+        with um.patch.object(server.user_alerts.chart_data, "chart", self._fake_chart([99, 90, 91], start, step=86400)):
+            later = time.time() + 86400  # the 90 candle closed after the position was opened
+            self.assertEqual(await server.user_alerts.run_once(server.db, now=later), 1)
+            self.assertEqual(await server.user_alerts.run_once(server.db, now=later), 0)
+            ev = (await self.c.get("/api/alarms", headers=h)).json()["olaylar"]
+            self.assertIn("stopun", ev[0]["metin"])
+            self.assertTrue(ev[0]["gonderildi"])  # no Telegram linked: shown in the panel only
+            for i in range(server.user_alerts.MAX_ACTIVE):
+                r = await self.c.post("/api/alarms", headers=h, json={"piyasa": "KRIPTO", "kod": "ETH", "seviye": 200 + i})
+                self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual((await self.c.post("/api/alarms", headers=h, json={
+                "piyasa": "KRIPTO", "kod": "ETH", "seviye": 999})).status_code, 400)
 
 
 class LastClosedTest(unittest.TestCase):

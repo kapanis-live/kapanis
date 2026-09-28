@@ -1,5 +1,5 @@
 // Tanıtım sitesi: Claude Design "Kapanış" sistemi (Site sayfaları). Metinler sistemin gerçekte yaptığıyla uyumlu:
-// kullanıcıya Telegram'dan analiz sonuçları gider; fiyat alarmı ve stop/hedef uyarısı sistem sahibinin panelinde.
+// kullanıcıya Telegram'dan analiz sonuçları ve kendi alarmları (fiyat/RSI kapanışı, pozisyon stop/hedef) gider.
 import { createElement as h, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { K, U } from "@/ds";
@@ -131,7 +131,7 @@ export function Features() {
         h(K.FeatureCard, { icon: "portfolio", title: "Portföyüm", items: ["Pozisyon başına alış, son kapanış, değer, K/Z", "Stop ve hedef; stop yalnız yükselir", "“Sattım” ile kapanış kaydı, nakit takibi"] }),
         h(K.FeatureCard, { icon: "chart", title: "Grafik & Analiz", items: ["Mum grafiği, SMA 20/50/200, RSI 14, hacim", "Tek düğme: “Analiz et”", "Kurallara göre yapay zekâ açıklaması"] }),
         h(K.FeatureCard, { icon: "macro", title: "Makro", items: ["Risk rejimi ve piyasa göstergeleri", "TCMB, TÜİK, ABD veri takvimi", "Korku-açgözlülük endeksi"] }),
-        h(K.FeatureCard, { icon: "send", title: "Telegram", items: ["Analiz sonucu telefona", "Yalnız senin sonuçların", "/bagla KOD ile tek adımda bağlama"] }),
+        h(K.FeatureCard, { icon: "send", title: "Telegram", items: ["Analiz sonucu telefona", "Kendi alarmların: fiyat ya da RSI kapanışı", "/bagla KOD ile tek adımda bağlama"] }),
         h(K.FeatureCard, { icon: "key", title: "Kendi anahtarın", items: ["DeepSeek ya da NVIDIA anahtarı", "Günlük analiz hakkın artar", "Şifreli saklanır, istediğinde silinir"] }),
         h(K.FeatureCard, { icon: "account", title: "Okunaklı arayüz", items: ["A− / A+ ile yazı boyutu", "Koyu ve açık tema", "Renk yalnız anlam için"] })))),
     h("section", { key: "t", className: "kp-sec" }, h("div", { className: "kp-wrap" },
@@ -203,7 +203,7 @@ export function Faq() {
     ]],
     ["Telegram", [
       { q: "Telegram’ı nasıl bağlarım?", a: [h("p", { key: 1 }, "Panelde Hesap & Telegram → “Telegram’ı bağla”ya bas. Çıkan tek kullanımlık kodu 10 dakika içinde Kapanış botuna gönder:"), h("p", { key: 2 }, h("span", { className: "kp-cmd" }, "/bagla KP-XXXXXXXX"))] },
-      { q: "Telegram’a ne gelir?", a: h("p", null, "Panelden istediğin analizlerin sonuçları. Başka kullanıcıların sonuçları gelmez.") },
+      { q: "Telegram’a ne gelir?", a: h("p", null, "Panelden istediğin analizlerin sonuçları, Alarmlarım sayfasında kurduğun fiyat/RSI alarmları ve portföyündeki pozisyonların stop/hedef uyarıları (hepsi kapanışla). Başka kullanıcılarınki gelmez.") },
     ]],
   ];
   return h(SiteShell, { active: "sss" },

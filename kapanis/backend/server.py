@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
+import asyncio
 import os
 import hmac
 import logging
@@ -22,6 +23,7 @@ import mock_data
 import chart_data
 import identity
 import limits
+import user_alerts
 import user_api
 from starlette.responses import JSONResponse
 
@@ -732,6 +734,7 @@ async def root():
 
 app.include_router(api)
 app.include_router(user_api.build_router(lambda: db, get_current_user, require_bot_key, require_owner))
+app.include_router(user_alerts.build_router(lambda: db, get_current_user, require_bot_key))
 
 # Serve the prebuilt panel (frontend/build) from this same server, so the panel opens in seconds
 # instead of waiting for the React dev server to compile. /api routes above take precedence.
@@ -795,6 +798,9 @@ async def startup():
     await db.analyses.create_index([("user_id", 1), ("zaman", -1)])
     await db.strategies.create_index([("user_id", 1), ("name_key", 1)], unique=True)
     await user_api.ensure_indexes(db)
+    await user_alerts.ensure_indexes(db)
+    if os.environ.get("ALARM_LOOP", "1") == "1":  # users' close-based alarms (tests turn it off)
+        asyncio.create_task(user_alerts.loop(lambda: db))
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier")
     if identity.legacy_enabled():

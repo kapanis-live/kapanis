@@ -308,5 +308,26 @@ class BackupTest(unittest.TestCase):
             importlib.reload(db_backup)
 
 
+class UserAlarmDeliveryTest(unittest.IsolatedAsyncioTestCase):
+    async def test_events_go_to_their_own_chat_with_a_chart_link_and_are_marked_sent(self):
+        sent, marked = [], []
+
+        class Bot:
+            async def send_message(self, chat, text, **kw):
+                if chat == 999:
+                    raise main.BadRequest("Chat not found")
+                sent.append((chat, text, kw["reply_markup"].inline_keyboard[0][0].url))
+
+        events = [{"id": "e1", "chat_id": 4242, "kod": "BTC", "piyasa": "KRIPTO", "metin": "🔔 Alarmın: BTC"},
+                  {"id": "e2", "chat_id": 999, "kod": "THYAO", "piyasa": "BIST", "metin": "🔴 THYAO stop"}]
+
+        async def mark(eid):
+            marked.append(eid)
+        with unittest.mock.patch.object(web_sync, "alarm_events", unittest.mock.AsyncMock(return_value=events)),                 unittest.mock.patch.object(web_sync, "alarm_event_sent", mark):
+            await main.user_alarm_job(types.SimpleNamespace(bot=Bot()))
+        self.assertEqual([(c, u.endswith("kod=BTC&piyasa=KRIPTO")) for c, _, u in sent], [(4242, True)])
+        self.assertEqual(marked, ["e1", "e2"])  # a chat that is gone is not retried forever
+
+
 if __name__ == "__main__":
     unittest.main()

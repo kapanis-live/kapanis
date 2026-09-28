@@ -1,0 +1,250 @@
+"""Users' own close-based alarms, checked by the web service; the bot only delivers them to Telegram.
+
+Kinds
+- price: "THYAO daily close above 300"      (tur=fiyat, yon=ustu|alti, seviye)
+- RSI:   "BTC 4h RSI below 30"              (tur=rsi)
+- automatic, from the user's portfolio: an open position's stop broken / target reached on a daily close.
+Rules
+- Only CLOSED candles count (same rule as the bot): crypto 1h/4h/1d, BIST and US daily (session close).
+- A candle that closed before the alarm was created never fires it.
+- Price/RSI alarms fire once, then stay in the list as "tetiklendi". A position warning fires once per level
+  (moving the stop up creates a new warning level).
+Every firing becomes an event (user_alert_events). The bot fetches undelivered events for users with a linked
+Telegram chat and sends them with a link to the chart; events of users without Telegram are shown in the panel.
+"""
+import asyncio
+import datetime as dt
+import logging
+import time
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+import chart_data
+
+log = logging.getLogger(__name__)
+
+MAX_ACTIVE = 20
+CHECK_SECONDS = 300
+TIMEFRAMES = {"KRIPTO": ["1h", "4h", "1d"], "BIST": ["1d"], "ABD": ["1d"]}
+TF_SECONDS = {"1h": 3600, "4h": 14400, "1d": 86400}
+TF_LABEL = {"1h": "1 saatlik", "4h": "4 saatlik", "1d": "günlük"}
+EVENT_DAYS = 30
+
+
+class AlertBody(BaseModel):
+    piyasa: str
+    kod: str
+    tur: str = "fiyat"      # fiyat | rsi
+    yon: str = "ustu"       # ustu | alti
+    seviye: float
+    tf: str = "1d"
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def bar_close_ts(candle: dict, market: str, tf: str) -> float:
+    """When a candle closed (UTC seconds). Daily BIST/US close at the session end, crypto daily at 00:00 UTC."""
+    start = dt.datetime.fromtimestamp(candle["t"], dt.timezone.utc)
+    if tf == "1d" and market in chart_data.DAILY_CLOSE_UTC:
+        h, m = chart_data.DAILY_CLOSE_UTC[market]
+        closes = start.replace(hour=h, minute=m, second=0, microsecond=0)
+        if closes < start:
+            closes += dt.timedelta(days=1)
+        return closes.timestamp()
+    return candle["t"] + TF_SECONDS.get(tf, 86400)
+
+
+def last_closed_bar(doc: dict, market: str, tf: str, now: float | None = None) -> tuple[dict, float | None, float] | None:
+    """(candle, rsi at that candle, close time) of the newest closed candle in a chart_data document."""
+    now = time.time() if now is None else now
+    candles, rsis = doc.get("candles") or [], doc.get("rsi") or []
+    for i in range(len(candles) - 1, -1, -1):
+        closed_at = bar_close_ts(candles[i], market, tf)
+        if closed_at <= now:
+            return candles[i], (rsis[i] if i < len(rsis) else None), closed_at
+    return None
+
+
+def crossed(value: float | None, yon: str, level: float) -> bool:
+    if value is None:
+        return False
+    return value > level if yon == "ustu" else value < level
+
+
+def _fmt(x) -> str:
+    return "—" if x is None else f"{x:,.8g}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def describe(a: dict) -> str:
+    what = "RSI" if a["tur"] == "rsi" else "kapanış"
+    return f"{a['kod']} {TF_LABEL.get(a['tf'], a['tf'])} {what} {_fmt(a['seviye'])} {'üstünde' if a['yon'] == 'ustu' else 'altında'}"
+
+
+def build_router(get_db, current_user, require_bot_key) -> APIRouter:
+    r = APIRouter(prefix="/api")
+
+    @r.get("/alarms")
+    async def my_alarms(user: dict = Depends(current_user)):
+        d = get_db()
+        alarms = await d.user_alerts.find({"user_id": user["id"]}, {"_id": 0}).sort("olusturma", -1).to_list(200)
+        events = await d.user_alert_events.find({"user_id": user["id"]}, {"_id": 0, "chat_id": 0}) \
+            .sort("zaman", -1).to_list(50)
+        return {"alarmlar": alarms, "olaylar": events, "telegram": bool(user.get("telegram_chat_id")),
+                "sinir": MAX_ACTIVE, "zaman_dilimleri": TIMEFRAMES}
+
+    @r.post("/alarms")
+    async def create_alarm(body: AlertBody, user: dict = Depends(current_user)):
+        mkt = body.piyasa.upper()
+        if mkt not in TIMEFRAMES:
+            raise HTTPException(status_code=400, detail="Piyasa KRIPTO, BIST ya da ABD olmalı.")
+        if body.tf not in TIMEFRAMES[mkt]:
+            raise HTTPException(status_code=400, detail=f"{mkt} için zaman dilimi: {', '.join(TIMEFRAMES[mkt])}.")
+        if body.tur not in ("fiyat", "rsi") or body.yon not in ("ustu", "alti"):
+            raise HTTPException(status_code=400, detail="Tür fiyat/rsi, yön ustu/alti olmalı.")
+        if not (0 < body.seviye < 1e9) or (body.tur == "rsi" and not 1 <= body.seviye <= 99):
+            raise HTTPException(status_code=400, detail="Seviye geçersiz (RSI için 1-99).")
+        kod = (body.kod or "").strip().upper().removesuffix(".IS").removesuffix("/USDT")
+        if not kod or len(kod) > 15 or not all(c.isalnum() or c in ".-" for c in kod):
+            raise HTTPException(status_code=400, detail="Geçerli bir kod yaz (ör. THYAO, BTC, NVDA).")
+        d = get_db()
+        if await d.user_alerts.count_documents({"user_id": user["id"], "durum": "aktif"}) >= MAX_ACTIVE:
+            raise HTTPException(status_code=400, detail=f"En fazla {MAX_ACTIVE} aktif alarm olabilir; eskilerden sil.")
+        try:  # the symbol must exist on its market; also gives the current value for the answer
+            doc = await chart_data.chart(kod, body.tf, mkt)
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"{kod} {mkt} piyasasında bulunamadı.")
+        bar = last_closed_bar(doc, mkt, body.tf)
+        now = _now()
+        alarm = {"id": f"ua_{ObjectId()}", "user_id": user["id"], "piyasa": mkt, "kod": kod, "tur": body.tur,
+                 "yon": body.yon, "seviye": body.seviye, "tf": body.tf, "durum": "aktif",
+                 "olusturma": now.isoformat(), "olusturma_ts": now.timestamp(),
+                 "son_kapanis": bar[0]["c"] if bar else None, "son_rsi": bar[1] if bar else None}
+        await d.user_alerts.insert_one(dict(alarm))
+        alarm.pop("_id", None)
+        return alarm
+
+    @r.delete("/alarms/{alarm_id}")
+    async def delete_alarm(alarm_id: str, user: dict = Depends(current_user)):
+        res = await get_db().user_alerts.delete_one({"id": alarm_id, "user_id": user["id"]})
+        if not res.deleted_count:
+            raise HTTPException(status_code=404, detail="Alarm bulunamadı.")
+        return {"ok": True}
+
+    @r.get("/bot/alarm-events")
+    async def pending_events(_: bool = Depends(require_bot_key)):
+        """Undelivered events of users with a linked Telegram chat (oldest first)."""
+        return await get_db().user_alert_events.find({"gonderildi": False, "chat_id": {"$ne": None}}, {"_id": 0}) \
+            .sort("zaman", 1).to_list(50)
+
+    @r.post("/bot/alarm-events/{event_id}/sent")
+    async def event_sent(event_id: str, _: bool = Depends(require_bot_key)):
+        await get_db().user_alert_events.update_one({"id": event_id}, {"$set": {"gonderildi": True}})
+        return {"ok": True}
+
+    return r
+
+
+async def _event(db, user: dict, kod: str, piyasa: str, tf: str, text: str, key: str | None = None) -> bool:
+    """Store one firing. key makes it idempotent (position warnings); False if it already existed."""
+    doc = {"id": key or f"ue_{ObjectId()}", "user_id": str(user["_id"]), "kod": kod, "piyasa": piyasa, "tf": tf,
+           "metin": text, "zaman": _now().isoformat(), "expires_at": _now() + dt.timedelta(days=EVENT_DAYS),
+           "chat_id": user.get("telegram_chat_id"), "gonderildi": not user.get("telegram_chat_id")}
+    res = await db.user_alert_events.update_one({"id": doc["id"]}, {"$setOnInsert": doc}, upsert=True)
+    return res.upserted_id is not None
+
+
+async def run_once(db, now: float | None = None) -> int:
+    """Check every active alarm and every open position's stop/target once. Returns the number of firings."""
+    now = time.time() if now is None else now
+    charts: dict[tuple, dict | None] = {}
+
+    async def bar(mkt: str, kod: str, tf: str):
+        key = (mkt, kod, tf)
+        if key not in charts:
+            try:
+                charts[key] = await chart_data.chart(kod, tf, mkt)
+            except Exception as e:
+                log.warning("Alarm data %s %s %s failed: %s", mkt, kod, tf, e)
+                charts[key] = None
+        doc = charts[key]
+        return last_closed_bar(doc, mkt, tf, now) if doc else None
+
+    users: dict[str, dict | None] = {}
+
+    async def user_of(uid: str):
+        if uid not in users:
+            try:
+                users[uid] = await db.users.find_one({"_id": ObjectId(uid)}, {"telegram_chat_id": 1})
+            except Exception:
+                users[uid] = None
+        return users[uid]
+
+    fired = 0
+    async for a in db.user_alerts.find({"durum": "aktif"}):
+        b = await bar(a["piyasa"], a["kod"], a["tf"])
+        if not b:
+            continue
+        candle, rsi, closed_at = b
+        value = rsi if a["tur"] == "rsi" else candle["c"]
+        await db.user_alerts.update_one({"id": a["id"]}, {"$set": {"son_kapanis": candle["c"], "son_rsi": rsi}})
+        if closed_at <= a["olusturma_ts"] or not crossed(value, a["yon"], a["seviye"]):
+            continue
+        u = await user_of(a["user_id"])
+        if not u:
+            continue
+        when = dt.datetime.fromtimestamp(closed_at, dt.timezone.utc).isoformat()
+        await db.user_alerts.update_one({"id": a["id"], "durum": "aktif"}, {"$set": {
+            "durum": "tetiklendi", "tetik": {"zaman": when, "kapanis": candle["c"], "rsi": rsi}}})
+        extra = f" (kapanış {_fmt(candle['c'])})" if a["tur"] == "rsi" else ""
+        text = f"🔔 Alarmın: {describe(a)} — {TF_LABEL.get(a['tf'], a['tf'])} mum {_fmt(value)} ile kapandı{extra}."
+        await _event(db, u, a["kod"], a["piyasa"], a["tf"], text)
+        fired += 1
+
+    async for pf in db.portfolios.find({"positions.durum": "acik"}, {"user_id": 1, "positions": 1}):
+        u = await user_of(pf["user_id"])
+        if not u:
+            continue
+        for p in pf["positions"]:
+            if p.get("durum") != "acik" or (p.get("stop") is None and p.get("hedef") is None):
+                continue
+            b = await bar(p["piyasa"], p["kod"], "1d")
+            if not b:
+                continue
+            candle, _, closed_at = b
+            if closed_at <= dt.datetime.fromisoformat(p.get("acilis") or "1970-01-01T00:00:00+00:00").timestamp():
+                continue
+            day = dt.datetime.fromtimestamp(closed_at, dt.timezone.utc).date().isoformat()
+            if p.get("stop") is not None and candle["c"] < p["stop"]:
+                text = (f"🔴 {p['kod']}: günlük kapanış {_fmt(candle['c'])}, stopun {_fmt(p['stop'])} altında. "
+                        "Kural: kapanışla stop kırıldı. Karar senin; sattıysan portföyünde 'Sattım' ile kaydet.")
+                if await _event(db, u, p["kod"], p["piyasa"], "1d", text, key=f"pos_{p['id']}_stop_{p['stop']}"):
+                    fired += 1
+            elif p.get("hedef") is not None and candle["c"] >= p["hedef"]:
+                text = (f"🎯 {p['kod']}: günlük kapanış {_fmt(candle['c'])}, hedefin {_fmt(p['hedef'])} üstünde "
+                        f"({day}). Kâr al ya da stopu yukarı taşı; plan için Kriz Planı sayfası.")
+                if await _event(db, u, p["kod"], p["piyasa"], "1d", text, key=f"pos_{p['id']}_hedef_{p['hedef']}"):
+                    fired += 1
+    return fired
+
+
+async def ensure_indexes(db):
+    await db.user_alerts.create_index([("user_id", 1), ("durum", 1)])
+    await db.user_alert_events.create_index([("user_id", 1), ("zaman", -1)])
+    await db.user_alert_events.create_index([("gonderildi", 1), ("zaman", 1)])
+    await db.user_alert_events.create_index("expires_at", expireAfterSeconds=0)
+
+
+async def loop(get_db):
+    """Background checker started with the web service."""
+    await asyncio.sleep(20)
+    while True:
+        try:
+            n = await run_once(get_db())
+            if n:
+                log.info("User alarms fired: %d", n)
+        except Exception:
+            log.exception("User alarm check failed")
+        await asyncio.sleep(CHECK_SECONDS)

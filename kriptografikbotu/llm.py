@@ -291,6 +291,36 @@ async def council(question: str, data: dict) -> dict[str, dict]:
     return {m: v for m, v in zip(models, votes) if v}
 
 
+RISK_NEWS_PROMPT = """Sen bir haber doğrulayıcısısın. Bir başlıkta varlık adı ile risk kelimesi (hack, dava, delist...) birlikte geçti.
+Makaleyi oku ve SADECE şu JSON'u yaz:
+{"dogrudan": true|false, "yeni": true|false, "yon": "olumsuz"|"olumlu"|"notr", "tur": "kısa olay türü", "ozet": "en fazla 30 kelime Türkçe"}
+dogrudan: olay bu varlığın/şirketin KENDİSİNİ mi etkiliyor (kendi protokolü hacklendi, kendisine dava açıldı, kendisi delist ediliyor)?
+Başka bir projenin olayı, geçmiş bir olaya atıf, sektör haberi ya da bu varlığın bir önlem/ürün duyurusu ise false.
+yeni: olay yeni mi (son günlerde oldu/duyuruldu), yoksa aylar önceki bir olaya atıf mı?
+yon: haber bu varlık için olumsuz mu, olumlu mu, nötr mü? Makalede olmayan bilgi ekleme."""
+
+
+async def classify_risk_news(asset: str, keyword: str, title: str, text: str) -> dict | None:
+    """Is a keyword-matched risk headline really a new negative event for this asset? None if no model answered."""
+    user = f"Varlık: {asset}\nEşleşen kelime: {keyword}\nBaşlık: {title}\n\nMakale:\n{text[:6000]}"
+    for model in (["deepseek"] if config.DEEPSEEK_API_KEY else []) + [m for m in available() if m != "deepseek"]:
+        name = {"kimi": config.KIMI_MODEL, "glm": config.GLM_MODEL}.get(model, config.DEEPSEEK_MODEL)
+        try:
+            resp = await _client(model).chat.completions.create(
+                model=name, max_tokens=1500,
+                messages=[{"role": "system", "content": RISK_NEWS_PROMPT}, {"role": "user", "content": user}])
+        except Exception as e:
+            log.warning("Risk news check with %s failed: %s", MODEL_NAMES.get(model, model), e)
+            continue
+        if resp.usage:
+            costs.record(0, resp.usage.prompt_tokens, resp.usage.completion_tokens, f"risk haberi {asset}", model=model)
+        obj = _json_obj(resp.choices[0].message.content or "")
+        if obj and isinstance(obj.get("dogrudan"), bool):
+            return {"dogrudan": obj["dogrudan"], "yeni": bool(obj.get("yeni")), "yon": str(obj.get("yon", "")),
+                    "tur": str(obj.get("tur", ""))[:40], "ozet": str(obj.get("ozet", ""))[:240], "model": model}
+    return None
+
+
 def model_of(reply: str) -> str | None:
     """Which model wrote a reply, from the 🧠 tag at its end."""
     m = re.search(r"🧠 ([^\n(]+)", reply or "")

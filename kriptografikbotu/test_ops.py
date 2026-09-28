@@ -66,5 +66,32 @@ class SiteWatchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum("yeniden cevap" in s for s in sent), 2)
 
 
+class RiskNewsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_only_verified_new_negative_events_are_sent(self):
+        import time as _t
+        import risk_news
+        now = _t.time()
+        items = [{"baslik": "Months After the Kelp Hack, Chainlink Adds Bridge Checks", "ts": now, "kaynaklar": ["Decrypt"], "link": "x"},
+                 {"baslik": "Chainlink bridge exploited, $40M drained", "ts": now + 1, "kaynaklar": ["Decrypt"], "link": "y"},
+                 {"baslik": "Chainlink lawsuit filed by SEC", "ts": now + 2, "kaynaklar": ["Decrypt"], "link": "z"}]
+        verdicts = {"Months After the Kelp Hack, Chainlink Adds Bridge Checks": {"gonder": False, "ozet": "başka projenin hack'i"},
+                    "Chainlink bridge exploited, $40M drained": {"gonder": True, "ozet": "LINK köprüsü exploit edildi"},
+                    "Chainlink lawsuit filed by SEC": None}
+
+        async def verify(asset, kw, item):
+            return verdicts[item["baslik"]]
+
+        async def binance(client):
+            return [{"baslik": "Binance Will Delist LINK", "ts": now + 3, "kaynak": "Binance duyuru", "link": "b"}]
+        with unittest.mock.patch.object(risk_news, "watched", return_value=({"LINK"}, set())),                 unittest.mock.patch.object(risk_news.news, "get_news", unittest.mock.AsyncMock(return_value=items)),                 unittest.mock.patch.object(risk_news, "_binance", binance),                 unittest.mock.patch.object(risk_news, "verify", verify):
+            msgs = await risk_news.check()
+        text = " ||| ".join(msgs)
+        self.assertNotIn("Kelp", text)                          # read and dropped
+        self.assertIn("Makale okundu: LINK köprüsü", text)      # verified
+        self.assertIn("doğrulanamadı", text)                    # no model answered: sent, marked
+        self.assertIn("Binance Will Delist LINK", text)          # official announcement, no check
+        self.assertEqual(len(msgs), 3)
+
+
 if __name__ == "__main__":
     unittest.main()

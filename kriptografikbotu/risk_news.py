@@ -1,9 +1,13 @@
-"""Risky headlines about what the user holds or watches, pushed immediately. Code-only (no DeepSeek).
+"""Risky headlines about what the user holds or watches, pushed immediately.
 
 Sources: Binance announcements (delisting catalog 161 + news catalog 49 for monitoring/seed tags),
 the crypto RSS feeds (news.get_news) and Google News for each held/listed BIST stock (news.bist_news).
-A headline alerts when it names a watched asset AND contains a risk keyword. Seen headlines are
-remembered (settings "risk_haber_gorulen") so each one is sent once.
+A headline is a CANDIDATE when it names a watched asset AND contains a risk keyword. Keyword matches alone were
+wrong too often ("Months after the Kelp hack, Chainlink adds bridge checks" is not a Chainlink hack), so each
+candidate's article is read and a model answers: does it report a NEW NEGATIVE event hitting THIS asset itself?
+Only then it is sent. Binance's own delisting/monitoring announcements are official and skip the check.
+If no model answers, the headline is sent marked "doğrulanamadı". Seen headlines are remembered
+(settings "risk_haber_gorulen") so each one is handled once.
 """
 import hashlib
 import logging
@@ -90,6 +94,31 @@ def _keyword(low: str, words: list[str]) -> str | None:
     return next((w for w in words if re.search(rf"(?<![a-zçğıöşü0-9]){re.escape(w)}", low)), None)
 
 
+async def article_text(url: str) -> str:
+    """Readable text of a news page (tags stripped), or "" if it cannot be fetched."""
+    if not url:
+        return ""
+    try:
+        async with httpx.AsyncClient(timeout=12, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Kapanis)"}) as c:
+            r = await c.get(url)
+        html = r.text if r.status_code < 400 else ""
+    except Exception:
+        return ""
+    html = re.sub(r"(?is)<(script|style|nav|header|footer)[^>]*>.*?</\1>", " ", html)
+    text = re.sub(r"(?s)<[^>]+>", " ", html)
+    return re.sub(r"\s+", " ", text).strip()[:8000]
+
+
+async def verify(asset: str, keyword: str, item: dict) -> dict | None:
+    """Model check of one candidate: {"gonder", "ozet"}, or None when no model answered (then it is sent, marked)."""
+    import llm
+    text = await article_text(item.get("link", "")) or item["baslik"]
+    res = await llm.classify_risk_news(asset, keyword, item["baslik"], text)
+    if not res:
+        return None
+    return {"gonder": res["dogrudan"] and res["yeni"] and res["yon"] == "olumsuz", "ozet": res["ozet"] or res["tur"]}
+
+
 def _key(title: str) -> str:
     return hashlib.sha1(title.strip().lower().encode()).hexdigest()[:16]
 
@@ -143,7 +172,14 @@ async def check() -> list[str]:
             continue
         seen.append(_key(n["baslik"]))
         asset, kw = m
-        msgs.append(f"🚨 RİSK HABERİ — {asset} ({kw})\n{n['baslik']}\nKaynak: {n['kaynak']}"
+        official = n["kaynak"] == "Binance duyuru"
+        verdict = None if official else await verify(asset, kw, n)
+        if verdict and not verdict["gonder"]:
+            log.info("Risk headline dropped after reading (%s): %s — %s", asset, n["baslik"], verdict["ozet"])
+            continue
+        note = ("" if official else f"\nMakale okundu: {verdict['ozet']}" if verdict
+                else "\n(doğrulanamadı: yalnız başlıkta kelime eşleşti)")
+        msgs.append(f"🚨 RİSK HABERİ — {asset} ({kw})\n{n['baslik']}{note}\nKaynak: {n['kaynak']}"
                     + (f" · {n['link']}" if n.get("link") else "")
                     + ("\nPozisyonun var: stopunu kontrol et. Haber tek başına SAT sebebi değil; kapanışı bekle."
                        if asset in held else "\nListende/planında var: yeni giriş öncesi aslını kontrol et."))

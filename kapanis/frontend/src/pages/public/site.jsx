@@ -234,3 +234,9 @@ export function Terms() {
         items.map(([t, b]) => h("div", { key: t, style: { marginBottom: "1.5rem" } }, h("h2", { className: "kp-card__title" }, t), h("p", null, b))),
         h("p", { className: "kp-note" }, "Son güncelleme: 27 Eylül 2026 · ", h("a", { href: "/gizlilik", className: "kp-link" }, "Gizlilik ve KVKK")))));
 }
+
+export function NotFound() {
+  return h(SiteShell, { active: null }, PageHero("404", "Bu sayfa yok", "Adres yanlış yazılmış ya da sayfa kaldırılmış olabilir."),
+    h("section", { className: "kp-sec" }, h("div", { className: "kp-wrap kp-cta__actions" },
+      h(K.Button, { variant: "primary", href: "/" }, "Ana sayfa"), h(K.Button, { variant: "secondary", href: "/app" }, "Panele git"))));
+}

@@ -8,7 +8,7 @@ import { ThemeProvider, useTheme } from "@/lib/theme";
 
 import Iletisim from "@/pages/public/Iletisim";
 import Gizlilik from "@/pages/public/Gizlilik";
-import { Home, Features, How, Rules, Faq, SitePage, Terms } from "@/pages/public/site";
+import { Home, Features, How, Rules, Faq, SitePage, Terms, NotFound } from "@/pages/public/site";
 import Users from "@/pages/panel/Users";
 import Giris from "@/pages/Giris";
 import Kayit from "@/pages/Kayit";
@@ -99,7 +99,7 @@ function App() {
           <Route path="/app/ayarlar" element={own(<Settings />)} />
           <Route path="/app/kullanicilar" element={own(<Users />)} />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </AuthProvider>
       <ThemedToaster />

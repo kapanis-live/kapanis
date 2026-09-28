@@ -234,7 +234,7 @@ class CloudStateTest(unittest.TestCase):
 
 
 class PublicChatLimitTest(unittest.IsolatedAsyncioTestCase):
-    """Any Telegram user can message the bot: voice needs a linked account and has an hourly budget."""
+    """Any Telegram user can message the bot: public commands have a per-chat budget."""
 
     def setUp(self):
         main._chat_hits.clear()
@@ -246,19 +246,6 @@ class PublicChatLimitTest(unittest.IsolatedAsyncioTestCase):
         voice = types.SimpleNamespace(duration=5, file_size=1000)
         msg = types.SimpleNamespace(voice=voice, reply_text=reply_text, text="")
         return types.SimpleNamespace(effective_chat=types.SimpleNamespace(id=chat_id, type="private"), message=msg)
-
-    async def test_unlinked_chat_is_refused_before_transcribing(self):
-        with unittest.mock.patch.object(web_sync, "enabled", return_value=True),                 unittest.mock.patch.object(web_sync, "telegram_linked", unittest.mock.AsyncMock(return_value=False)),                 unittest.mock.patch.object(main.voice_quant, "transcribe") as tr:
-            await main.quant_voice(self._update(555), types.SimpleNamespace(user_data={}))
-        tr.assert_not_called()
-        self.assertIn("bağla", self.replies[-1])
-
-    async def test_linked_chat_gets_six_voice_messages_an_hour(self):
-        with unittest.mock.patch.object(web_sync, "enabled", return_value=True),                 unittest.mock.patch.object(web_sync, "telegram_linked", unittest.mock.AsyncMock(return_value=True)):
-            allowed = [main.chat_rate_ok(777, "voice", 6, 3600) for _ in range(6)]
-            self.assertTrue(all(allowed))
-            await main.quant_voice(self._update(777), types.SimpleNamespace(user_data={}))
-        self.assertIn("Saatte en fazla 6", self.replies[-1])
 
     def test_owner_chat_is_never_limited(self):
         self.assertTrue(all(main.chat_rate_ok(OWNER_CHAT, "public", 1, 600) for _ in range(5)))

@@ -1,5 +1,4 @@
-"""Constrained Turkish BIST quant request parsing and local short-voice transcription."""
-from functools import lru_cache
+"""Constrained Turkish BIST quant request parsing (/quant and plain text). Voice input was removed."""
 import re
 
 
@@ -16,13 +15,3 @@ def top_n(text: str) -> int | None:
             return n
     return 3
 
-
-@lru_cache(maxsize=1)
-def _model():
-    from faster_whisper import WhisperModel
-    return WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=2)
-
-
-def transcribe(path: str) -> str:
-    segments, _ = _model().transcribe(path, language="tr", beam_size=3, condition_on_previous_text=False)
-    return " ".join(s.text.strip() for s in segments).strip()

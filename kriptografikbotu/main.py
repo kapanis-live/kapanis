@@ -569,45 +569,6 @@ async def quant_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await quant_confirm_prompt(update.message, context, raw, n)
 
 
-async def quant_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private" or not web_sync.enabled():
-        return
-    chat_id = update.effective_chat.id
-    # Transcribing costs CPU on the shared server: only linked site accounts, at most 6 recordings an hour.
-    if chat_id != config.ALLOWED_CHAT_ID:
-        try:
-            linked = await web_sync.telegram_linked(chat_id)
-        except Exception as e:
-            log.warning("Telegram link check failed: %s", e)
-            await update.message.reply_text("Şu an ses kaydı işlenemiyor; biraz sonra tekrar dene.")
-            return
-        if not linked:
-            await update.message.reply_text("Sesli sorgu için önce hesabını bağla: sitede Hesap → Telegram'ı bağla, sonra /bagla KOD.")
-            return
-    if not chat_rate_ok(chat_id, "voice", 6, 3600):
-        await update.message.reply_text("Saatte en fazla 6 ses kaydı işleyebiliyorum. Yazıyla da sorabilirsin: /quant BIST 100 kalite momentum en yüksek 3 hisse")
-        return
-    voice = update.message.voice
-    if voice.duration > 30 or (voice.file_size or 0) > 2_000_000:
-        await update.message.reply_text("Ses kaydı en fazla 30 saniye ve 2 MB olmalı.")
-        return
-    status = await update.message.reply_text("🎧 Ses kaydı çözülüyor…")
-    try:
-        with tempfile.TemporaryDirectory() as directory:
-            path = f"{directory}/request.ogg"
-            await (await voice.get_file()).download_to_drive(path)
-            heard = await asyncio.to_thread(voice_quant.transcribe, path)
-        n = voice_quant.top_n(heard)
-        if n is None:
-            await status.edit_text(f"Duyduğum: “{heard[:400] or 'anlaşılmadı'}”\nŞimdilik BIST 100 kalite + momentum sorgusunu destekliyorum. Yazıyla da gönderebilirsin: /quant BIST 100 kalite momentum en yüksek 3 hisse")
-            return
-        await status.delete()
-        await quant_confirm_prompt(update.message, context, heard, n)
-    except Exception:
-        log.exception("Voice quant transcription failed")
-        await status.edit_text("Ses kaydı çözülemedi. Yazıyla dene: /quant BIST 100 kalite momentum en yüksek 3 hisse")
-
-
 async def quant_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -6272,7 +6233,6 @@ def main():
     app.add_handler(CallbackQueryHandler(quant_callback, pattern=r"^quant\|"))
     app.add_handler(CallbackQueryHandler(button))
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.IMAGE, photo_message))
-    app.add_handler(MessageHandler(filters.VOICE, quant_voice))
     app.add_handler(MessageHandler(filters.Regex(r"(?i)^/portf[öo]y(@\w+)?(\s|$)"), portfoy_turkish))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, site_or_owner_text_message))
 

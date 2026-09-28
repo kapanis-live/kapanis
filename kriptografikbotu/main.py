@@ -1165,7 +1165,7 @@ async def watch_job(context: ContextTypes.DEFAULT_TYPE):
             if buy is None:
                 continue
             await send_buy_signal(context.bot, coin, buy)
-            if buy["ok"]:
+            if buy["ok"] and config.BUY_SIGNALS:
                 await run_analysis(context.bot, config.ALLOWED_CHAT_ID,
                                    f"[OTOMATİK UYARI] {coin}: tarayıcı kırılımı teyit edildi, kod kapısı GEÇTİ. {event}",
                                    [coin])
@@ -1179,7 +1179,7 @@ async def watch_job(context: ContextTypes.DEFAULT_TYPE):
         await run_analysis(context.bot, config.ALLOWED_CHAT_ID,
                            f"[OTOMATİK UYARI] {coin}: {event}", [coin])
 
-    if scanner.enabled():
+    if scanner.enabled() and config.BUY_SIGNALS:
         await run_scanner(context.bot)
 
 
@@ -1345,6 +1345,12 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
             "kart": {"alarm": [pair, alert["id"]],
                      "link": f"{config.PUBLIC_URL}/app/analizlerim?id={alarm_analysis_id}" if web_sync.enabled() else None}})
         card["id"] = d["id"]
+        if not config.BUY_SIGNALS:
+            rows = [[InlineKeyboardButton("🗑 Alarmı sil", callback_data=f"asil|{pair}|{alert['id']}")]]
+            if web_sync.enabled():
+                rows.append([InlineKeyboardButton("📊 Analizi ve grafiği panelde aç",
+                                                  url=f"{config.PUBLIC_URL}/app/analizlerim?id={alarm_analysis_id}")])
+            return InlineKeyboardMarkup(rows)
         if d["karar"] == "AL" and g["ok"]:
             return signal_markup(d, None)
         rows = [[InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
@@ -1355,7 +1361,11 @@ async def on_alert_trigger(bot, pair: str, alert: dict, df, candle: dict, warns:
                                               url=f"{config.PUBLIC_URL}/app/analizlerim?id={alarm_analysis_id}")])
         return InlineKeyboardMarkup(rows)
 
-    reply = await run_analysis(bot, chat, f"[ALARM TETİKLENDİ] {pair} {tf} kapanış {close:g} {op} tetik {alert['tetik']:g}.",
+    if not config.BUY_SIGNALS:
+        footer = config.NO_SIGNAL_NOTE
+    reply = await run_analysis(bot, chat, f"[ALARM TETİKLENDİ] {pair} {tf} kapanış {close:g} {op} tetik {alert['tetik']:g}."
+                               + ("" if config.BUY_SIGNALS else " Otomatik AL önerisi kapalı: KARAR satırında AL yazma, "
+                                  "BEKLE ya da PAS kullan; durumu, riskleri ve kapanışla geçersiz olma şartını anlat."),
                                [], data=data, footer=footer, buttons=decision_buttons,
                                on_sent=lambda m: card.get("id") and not isinstance(m, HeldMessage)
                                and positions.update_decision(card["id"], mesaj_id=m.message_id))
@@ -2312,6 +2322,13 @@ async def send_buy_signal(bot, coin: str, buy: dict):
     """The plan's trigger and confirmation closed; say plainly whether every rule passes."""
     pair = f"{coin}/{config.QUOTE}"
     chart_url = f"{config.PUBLIC_URL}/app/grafik?kod={coin}&piyasa=KRIPTO"
+    if not config.BUY_SIGNALS:
+        await bot.send_message(config.ALLOWED_CHAT_ID,
+                               f"📍 {pair}: planının tetik ve teyit mumları kapandı (15m kapanış {_g(buy['close'])}, "
+                               f"iptal {_g(buy['iptal'])}, hedef {_g(buy['hedef'])}).\n{config.NO_SIGNAL_NOTE}",
+                               reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📊 Grafiği aç", url=chart_url)]]),
+                               disable_notification=silent())
+        return
     if buy["ok"]:
         try:
             async with httpx.AsyncClient() as client:
@@ -2534,6 +2551,10 @@ async def tara(update: Update, context: ContextTypes.DEFAULT_TYPE):
         scanner.set_enabled(False)
         await update.message.reply_text("⏹ Otomatik tarayıcı kapandı. Kendi planların ve alarmların çalışmaya devam eder.")
         return
+    if arg in ("ac", "aç", "acik", "açık", "on") and not config.BUY_SIGNALS:
+        await update.message.reply_text("Otomatik tarayıcı kapalı tutuluyor: geçmiş veri testinde kırılım kuralı "
+                                        "ortalama −0,21R kaybettirdi. Kanıtlanmış bir kural gelince açılacak.")
+        return
     if arg in ("ac", "aç", "acik", "açık", "on"):
         scanner.set_enabled(True)
         await update.message.reply_text("▶️ Otomatik tarayıcı açık: her 15 dk'da takip listesi taranır.")
@@ -2600,6 +2621,11 @@ async def kriz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_bist_signal(bot, sym: str, g: dict):
     """BIST gate result for a confirmed 1h close: ŞİMDİ AL with whole lots, or what failed."""
     tick = bist.ticker(sym)
+    if not config.BUY_SIGNALS:
+        await bot.send_message(config.ALLOWED_CHAT_ID,
+                               f"📍 {tick} (BIST): planının kapanış teyidi geldi (kapanış {_g(g['giris'])} TL, iptal {_g(g['iptal'])}, "
+                               f"hedef {_g(g['hedef'])}).\n{config.NO_SIGNAL_NOTE}", disable_notification=silent())
+        return
     tf_label = "günlük" if (g.get("mum") or {}).get("zaman_dilimi") == "1d" else "1s"
     head = (f"🟢 ALIM ADAYI (BIST, orta/uzun vade) — {tick}" if g["ok"] and tf_label == "günlük" else
             f"🟢 SİNYAL AKTİF (BIST, alım adayı) — {tick}" if g["ok"] else f"🟡 {tick} (BIST): {tf_label} kapanış geldi ama kurallar geçmedi")
@@ -2800,7 +2826,7 @@ async def send_bist_events(bot, events: list[dict], tf: str):
             except Exception:
                 log.exception("BIST chart failed")
             await send_bist_signal(bot, e["sembol"], e["kapi"])
-            if e["kapi"]["ok"]:
+            if e["kapi"]["ok"] and config.BUY_SIGNALS:
                 async with httpx.AsyncClient() as client:
                     data = await bist_market_data(client, tick)
                 await run_analysis(bot, config.ALLOWED_CHAT_ID,
@@ -5910,6 +5936,11 @@ async def us_daily_job(context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(config.ALLOWED_CHAT_ID, f"🇺🇸 {t}: {e['metin']}", disable_notification=silent())
             continue
         g = e["kapi"]
+        if not config.BUY_SIGNALS:
+            await context.bot.send_message(config.ALLOWED_CHAT_ID,
+                                           f"📍 {t} (ABD): planının günlük kapanış teyidi geldi (kapanış {g['giris']:g} $).\n"
+                                           f"{config.NO_SIGNAL_NOTE}", disable_notification=silent())
+            continue
         lines = [f"🟢 AL (ABD, orta/uzun vade) — {t}" if g["ok"] else f"🟡 {t} (ABD): günlük kapanış teyidi geldi ama AL değil",
                  f"Kapanış {g['giris']:g} $ | iptal {g['iptal']} | hedef {g['hedef']} | R/R {g['rr']}", "", *g["maddeler"]]
         markup = None

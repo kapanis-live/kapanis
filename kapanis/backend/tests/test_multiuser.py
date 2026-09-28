@@ -501,6 +501,33 @@ class UserAlarmTest(MultiUserTest.__bases__[0]):
         owner_ev = [e for e in (await self.c.get("/api/bot/alarm-events", headers=BOT)).json() if e.get("sahip")]
         self.assertEqual(len(owner_ev), 1)
 
+    async def test_trend_alarm_fires_on_each_state_change(self):
+        import unittest.mock as um
+        ua = server.user_alerts
+        h = auth("user_a")
+        closes = {"v": [100.0] * 240}
+        start = int(time.time()) - 240 * 86400 - 60
+
+        async def chart(symbol, tf="1d", market=None):
+            cs = closes["v"]
+            return {"candles": [{"t": start + i * 86400, "c": c, "h": c * 1.01, "l": c * 0.99} for i, c in enumerate(cs)],
+                    "sma200": [100.0] * len(cs), "rsi": [50.0] * len(cs)}
+        with um.patch.object(ua.chart_data, "chart", chart):
+            self.assertEqual((await self.c.post("/api/alarms", headers=h, json={"piyasa": "BIST", "kod": "THYAO",
+                                                                             "tur": "trend", "tf": "1d"})).status_code, 400)
+            a = (await self.c.post("/api/alarms", headers=h, json={"piyasa": "KRIPTO", "kod": "BTC", "tur": "trend", "tf": "1d"})).json()
+            self.assertFalse(a["trendde"])
+            board = (await self.c.get("/api/strategies/trend", headers=h)).json()
+            self.assertIn("satirlar", board["kanit"])
+            closes["v"] = [100.0] * 237 + [104, 108, 112]    # breakout: entry
+            later = time.time() + 86400 * 3
+            self.assertEqual(await ua.run_once(server.db, now=later), 1)
+            self.assertEqual(await ua.run_once(server.db, now=later), 0)
+            closes["v"] = [100.0] * 237 + [104, 108, 90]     # close below the 10-day low: exit
+            self.assertEqual(await ua.run_once(server.db, now=later), 1)
+        texts = [e["metin"] for e in (await self.c.get("/api/alarms", headers=h)).json()["olaylar"]]
+        self.assertTrue(any("GİRİŞ" in t for t in texts) and any("ÇIKIŞ" in t for t in texts))
+
     async def test_position_stop_warning_once_per_level_and_limit(self):
         import unittest.mock as um
         h = auth("user_b")
@@ -520,6 +547,33 @@ class UserAlarmTest(MultiUserTest.__bases__[0]):
                 self.assertEqual(r.status_code, 200, r.text)
             self.assertEqual((await self.c.post("/api/alarms", headers=h, json={
                 "piyasa": "KRIPTO", "kod": "ETH", "seviye": 999})).status_code, 400)
+
+
+class TrendRuleTest(unittest.TestCase):
+    """Donchian 20/10 with a 200-day filter, on closed daily candles only."""
+
+    def _candles(self, closes, start=0):
+        return [{"t": start + i * 86400, "c": c, "h": c * 1.01, "l": c * 0.99} for i, c in enumerate(closes)]
+
+    def test_entry_hold_and_exit(self):
+        import trend_rule
+        base = [100.0] * 230
+        up = base + [103, 106, 110]          # breaks the 20-day high and stays above the 200-day average
+        sma = [100.0] * len(up)
+        now = len(up) * 86400 + 60           # every candle closed
+        st = trend_rule.state(self._candles(up), sma, now)
+        self.assertTrue(st["trendde"])
+        self.assertFalse(st["giris_bugun"])  # the entry was on the 103 candle
+        down = up + [108, 104, 95]           # 95 < lowest low of the previous 10 days
+        st2 = trend_rule.state(self._candles(down), [100.0] * len(down), len(down) * 86400 + 60)
+        self.assertFalse(st2["trendde"])
+        self.assertTrue(st2["cikis_bugun"])
+        # the forming candle never counts: with "now" inside the last candle, 95 is ignored
+        st3 = trend_rule.state(self._candles(down), [100.0] * len(down), (len(down) - 1) * 86400 + 60)
+        self.assertTrue(st3["trendde"])
+        # below the 200-day average a breakout is not an entry
+        st4 = trend_rule.state(self._candles(up), [120.0] * len(up), now)
+        self.assertFalse(st4["trendde"])
 
 
 class LastClosedTest(unittest.TestCase):

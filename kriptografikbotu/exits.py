@@ -117,8 +117,15 @@ def analyze(pos: dict, sig: pd.DataFrame, htf: pd.DataFrame, tf: str, price: flo
     top_zone = zones["direncler"][0] if zones["direncler"] else None
     if top_zone and in_profit and atr:
         if top_zone["alt"] - 0.5 * atr <= close <= top_zone["ust"]:
-            signals.append(("kismi", f"Direnç bölgesinde: {_g(top_zone['alt'])}–{_g(top_zone['ust'])} "
-                                     f"({top_zone['dokunma']} dokunma) — satış baskısı beklenir"))
+            # information only: in the 2026-09 history test these zones turned price back no more often than random levels
+            signals.append(("bilgi", f"Direnç bölgesi yakınında: {_g(top_zone['alt'])}–{_g(top_zone['ust'])} "
+                                     f"({top_zone['dokunma']} dokunma; testte rastgele seviyeden farksız, karar için kullanma)"))
+
+    # The tested exit (crypto trend rule): a DAILY close below the lowest low of the previous 10 days.
+    trend_exit = daily_trend_exit(htf if pos.get("piyasa", "KRIPTO") == "KRIPTO" else None)
+    if trend_exit and close < trend_exit:
+        signals.append(("kismi", f"Günlük kapanış 10 günün dibinin ({_g(trend_exit)}) altında — test edilmiş trend kuralı "
+                                 "burada çıkar (geçmişte büyük düşüşlerin çoğundan böyle uzak durdu)"))
 
     # --- stop suggestion (never down) -----------------------------------------------------
     candidates = []
@@ -144,7 +151,15 @@ def analyze(pos: dict, sig: pd.DataFrame, htf: pd.DataFrame, tf: str, price: flo
         "R": None if r_now is None else round(r_now, 2),
         "kar_yuzde": round((price / entry - 1) * 100, 2), "rsi": None if rsi is None else round(rsi, 1),
         "destekler": zones["destekler"][:1],
+        "trend_cikis": trend_exit,
     }
+
+
+def daily_trend_exit(daily: pd.DataFrame | None) -> float | None:
+    """Lowest low of the 10 daily candles before the last closed one (the trend rule's exit level)."""
+    if daily is None or len(daily) < 12:
+        return None
+    return float(daily.low.iloc[-11:-1].min())
 
 
 def _tf_ms(tf: str) -> int:

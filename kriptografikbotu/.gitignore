@@ -25,3 +25,8 @@ data/
 
 # Daily database backups (every user's data): stay on the server, never in git
 backups/
+
+# research kline cache
+research/kl/
+research/*.json
+research/*.log

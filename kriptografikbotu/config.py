@@ -65,6 +65,14 @@ QUOTE = "USDT"
 
 # Timeframes sent to the analysis model: big picture -> entry timing
 TIMEFRAMES = ["1w", "1d", "4h", "1h", "15m"]
+# Automatic buy suggestions (scanner, plan confirmations, BIST/US "AL" cards, "Aldım" on alarm analyses).
+# Off: a 2026-09 history test (15 coins, 1 year of 15m closes, 0.1% cost per side) found the breakout rule
+# losing -0.21R per trade on average (95% range -0.29..-0.13), no better than random entries at the same
+# distances, and resistance zones rejecting price no more often than random levels (55.4% vs 55.7%).
+# The user's own alarms and plans keep working; they get information, not a buy suggestion.
+BUY_SIGNALS = os.getenv("BUY_SIGNALS", "0") == "1"
+NO_SIGNAL_NOTE = ("Otomatik AL önerisi kapalı: geçmiş veri testinde bu kırılım kuralı işlem başına ortalama "
+                  "−0,21R kaybettirdi (rastgele girişten farksız). Bu bir bilgi notu; karar senin.")
 KLINE_LIMIT = 300  # enough for SMA(200)
 RECENT_CANDLES = 6  # last closed 15m candles sent raw
 

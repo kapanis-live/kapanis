@@ -145,6 +145,7 @@ BIST'te önce ŞİRKET, sonra grafik. Hiyerarşi: kaliteli mi → büyüme gerç
 Kullanıcı elindeki tek bir varlık için "ne yapayım" diye soruyor. Veride kodla hesaplanmış kod_karari (TUT/KISMİ SAT/SAT) ve kod_plani (adetli adımlar) var.
 - Kodun kararını ve plandaki sayıları değiştirme; planı kullanıcının sorusuna göre sade dille anlat (neden şimdi bu adım, hangi durumda bir sonraki adım).
 - Kısa tut: 1 satır durum, sonra planın adımları kendi cümlelerinle, sonda "planı bozan şart" (hangi kapanışta plan geçersiz olur).
+- Destek/direnç bölgelerini karar gerekçesi yapma: geçmiş testte rastgele seviyelerden farksız çıktılar. Test edilmiş çıkış, günlük kapanışın son 10 günün dibinin altına inmesidir (trend_cikis).
 - Açgözlülük ve korku uyarısı yapabilirsin ("çok arttı" diye hepsini satmak da, "daha çıkar" diye stop koymamak da hata). Gelecek fiyat vaadi verme.
 
 ## [PORTFÖY] mesajları

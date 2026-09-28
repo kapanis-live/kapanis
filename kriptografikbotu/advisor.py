@@ -64,9 +64,9 @@ def plan(pos: dict, a: dict) -> list[str]:
     else:
         lines.append("1) Şimdi: tut. Çıkış işareti yok; satmak için bir sebep oluşmadı.")
         rest = q
-    if a.get("olasi_tepe"):
-        lines.append(f"2) Direnç {a['olasi_tepe']}: fiyat oraya gelip zorlanırsa (kırmızı kapanış, uzun üst fitil) "
-                     f"kalanın yarısını sat ({_lots(pos, rest / 2):g} adet).")
+    if a.get("trend_cikis"):
+        lines.append(f"2) Test edilmiş çıkış: günlük kapanış {a['trend_cikis']:.6g} (son 10 günün dibi, her gün güncellenir) "
+                     f"altına inerse kalanı sat ({_lots(pos, rest):g} adet). Direnç bölgelerine göre satma: geçmiş testte işe yaramadı.")
     if stop is not None:
         lines.append(f"3) Kalanın stopu: {stop:.6g} ({(stop / a['fiyat'] - 1) * 100:+.1f}%) — kapanışla; yalnız yukarı çekilir. "
                      "Borsada/aracıda stop emri kullanıyorsan biraz altına koy.")
@@ -99,7 +99,7 @@ async def advise(code: str) -> tuple[str, dict] | None:
     data = {"pozisyon": {"kod": code.upper(), "piyasa": pos.get("piyasa", "KRIPTO"), "adet": pos["adet"],
                          "ortalama_maliyet": round(pos["giris"], 6), "alis_sayisi": len(items), "ilk_alis": pos["acilis"][:10],
                          "stop": pos.get("stop")},
-            "kod_karari": {k: a[k] for k in ("karar", "sinyaller", "stop_onerisi", "olasi_tepe", "kar_yuzde", "R", "rsi",
-                                             "zaman_dilimi", "fiyat", "destekler")},
+            "kod_karari": {k: a.get(k) for k in ("karar", "sinyaller", "stop_onerisi", "kar_yuzde", "R", "rsi",
+                                                 "zaman_dilimi", "fiyat", "trend_cikis")},
             "kod_plani": steps}
     return text, data

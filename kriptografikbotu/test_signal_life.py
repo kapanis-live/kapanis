@@ -90,9 +90,11 @@ class AdvisorTest(unittest.TestCase):
         self.assertEqual(pos["adet"], 15)
         self.assertAlmostEqual(pos["giris"], (800 + 500) / 15)
         a = {"karar": "KISMİ SAT", "kar_yuzde": 45.0, "fiyat": 125.0, "olasi_tepe": "128–131 (3 dokunma, %+3.0)",
-             "stop_onerisi": {"seviye": 110.0, "neden": "iz süren stop"}}
+             "stop_onerisi": {"seviye": 110.0, "neden": "iz süren stop"}, "trend_cikis": 115.0}
         steps = advisor.plan(pos, a)
         self.assertIn("yarısını sat (7 adet)", steps[0])  # BIST: whole lots
+        self.assertIn("10 günün dibi", steps[1])  # the tested exit, not the resistance zone
+        self.assertNotIn("128", " ".join(steps))  # the zone level is no longer a sell step
         self.assertIn("110", steps[2])
         big = advisor.plan(pos, {**a, "karar": "TUT"})
         self.assertIn("üçte birini sat (5 adet)", big[0])

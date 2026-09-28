@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import chart_data
+import trend_rule
 
 log = logging.getLogger(__name__)
 
@@ -35,9 +36,9 @@ EVENT_DAYS = 30
 class AlertBody(BaseModel):
     piyasa: str
     kod: str
-    tur: str = "fiyat"      # fiyat | rsi
+    tur: str = "fiyat"      # fiyat | rsi | trend (tested crypto trend rule: entry/exit changes, daily)
     yon: str = "ustu"       # ustu | alti
-    seviye: float
+    seviye: float = 0.0
     tf: str = "1d"
 
 
@@ -79,6 +80,8 @@ def _fmt(x) -> str:
 
 
 def describe(a: dict) -> str:
+    if a["tur"] == "trend":
+        return f"{a['kod']} trend takibi (Donchian 20/10 + 200 gün, günlük)"
     what = "RSI" if a["tur"] == "rsi" else "kapanış"
     return f"{a['kod']} {TF_LABEL.get(a['tf'], a['tf'])} {what} {_fmt(a['seviye'])} {'üstünde' if a['yon'] == 'ustu' else 'altında'}"
 
@@ -103,9 +106,11 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
             raise HTTPException(status_code=400, detail="Piyasa KRIPTO, BIST ya da ABD olmalı.")
         if body.tf not in TIMEFRAMES[mkt]:
             raise HTTPException(status_code=400, detail=f"{mkt} için zaman dilimi: {', '.join(TIMEFRAMES[mkt])}.")
-        if body.tur not in ("fiyat", "rsi") or body.yon not in ("ustu", "alti"):
-            raise HTTPException(status_code=400, detail="Tür fiyat/rsi, yön ustu/alti olmalı.")
-        if not (0 < body.seviye < 1e9) or (body.tur == "rsi" and not 1 <= body.seviye <= 99):
+        if body.tur not in ("fiyat", "rsi", "trend") or body.yon not in ("ustu", "alti"):
+            raise HTTPException(status_code=400, detail="Tür fiyat/rsi/trend, yön ustu/alti olmalı.")
+        if body.tur == "trend" and (mkt != "KRIPTO" or body.tf != "1d"):
+            raise HTTPException(status_code=400, detail="Trend takibi yalnız kriptoda ve günlük kapanışta test edildi.")
+        if body.tur != "trend" and (not (0 < body.seviye < 1e9) or (body.tur == "rsi" and not 1 <= body.seviye <= 99)):
             raise HTTPException(status_code=400, detail="Seviye geçersiz (RSI için 1-99).")
         kod = (body.kod or "").strip().upper().removesuffix(".IS").removesuffix("/USDT")
         if not kod or len(kod) > 15 or not all(c.isalnum() or c in ".-" for c in kod):
@@ -118,11 +123,15 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
         except Exception:
             raise HTTPException(status_code=404, detail=f"{kod} {mkt} piyasasında bulunamadı.")
         bar = last_closed_bar(doc, mkt, body.tf)
+        trend = trend_rule.state(doc["candles"], doc.get("sma200") or []) if body.tur == "trend" else None
+        if body.tur == "trend" and not trend:
+            raise HTTPException(status_code=400, detail=f"{kod} için yeterli günlük geçmiş yok.")
         now = _now()
         alarm = {"id": f"ua_{ObjectId()}", "user_id": user["id"], "piyasa": mkt, "kod": kod, "tur": body.tur,
                  "yon": body.yon, "seviye": body.seviye, "tf": body.tf, "durum": "aktif",
                  "olusturma": now.isoformat(), "olusturma_ts": now.timestamp(),
-                 "son_kapanis": bar[0]["c"] if bar else None, "son_rsi": bar[1] if bar else None}
+                 "son_kapanis": bar[0]["c"] if bar else None, "son_rsi": bar[1] if bar else None,
+                 **({"trendde": trend["trendde"], "trend": trend} if trend else {})}
         await d.user_alerts.insert_one(dict(alarm))
         alarm.pop("_id", None)
         return alarm
@@ -133,6 +142,11 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
         if not res.deleted_count:
             raise HTTPException(status_code=404, detail="Alarm bulunamadı.")
         return {"ok": True}
+
+    @r.get("/strategies/trend")
+    async def trend_board(_: dict = Depends(current_user)):
+        """The tested crypto trend rule: its history test and where each large coin stands today."""
+        return {"kanit": trend_rule.EVIDENCE, "coinler": await trend_rule.universe_states()}
 
     @r.get("/bot/alarm-events")
     async def pending_events(_: bool = Depends(require_bot_key)):
@@ -165,6 +179,10 @@ async def run_once(db, now: float | None = None) -> int:
     now = time.time() if now is None else now
     charts: dict[tuple, dict | None] = {}
 
+    async def doc_of(mkt: str, kod: str, tf: str):
+        await bar(mkt, kod, tf)
+        return charts.get((mkt, kod, tf))
+
     async def bar(mkt: str, kod: str, tf: str):
         key = (mkt, kod, tf)
         if key not in charts:
@@ -187,7 +205,30 @@ async def run_once(db, now: float | None = None) -> int:
         return users[uid]
 
     fired = 0
-    async for a in db.user_alerts.find({"durum": "aktif"}):
+    async for a in db.user_alerts.find({"durum": "aktif", "tur": "trend"}):
+        doc = await doc_of("KRIPTO", a["kod"], "1d")
+        st = trend_rule.state(doc["candles"], doc.get("sma200") or [], now) if doc else None
+        if not st:
+            continue
+        await db.user_alerts.update_one({"id": a["id"]}, {"$set": {"son_kapanis": st["kapanis"], "trend": st}})
+        if st["trendde"] == a.get("trendde"):
+            continue
+        await db.user_alerts.update_one({"id": a["id"]}, {"$set": {"trendde": st["trendde"]}})
+        u = await user_of(a["user_id"])
+        if not u:
+            continue
+        if st["trendde"]:
+            text = (f"📈 {a['kod']}: trend takibi GİRİŞ — günlük kapanış {_fmt(st['kapanis'])}, 20 günün tepesinin "
+                    f"({_fmt(st['ust20'])}) ve 200 günlük ortalamanın üstünde. Kuralın çıkışı: günlük kapanış "
+                    f"{_fmt(st['alt10'])} (10 günün dibi, her gün güncellenir) altına inerse.")
+        else:
+            text = (f"📉 {a['kod']}: trend takibi ÇIKIŞ — günlük kapanış {_fmt(st['kapanis'])}, 10 günün dibinin "
+                    f"({_fmt(st['alt10'])}) altında. Kural bu noktada piyasadan çıkar.")
+        text += " Geçmiş testte işe yarayan tek kural bu; yine de kesinlik yok, karar senin."
+        if await _event(db, u, a["kod"], "KRIPTO", "1d", text, key=f"trend_{a['id']}_{st['mum']}_{int(st['trendde'])}"):
+            fired += 1
+
+    async for a in db.user_alerts.find({"durum": "aktif", "tur": {"$ne": "trend"}}):
         b = await bar(a["piyasa"], a["kod"], a["tf"])
         if not b:
             continue
@@ -212,6 +253,16 @@ async def run_once(db, now: float | None = None) -> int:
         if not u:
             continue
         for p in pf["positions"]:
+            if p.get("durum") == "acik" and p.get("piyasa") == "KRIPTO":
+                doc = await doc_of("KRIPTO", p["kod"], "1d")
+                st = trend_rule.state(doc["candles"], doc.get("sma200") or [], now) if doc else None
+                if st and st["kapanis"] < st["alt10"] and st["mum"] + 86400 > dt.datetime.fromisoformat(
+                        p.get("acilis") or "1970-01-01T00:00:00+00:00").timestamp():
+                    text = (f"📉 {p['kod']}: günlük kapanış {_fmt(st['kapanis'])}, 10 günün dibinin ({_fmt(st['alt10'])}) altında. "
+                            "Test edilmiş trend kuralı burada çıkar; geçmişte büyük düşüşlerin çoğundan böyle uzak durdu. "
+                            "Karar senin.")
+                    if await _event(db, u, p["kod"], "KRIPTO", "1d", text, key=f"pos_{p['id']}_trend_{st['mum']}"):
+                        fired += 1
             if p.get("durum") != "acik" or (p.get("stop") is None and p.get("hedef") is None):
                 continue
             b = await bar(p["piyasa"], p["kod"], "1d")

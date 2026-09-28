@@ -99,5 +99,32 @@ class AdvisorTest(unittest.TestCase):
         self.assertIn("hepsini sat (15 adet)", advisor.plan(pos, {**a, "karar": "SAT"})[0])
 
 
+class SellDialogTest(unittest.IsolatedAsyncioTestCase):
+    """SHIB-sized numbers: 'Hepsi' must close everything (a text round trip once sold 1.2 SHIB at 6 USD)."""
+
+    async def test_sell_all_with_huge_quantity_and_tiny_price(self):
+        import types
+        import main
+        if config.POSITIONS_FILE.exists():
+            config.POSITIONS_FILE.unlink()
+        a = positions.open_position("SHIB/USDT", 0.00001234, 15.0, None, None, "4h", source="test")
+        b = positions.open_position("SHIB/USDT", 0.00001300, 16.0, None, None, "4h", source="test")
+        total = a["adet"] + b["adet"]
+        self.assertGreater(total, 1e6)
+        replies = []
+
+        async def reply_text(text, **kw):
+            replies.append(text)
+        update = types.SimpleNamespace(message=types.SimpleNamespace(reply_text=reply_text))
+        context = types.SimpleNamespace(user_data={})
+        await main.sell_holding(update, context, "KRIPTO", "SHIBUSDT", qty=float(repr(total)), price=0.0000125)
+        self.assertEqual([p for p in positions.open_positions() if p["pair"] == "SHIB/USDT"], [])
+        closed = [p for p in positions.load() if p["pair"] == "SHIB/USDT"]
+        self.assertTrue(all(p["kapanis_fiyat"] == 0.0000125 for p in closed))
+        sold = next(r for r in replies if "satıldı" in r)
+        self.assertIn("Kalan 0", sold)
+        self.assertNotIn("e-05", sold)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1877,10 +1877,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["satis"] = {"mkt": mkt, "sym": sym, "toplam": total, "adim": "adet"}
             unit = "adet"
             await query.message.reply_text(
-                f"{bist.ticker(sym) if mkt == 'BIST' else sym}: elinde {total:g} {unit}. Kaç {unit} sattın?\n(butona bas ya da sayı yaz)",
+                f"{bist.ticker(sym) if mkt == 'BIST' else sym}: elinde {_qty(total)} {unit}. Kaç {unit} sattın?\n(butona bas ya da sayı yaz)",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(f"Hepsi ({total:g})", callback_data=f"st|adet|{total}")]
-                    + ([InlineKeyboardButton(f"Yarısı ({half:g})", callback_data=f"st|adet|{half}")] if half > 0 else []),
+                    [InlineKeyboardButton(f"Hepsi ({_qty(total)})", callback_data=f"st|adet|{total!r}")]
+                    + ([InlineKeyboardButton(f"Yarısı ({_qty(half)})", callback_data=f"st|adet|{half!r}")] if half > 0 else []),
                     [InlineKeyboardButton("❌ İptal", callback_data="st|iptal")]]))
         elif kind == "st":
             s = context.user_data.get("satis")
@@ -1897,8 +1897,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif rest[0] == "zaman":
                 context.user_data.pop("satis", None)
                 when = parse_when(rest[1])
-                await sell_holding(_shim(update), context, s["mkt"], s["sym"], f"{s['adet']:g} {s['satis_fiyati']:g}",
-                                   when=when)
+                await sell_holding(_shim(update), context, s["mkt"], s["sym"], when=when,
+                                   qty=s["adet"], price=s["satis_fiyati"])
         elif kind == "wz" and rest[0] in ("sec", "sayfa", "yok", "devam"):
             w = context.user_data.get("sihirbaz")
             if not w or w.get("adim") != "kod":
@@ -3308,7 +3308,7 @@ async def add_holdings(update, context, text: str) -> bool:
             cost = await _price(bist.yahoo_symbol(tick) if mkt == "BIST" else tick + config.QUOTE)
             await update.message.reply_text(f"ℹ️ {tick} için maliyet yazılmadı, şu anki fiyat {cost:g} kullanıldı "
                                             "(sonra /duzelt ID giris=FIYAT ile değiştirebilirsin).")
-        await portfolio_add(update, [tick, f"{qty:g}", f"{cost:g}"])
+        await portfolio_add(update, [tick, repr(qty), repr(cost)])  # repr: no 6-digit rounding (SHIB)
     await update.message.reply_text("Portföyün:", reply_markup=PORTFOLIO_BUTTONS)
     return True
 
@@ -3334,7 +3334,8 @@ async def ask_sell(query, context):
     await query.message.reply_text("Hangisini sattın?", reply_markup=InlineKeyboardMarkup(rows))
 
 
-async def sell_holding(update, context, mkt: str, sym: str, text: str, when: str | None = None) -> bool:
+async def sell_holding(update, context, mkt: str, sym: str, text: str = "", when: str | None = None,
+                       qty: float | None = None, price: float | None = None) -> bool:
     """Answer to "how much, at what price": "5 300", "hepsi", "yarısı 305", "5" (price = now).
     when: the time of the real sale (ISO), default now."""
     items = sorted((p for p in positions.open_positions() if p["symbol"] == sym), key=lambda p: p["id"])
@@ -3345,7 +3346,9 @@ async def sell_holding(update, context, mkt: str, sym: str, text: str, when: str
     total = sum(p["adet"] for p in items)
     low = text.lower()
     nums = [float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", text)]
-    if "hepsi" in low or "tamamı" in low or "tamami" in low:
+    if qty is not None:  # from the dialog: exact numbers, never through text (1.2e+06 would parse as 1.2 and 6)
+        pass
+    elif "hepsi" in low or "tamamı" in low or "tamami" in low:
         qty, price = total, (nums[0] if nums else None)
     elif "yarı" in low or "yari" in low:
         qty, price = total / 2, (nums[0] if nums else None)
@@ -3355,8 +3358,10 @@ async def sell_holding(update, context, mkt: str, sym: str, text: str, when: str
         return False
     if mkt == "BIST":
         qty = int(qty)
+    if total < qty <= total * (1 + 1e-9):
+        qty = total  # "Hepsi" after a float round trip
     if qty <= 0 or qty > total + 1e-12:
-        await update.message.reply_text(f"Miktar 0 ile {total:g} arasında olmalı.")
+        await update.message.reply_text(f"Miktar 0 ile {_qty(total)} arasında olmalı.")
         return True
     if price is None:
         price = await _price(sym)
@@ -3373,8 +3378,8 @@ async def sell_holding(update, context, mkt: str, sym: str, text: str, when: str
     cur = "USD" if mkt == "KRIPTO" else "TL"
     unit = assets.ASSETS[sym]["birim"] if mkt == assets.MARKET else "adet"
     await update.message.reply_text(
-        f"💰 {bist.ticker(sym) if mkt == 'BIST' else assets.name(sym) if mkt == assets.MARKET else sym}: {qty:g} {unit} satıldı @ {price:g} → "
-        f"{realized:+,.2f} {cur} gerçekleşen K/Z. Kalan {total - qty:g} {unit}."
+        f"💰 {bist.ticker(sym) if mkt == 'BIST' else assets.name(sym) if mkt == assets.MARKET else sym}: {_qty(qty)} {unit} satıldı @ {_px(price)} → "
+        f"{realized:+,.2f} {cur} gerçekleşen K/Z. Kalan {_qty(max(total - qty, 0))} {unit}."
         + (f"\nSatış zamanı: {datetime.fromisoformat(when).strftime('%d.%m %H:%M')}" if when else "")
         + "\nSitedeki portföy 1 dakika içinde güncellenir.",
         reply_markup=PORTFOLIO_BUTTONS)
@@ -3734,7 +3739,7 @@ async def sell_ask_price(msg, context):
     s.update(adim="fiyat", fiyat=price)
     await msg.reply_text(f"Hangi fiyattan sattın? ({cur})",
                          reply_markup=InlineKeyboardMarkup([
-                             [InlineKeyboardButton(f"Şu anki fiyat: {price:,.6g} {cur}", callback_data="st|fiyat|simdi")],
+                             [InlineKeyboardButton(f"Şu anki fiyat: {_px(price)} {cur}", callback_data="st|fiyat|simdi")],
                              [InlineKeyboardButton("❌ İptal", callback_data="st|iptal")]]))
 
 
@@ -3786,7 +3791,7 @@ async def sell_text(update, context, text: str) -> bool:
             await update.message.reply_text("Tarihi anlayamadım. Örnek: 25.09 ya da 25.09 14:30 ya da dün")
             return True
         context.user_data.pop("satis", None)
-        await sell_holding(update, context, s["mkt"], s["sym"], f"{s['adet']:g} {s['satis_fiyati']:g}", when=when)
+        await sell_holding(update, context, s["mkt"], s["sym"], when=when, qty=s["adet"], price=s["satis_fiyati"])
         return True
     try:
         num = float(text.strip().replace(",", "."))
@@ -3795,7 +3800,7 @@ async def sell_text(update, context, text: str) -> bool:
         return True
     if s["adim"] == "adet":
         if num <= 0 or num > s["toplam"] + 1e-12 or (s["mkt"] == "BIST" and num != int(num)):
-            await update.message.reply_text(f"0 ile {s['toplam']:g} arasında {'tam sayı ' if s['mkt'] == 'BIST' else ''}bir miktar yaz.")
+            await update.message.reply_text(f"0 ile {_qty(s['toplam'])} arasında {'tam sayı ' if s['mkt'] == 'BIST' else ''}bir miktar yaz.")
             return True
         s["adet"] = num
         await sell_ask_price(update.message, context)

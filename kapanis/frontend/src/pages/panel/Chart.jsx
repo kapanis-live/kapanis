@@ -20,6 +20,17 @@ import { px, baseCode, MARKET_LABEL } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
 
 const TFS = [["15m", "15 dk"], ["1h", "1 saat"], ["4h", "4 saat"], ["1d", "Günlük"], ["1w", "Haftalık"]];
+// Dönem düğmeleri (TradingView gibi): gösterilecek zaman aralığı + o aralığa uygun mum
+const DAY = 86400;
+const RANGES = [["1G", "1 gün", DAY, "15m"], ["1H", "1 hafta", 7 * DAY, "1h"], ["1A", "1 ay", 30 * DAY, "4h"],
+  ["3A", "3 ay", 91 * DAY, "1d"], ["6A", "6 ay", 182 * DAY, "1d"], ["YTD", "yıl başından beri", "ytd", "1d"],
+  ["1Y", "1 yıl", 365 * DAY, "1d"], ["5Y", "5 yıl", 5 * 365 * DAY, "1w"]];
+const rangeStart = (key, lastT) => {
+  const r = RANGES.find(([k]) => k === key);
+  if (!r) return null;
+  if (r[2] === "ytd") return Date.UTC(new Date(lastT * 1000).getUTCFullYear(), 0, 1) / 1000;
+  return lastT - r[2];
+};
 const MARKETS = ["KRIPTO", "BIST", "ABD"];
 const LINES = [["sma5", "SMA 5"], ["sma10", "SMA 10"], ["sma20", "SMA 20"], ["sma50", "SMA 50"],
   ["sma100", "SMA 100"], ["sma200", "SMA 200"], ["ema5", "EMA 5"], ["ema9", "EMA 9"], ["ema10", "EMA 10"],
@@ -54,7 +65,7 @@ const trTime = (t, withTime) =>
   });
 
 // Fiyat %65 · hacim %17 · RSI %18; fareyle üzerine gelince açılış/yüksek/düşük/kapanış ve gösterge değerleri
-function CandleChart({ data, on, overlay, onPick }) {
+function CandleChart({ data, on, overlay, onPick, range }) {
   const ref = useRef(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
@@ -149,7 +160,11 @@ function CandleChart({ data, on, overlay, onPick }) {
       pane += 1;
     }
     chart.panes().forEach((p, i) => p.setStretchFactor(i === 0 ? 65 : i === 1 ? 17 : 18));
-    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, data.candles.length - 140), to: data.candles.length + 3 });
+    const lastT = data.candles[data.candles.length - 1].t;
+    const from = range ? rangeStart(range, lastT) : null;
+    const firstIdx = from == null ? -1 : data.candles.findIndex((k) => k.t >= from);
+    if (firstIdx >= 0) chart.timeScale().setVisibleLogicalRange({ from: firstIdx, to: data.candles.length + 1 });
+    else chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, data.candles.length - 140), to: data.candles.length + 3 });
 
     const index = new Map(data.candles.map((k, i) => [k.t, i]));
     // Grafiğe tıklayınca o fiyat alarm seviyesi olarak seçilir
@@ -163,7 +178,7 @@ function CandleChart({ data, on, overlay, onPick }) {
       setHover(i === undefined ? null : i);
     });
     return () => chart.remove();
-  }, [data, on, c, theme, overlay]);
+  }, [data, on, c, theme, overlay, range]);
 
   const i = hover ?? data.candles.length - 1;
   const k = data.candles[i];
@@ -330,6 +345,7 @@ export default function ChartPage() {
   const code = (params.get("kod") || "BTC").toUpperCase();
   const market = MARKETS.includes(params.get("piyasa")) ? params.get("piyasa") : "KRIPTO";
   const tf = TFS.some(([k]) => k === params.get("tf")) ? params.get("tf") : "1d";
+  const range = RANGES.some(([k]) => k === params.get("donem")) ? params.get("donem") : null;
   const [draft, setDraft] = useState(code);
   const [on, setOn] = useState(() => {
     try { return { ...DEFAULT_ON, ...JSON.parse(localStorage.getItem("kapanis.chart.indicators") || "{}") }; }
@@ -391,7 +407,7 @@ export default function ChartPage() {
             options={MARKETS.map((m) => ({ value: m, label: MARKET_LABEL[m] }))} />
           <SearchField value={draft} onChange={setDraft} onSubmit={submit} placeholder="Kod yaz: BTC, THYAO, NVDA" list="chart-codes" />
           <datalist id="chart-codes">{quick.watch.filter((w) => w.market === market).map((w) => <option key={w.code} value={w.code} />)}</datalist>
-          <Segmented ariaLabel="Zaman dilimi" value={tf} onChange={(v) => set({ tf: v })} options={TFS.map(([v, label]) => ({ value: v, label }))} />
+
         </div>
 
         {quick.held.length > 0 && (
@@ -454,7 +470,21 @@ export default function ChartPage() {
                 })}
                 <p className="m-0 text-xs text-t-3">Seçimlerin bu tarayıcıda saklanır. Göstergeler yalnız grafiği değiştirir; botun karar kurallarını değiştirmez.</p>
               </div>}
-              <CandleChart data={d} on={on} overlay={overlay} onPick={(v) => setPicked(v)} />
+              <div className="flex flex-wrap items-center gap-1 rounded-xl border border-hairline bg-raised p-1" data-testid="chart-ranges">
+                {RANGES.map(([k, title, , rtf]) => (
+                  <button key={k} type="button" title={title} onClick={() => set({ donem: k, tf: rtf })}
+                    className={cn("h-8 min-w-[2.5rem] rounded-lg px-2 text-sm font-semibold transition-colors",
+                      range === k ? "bg-surface text-t-1 shadow" : "text-t-3 hover:text-t-1")}>{k}</button>
+                ))}
+                <span className="mx-1 h-5 w-px bg-hairline" />
+                <label className="ml-auto flex items-center gap-2 pr-1 text-sm text-t-3">Aralık
+                  <select value={tf} onChange={(e) => set({ tf: e.target.value, donem: "" })} aria-label="Mum aralığı"
+                    className="h-8 rounded-lg border-0 bg-transparent font-semibold text-t-1 outline-none">
+                    {TFS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <CandleChart data={d} on={on} overlay={overlay} onPick={(v) => setPicked(v)} range={range} />
               <AlarmBar d={d} code={code} market={market} chartTf={tf} picked={picked} setPicked={setPicked} alarms={myAlarms} />
               <p className="m-0 text-sm text-t-3">
                 Saatler İstanbul saati. {d.note} VWAP: {d.vwap_note}. Hacim altta gösterilir; seçtiğin diğer göstergeler ayrı bölmelerde açılır.

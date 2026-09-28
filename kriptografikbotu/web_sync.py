@@ -20,6 +20,7 @@ import backtest
 import bist
 import bist_signals
 import config
+import quiet
 import conversation_store as store
 import costs
 import derivatives
@@ -452,6 +453,16 @@ def build_overview(pos_docs: list[dict], alert_docs: list[dict], decision_docs: 
     }
 
 
+def editable_params() -> list[dict]:
+    """Fields for the panel's "Düzenle" form (everything except the time zone)."""
+    import panel_settings
+    out = [{"key": k, "label": spec[0], "value": panel_settings.current(k), "options": spec[5]}
+           for k, spec in panel_settings.SPEC.items()]
+    out.append({"key": "sessizlik", "label": "Sessizlik saatleri (; ile ayır)",
+                "value": "; ".join(quiet.describe(w) for w in quiet.windows()), "options": None})
+    return out
+
+
 def build_settings() -> dict:
     s = alerts_store.load_settings()
     return {
@@ -461,19 +472,19 @@ def build_settings() -> dict:
         "default_rr_min": 1.0,
         "timezone": "Europe/Istanbul",
         "notifications": {"telegram": True, "email": False},
+        "duzenlenebilir": editable_params(),
         "params": [
-            {"label": "Kısa vadeli bütçe", "value": "~100 USD"},
+            {"label": "Kısa vadeli bütçe", "value": f"~{s.get('kisa_butce_usd') or 100:g} USD"},
             {"label": "Varsayılan ilk kademe", "value": f"{config.DEFAULT_TRANCHE_USD} USD"},
             {"label": "BIST bütçesi / ilk kademe", "value":
              f"{bist.budget_tl():,} TL / %{config.BIST_FIRST_TRANCHE_PCT}" if bist.budget_tl() else
              "girilmedi · Telegram: /bist butce 5000"},
             {"label": "BIST net R/R / azami stop riski", "value": f"{config.BIST_MIN_RR:g} / %{config.BIST_MAX_RISK_PCT:g}"},
-            {"label": "Minimum R/R", "value": "1.0 (RİSK-OFF'ta 1.5)"},
+            {"label": "Minimum R/R", "value": f"{config.MIN_RR:g} (RİSK-OFF'ta {config.MIN_RR_RISK_OFF:g})"},
             {"label": "Ön filtre", "value": "kod" if config.PREFILTER == "kod" else "qwen3 (yerel)"},
-            {"label": "Sessiz saatler", "value": s["quiet_hours"] or "kapalı"},
-            {"label": "Sessiz günler", "value": ",".join(s["quiet_days"]) or "her gün"},
+            {"label": "Sessizlik saatleri", "value": "; ".join(quiet.describe(w) for w in quiet.windows()) or "yok"},
             {"label": "Sabah brifi", "value": f"{config.BRIEF_HOUR:02d}:{config.BRIEF_MINUTE:02d} TR"},
-            {"label": "Analiz modeli", "value": config.DEEPSEEK_MODEL},
+            {"label": "Analiz modeli", "value": s.get("ai_mod", "sira")},
         ],
         "rules_readonly": [
             "Dokunma ≠ kapanış: sadece mum kapanışı tetikler, iğne asla.",

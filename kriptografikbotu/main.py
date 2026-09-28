@@ -68,6 +68,7 @@ import watcher
 import web_sync
 import voice_quant
 import quiet
+import panel_settings
 import signal_life
 import advisor
 from alert_engine import AlertEngine
@@ -5329,6 +5330,16 @@ async def cloud_state_job(context: ContextTypes.DEFAULT_TYPE):
         log.warning("Cloud state sync failed: %s", e)
 
 
+APP_REF: dict = {}
+panel_settings.apply()
+
+
+def schedule_brief(app):
+    for job in app.job_queue.get_jobs_by_name("sabah_brifi"):
+        job.schedule_removal()
+    app.job_queue.run_daily(brief_job, dtime(config.BRIEF_HOUR, config.BRIEF_MINUTE, tzinfo=macro.TR), name="sabah_brifi")
+
+
 async def backup_job(context: ContextTypes.DEFAULT_TYPE):
     """03:30 TR: whole database to a gzip file on the server (Atlas M0 keeps no backups)."""
     try:
@@ -5565,7 +5576,26 @@ def register_panel_actions(bot):
                 f"isabet %{t['isabet_yuzde']}, net toplam {t['toplam_R_net']}R (sonuç panelde)")
 
     async def settings_set(p):
-        """Only the few settings that are safe to change from the panel. Rules stay fixed in code."""
+        """Owner's parameters from the panel's "Düzenle" form (panel_settings.SPEC + quiet windows)."""
+        if isinstance(p.get("degerler"), dict):
+            vals = dict(p["degerler"])
+            quiet_text = vals.pop("sessizlik", None)
+            try:
+                done = panel_settings.save(vals)
+            except ValueError as e:
+                return f"❌ Panel ayarı: {e}"
+            if quiet_text is not None:
+                parts = [x for x in str(quiet_text).split(";") if x.strip()]
+                wins = [quiet.parse_window(x) for x in parts]
+                if any(w is None for w in wins):
+                    return "❌ Panel ayarı: sessizlik saatleri anlaşılamadı (ör. hafta içi 12.00-14.30; her gün 23:00-07:30)"
+                quiet.clear_windows()
+                for w in wins:
+                    quiet.add_window(w)
+                done.append("sessizlik: " + ("; ".join(quiet.describe(w) for w in wins) or "yok"))
+            if any(k == "brif" for k in vals) and APP_REF.get("app"):
+                schedule_brief(APP_REF["app"])
+            return "⚙️ Panelden ayar: " + (", ".join(done) or "değişiklik yok")
         s = alerts_store.load_settings()
         done = []
         if p.get("ai_mod") in ("sira", "deepseek", "kimi", "glm"):
@@ -6246,6 +6276,7 @@ def main():
         if config.ALLOWED_CHAT_ID:
             app.bot_data["engine_task"] = asyncio.create_task(engine.run())
         register_panel_actions(app.bot)
+        APP_REF["app"] = app
 
     async def stop_engine(app: Application):
         task = app.bot_data.get("engine_task")
@@ -6342,7 +6373,7 @@ def main():
         app.job_queue.run_repeating(watch_job, interval=config.CHECK_INTERVAL, first=first)
         app.job_queue.run_repeating(position_job, interval=config.CHECK_INTERVAL, first=first + 10)
         log.info("Watcher starts in %.0f s", first)
-        app.job_queue.run_daily(brief_job, dtime(config.BRIEF_HOUR, config.BRIEF_MINUTE, tzinfo=macro.TR))
+        schedule_brief(app)
         app.job_queue.run_once(lambda ctx: schedule_events(ctx.application), when=5)
         schedule_quiet_summary(app)
         app.job_queue.run_repeating(held_digest_job, interval=60, first=30, name="bekleyen_bildirim")

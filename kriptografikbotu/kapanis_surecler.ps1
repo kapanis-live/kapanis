@@ -2,8 +2,8 @@
 # Only processes started from these project folders are touched; other Python/Node apps are left alone.
 param([switch]$Stop)
 
-$bot = "C:\Users\etemk\OneDrive\Desktop\kriptografikbotu"
-$web = "C:\Users\etemk\OneDrive\Desktop\kapanis"
+$bot = "D:\Kullanici\Desktop\kriptografikbotu"
+$web = "D:\Kullanici\Desktop\kapanis"
 
 $targets = @()
 

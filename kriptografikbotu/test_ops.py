@@ -93,5 +93,18 @@ class RiskNewsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(msgs), 3)
 
 
+class PanelSettingsTest(unittest.TestCase):
+    def test_save_validates_and_applies(self):
+        import panel_settings
+        done = panel_settings.save({"min_rr": "1,3", "brif": "7.45", "ai_mod": "kimi"})
+        self.assertEqual(len(done), 3)
+        self.assertEqual((config.MIN_RR, config.BRIEF_HOUR, config.BRIEF_MINUTE), (1.3, 7, 45))
+        with self.assertRaises(ValueError):
+            panel_settings.save({"bist_risk": "99"})
+        with self.assertRaises(ValueError):
+            panel_settings.save({"on_filtre": "rastgele"})
+        self.assertNotIn("timezone", panel_settings.SPEC)
+
+
 if __name__ == "__main__":
     unittest.main()

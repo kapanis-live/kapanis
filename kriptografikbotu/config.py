@@ -106,6 +106,8 @@ DECISIONS_FILE = DATA_DIR / "decisions.json"
 DEFAULT_TRANCHE_USD = 25
 REDUCED_TRANCHE_USD = 15        # RİSK-OFF, unverifiable macro, or no volume confirmation
 TOTAL_FIRST_TRANCHE_USD = 25    # correlated coins count as one trade
+MIN_RR = 1.0                    # crypto gate; RİSK-OFF or unverifiable macro uses MIN_RR_RISK_OFF
+MIN_RR_RISK_OFF = 1.5
 MIN_TRANCHE_USD = 10            # practical floor; the pair's exchange minimum applies if higher
 CRYPTO_BUDGET_USD = 100         # short-term crypto trading budget (daily loss limit is a share of it)
 

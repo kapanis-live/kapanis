@@ -5,7 +5,6 @@ import { PageHeader } from "@/components/PanelLayout";
 import { useData } from "@/lib/useData";
 import { DataView, Panel } from "@/components/DataView";
 import { useAuth } from "@/context/AuthContext";
-import { formatNumber } from "@/lib/format";
 import { TEXTS } from "@/lib/texts";
 import { Check, ShieldCheck } from "lucide-react";
 
@@ -18,28 +17,48 @@ function Row({ label, value }) {
   );
 }
 
-// Panelden değiştirilebilen ayarlar; kurallar kodda sabit kalır.
-function EditCard() {
-  const [f, setF] = useState({ ai_mod: "sira", bist_butce: "", abd_butce: "" });
-  const save = () => {
-    const body = { ai_mod: f.ai_mod };
-    if (f.bist_butce.trim()) body.bist_butce = U.parseTr(f.bist_butce);
-    if (f.abd_butce.trim()) body.abd_butce = U.parseTr(f.abd_butce);
-    sendAction("settings.set", body, "Ayarlar bota iletildi.");
+const OPTION_LABEL = { sira: "Sırayla (15 dk)", deepseek: "DeepSeek", kimi: "Kimi K3", glm: "GLM 5.3", kod: "kod", qwen: "qwen3 (yerel)" };
+
+// Bot parametreleri: sağ üstte Düzenle → alanlar açılır → Kaydet bota iletilir (saat dilimi hariç)
+function ParamsPanel({ d }) {
+  const fields = d.duzenlenebilir || [];
+  const [edit, setEdit] = useState(false);
+  const [f, setF] = useState({});
+  const start = () => { setF(Object.fromEntries(fields.map((x) => [x.key, x.value == null ? "" : String(x.value)]))); setEdit(true); };
+  const save = async () => {
+    const changed = Object.fromEntries(fields.filter((x) => String(x.value ?? "") !== f[x.key]).map((x) => [x.key, f[x.key]]));
+    if (!Object.keys(changed).length) return setEdit(false);
+    if (await sendAction("settings.set", { degerler: changed }, "Ayarlar bota iletildi; sonuç Telegram'a gelir.")) setEdit(false);
   };
+  const action = !fields.length ? null : edit
+    ? <div className="flex gap-2"><K.Button variant="ghost" onClick={() => setEdit(false)}>Vazgeç</K.Button><K.Button variant="primary" onClick={save}>Kaydet</K.Button></div>
+    : <K.Button variant="secondary" onClick={start} data-testid="settings-edit">Düzenle</K.Button>;
   return (
-    <K.Card title="Değiştir">
-      <div className="grid gap-3 sm:grid-cols-4">
-        <K.Field label="Yapay zekâ modeli" hint="sıra = 15 dakikada bir değişir">
-          <K.Select value={f.ai_mod} onChange={(e) => setF({ ...f, ai_mod: e.target.value })}
-            options={[{ value: "sira", label: "Sırayla" }, { value: "deepseek", label: "DeepSeek" }, { value: "kimi", label: "Kimi K3" }, { value: "glm", label: "GLM 5.3" }]} />
-        </K.Field>
-        <K.Field label="BIST bütçesi" hint="boş = değişmez"><K.TextInput prefix="₺" inputMode="decimal" value={f.bist_butce} onChange={(e) => setF({ ...f, bist_butce: e.target.value })} /></K.Field>
-        <K.Field label="ABD bütçesi" hint="boş = değişmez"><K.TextInput prefix="$" inputMode="decimal" value={f.abd_butce} onChange={(e) => setF({ ...f, abd_butce: e.target.value })} /></K.Field>
-        <div className="flex items-end"><K.Button variant="primary" onClick={save}>Kaydet</K.Button></div>
-      </div>
-      <p className="kp-note">Sessiz saatler Telegram'dan: /set_config quiet_hours=09:00-16:00. Kademe ve risk kuralları kodda sabittir.</p>
-    </K.Card>
+    <Panel title="Bot parametreleri" testid="settings-risk" action={action}>
+      {edit ? (
+        <div className="flex flex-col gap-3">
+          {fields.map((x) => (
+            <K.Field key={x.key} label={x.label}>
+              {x.options ? (
+                <K.Select value={f[x.key]} onChange={(e) => setF({ ...f, [x.key]: e.target.value })}
+                  options={x.options.map((o) => ({ value: o, label: OPTION_LABEL[o] || o }))} />
+              ) : (
+                <K.TextInput value={f[x.key]} inputMode={x.key === "sessizlik" || x.key === "brif" ? "text" : "decimal"}
+                  onChange={(e) => setF({ ...f, [x.key]: e.target.value })} />
+              )}
+            </K.Field>
+          ))}
+          <Row label="Saat dilimi" value={`${d.timezone} (değiştirilemez)`} />
+        </div>
+      ) : (
+        <>
+          {(d.params || []).map((p) => <Row key={p.label} label={p.label} value={p.value} />)}
+          <Row label="Saat dilimi" value={d.timezone} />
+        </>
+      )}
+      <p className="mt-3 text-xs text-t-3">{edit ? "Değer aralığı dışındaysa bot reddeder ve Telegram'a nedenini yazar. Sessizlik örneği: hafta içi 12.00-14.30; her gün 23:00-07:30"
+        : "Bu değerler bottan okunur. Değiştirmek için Düzenle."}</p>
+    </Panel>
   );
 }
 
@@ -52,27 +71,13 @@ export default function Settings() {
       <DataView query={q} loadingText={TEXTS.loading.default}>
         {(d) => (
           <div className="grid gap-6 lg:grid-cols-2">
-            <Panel title="Bot parametreleri" testid="settings-risk">
-              {d.params ? (
-                d.params.map((p) => <Row key={p.label} label={p.label} value={p.value} />)
-              ) : (
-                <>
-                  <Row label="İşlem başına risk" value={`%${formatNumber(d.risk_per_trade_pct, { decimals: 1 })}`} />
-                  <Row label="Maks. açık pozisyon" value={formatNumber(d.max_open_positions, { decimals: 0 })} />
-                  <Row label="Minimum R/R" value={formatNumber(d.default_rr_min, { decimals: 1 })} />
-                </>
-              )}
-              <Row label="Saat dilimi" value={d.timezone} />
-              <p className="mt-3 text-xs text-t-3">Bu değerler bottan okunur. Model ve bütçeler aşağıdan değiştirilebilir.</p>
-            </Panel>
+            <ParamsPanel d={d} />
 
             <Panel title="Hesap" testid="settings-account">
               <Row label="E-posta" value={user?.email || "—"} />
               <Row label="Rol" value={user?.role || "—"} />
               <Row label="Telegram bildirimleri" value={d.notifications?.telegram ? "Açık" : "Kapalı"} />
             </Panel>
-
-            <div className="lg:col-span-2"><EditCard /></div>
 
             <Panel title="Kurallar (salt okunur)" testid="settings-rules" className="lg:col-span-2">
               <div className="mb-3 flex items-center gap-2 text-xs text-t-3">

@@ -17,7 +17,8 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Kapanis panel chart)"}
 TIMEFRAMES = ["15m", "1h", "4h", "1d", "1w"]
 # Yahoo has no 4h interval: 4h is built from 1h candles.
 YAHOO_TF = {"15m": ("15m", "60d"), "1h": ("60m", "730d"), "4h": ("60m", "730d"), "1d": ("1d", "5y"), "1w": ("1wk", "10y")}
-SHOW = 320           # candles sent to the browser
+# candles sent to the browser: enough for the range buttons (1G..5Y) on each interval
+SHOW = {"15m": 400, "1h": 800, "4h": 800, "1d": 2000, "1w": 600}
 CACHE_SECONDS = 60
 _cache: dict = {}
 
@@ -67,12 +68,18 @@ async def _binance(client: httpx.AsyncClient, code: str, tf: str) -> list[dict]:
     last = None
     for base in BINANCE:
         try:
-            r = await client.get(f"{base}/api/v3/klines", params={"symbol": code + "USDT", "interval": tf, "limit": 600}, timeout=15)
+            r = await client.get(f"{base}/api/v3/klines", params={"symbol": code + "USDT", "interval": tf, "limit": 1000}, timeout=15)
             if r.status_code == 400:
                 raise ChartError(f"Binance'te {code}/USDT yok")
             r.raise_for_status()
+            data = r.json()
+            if tf == "1d" and len(data) == 1000:  # 5 years of daily candles need a second page
+                r2 = await client.get(f"{base}/api/v3/klines", params={"symbol": code + "USDT", "interval": tf, "limit": 1000,
+                                                                     "endTime": int(data[0][0]) - 1}, timeout=15)
+                if r2.status_code == 200:
+                    data = r2.json() + data
             return [{"t": int(k[0]) // 1000, "o": float(k[1]), "h": float(k[2]), "l": float(k[3]), "c": float(k[4]), "v": float(k[5])}
-                    for k in r.json()]
+                    for k in data]
         except ChartError:
             raise
         except Exception as e:  # try the mirror
@@ -223,7 +230,7 @@ async def chart(symbol: str, tf: str = "1d", market: str | None = None) -> dict:
         "vwap": vwap(rows, intraday=tf in ("15m", "1h", "4h")),
     }
     series.update(technical_indicators.calculate(rows))
-    rows_out = rows[-SHOW:]
+    rows_out = rows[-SHOW.get(tf, 400):]
     cut = len(rows) - len(rows_out)
     last, prev = rows[-1], rows[-2]
     doc = {

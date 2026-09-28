@@ -87,7 +87,7 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
         macro_ok, why = False, f"takvim/rejim alınamadı ({e})"
     if not macro_ok:
         risk_off = True
-    min_rr = 1.5 if risk_off else 1.0
+    min_rr = config.MIN_RR_RISK_OFF if risk_off else config.MIN_RR
     if rr is not None:
         checks.append(_check("R/R", rr >= min_rr,
                              f"R/R {rr:.2f}, eşik {min_rr:g}" + (" (RİSK-OFF/doğrulanamadı)" if risk_off else "")))

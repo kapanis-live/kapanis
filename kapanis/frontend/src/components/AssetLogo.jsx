@@ -16,13 +16,26 @@ export function logoUrl(code, market) {
   return null;
 }
 
+// "HYPE/USDT", "HYPEUSDT", "THYAO.IS", "AAPL.US" -> { code: "HYPE" | "THYAO" | "AAPL", market (if the text tells) }
+export function parseSymbol(symbol, market) {
+  let s = String(symbol || "").trim().toUpperCase();
+  if (s.endsWith(".IS")) return { code: s.slice(0, -3), market: "BIST" };
+  if (s.endsWith(".US")) return { code: s.slice(0, -3), market: "ABD" };
+  if (s.includes("/")) return { code: s.split("/")[0], market: market || "KRIPTO" };
+  if (!market && s.length > 5 && s.endsWith("USDT")) return { code: s.slice(0, -4), market: "KRIPTO" };
+  if (market === "KRIPTO" && s.length > 5 && s.endsWith("USDT")) s = s.slice(0, -4);
+  return { code: s, market };
+}
+
 export function logoSources(code, market) {
   const c = encodeURIComponent(String(code || "").toUpperCase());
   if (!c) return [];
+  // market unknown (a list that only has the code): try every market's own file first, then the free sources
+  const markets = market ? [market] : ["KRIPTO", "BIST", "ABD"];
   return [
-    market && `/logos/${market}/${c}.png`,
-    market === "BIST" && `/logos/${c}.png`,
-    logoUrl(c, market),
+    ...markets.map((m) => `/logos/${m}/${c}.png`),
+    markets.includes("BIST") && `/logos/${c}.png`,
+    ...markets.map((m) => logoUrl(c, m)),
   ].filter(Boolean);
 }
 
@@ -61,9 +74,13 @@ function analyse(img) {
   return { fill: true, box: { x: x0 / N, y: y0 / N, w: (x1 - x0 + 1) / N, h: (y1 - y0 + 1) / N } };
 }
 
-export function AssetLogo({ code, market, size = 40, className }) {
+export function AssetLogo({ code: rawCode, market: rawMarket, size = 40, className }) {
+  const { code, market } = parseSymbol(rawCode, rawMarket);
   const sources = logoSources(code, market);
-  const [i, setI] = useState(0);
+  const [state, setState] = useState({ key: "", i: 0 });
+  const key = sources.join("|");
+  const i = state.key === key ? state.i : 0;
+  const setI = (f) => setState((st) => ({ key, i: f(st.key === key ? st.i : 0) }));
   const src = sources[i];
   const [shape, setShape] = useState(() => (src && SHAPE.get(src)) || null);
   const box = { width: `${size / 16}rem`, height: `${size / 16}rem` };

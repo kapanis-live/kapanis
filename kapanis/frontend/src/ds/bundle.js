@@ -132,12 +132,16 @@
     if (p.src && p.src.code && window.KapanisLogo) {
       return h(window.KapanisLogo, { code: p.src.code, market: p.src.market, size: size === 'lg' ? 48 : 40 });
     }
+    /* logo verilmediyse de koddan bul (HYPE, HYPE/USDT, THYAO.IS, AAPL.US): her listede logo görünsün */
+    if (!p.src && p.symbol && window.KapanisLogo) {
+      return h(window.KapanisLogo, { code: p.symbol, market: p.market, size: size === 'lg' ? 48 : 40 });
+    }
     return h('span', { className: cx('kp-logo', 'kp-logo--' + size), 'aria-hidden': true },
       p.src && typeof p.src === 'string' ? h('img', { src: p.src, alt: '' }) : String(p.symbol || '?').slice(0, size === 'lg' ? 3 : 2));
   }
   function Ticker(p) {
     return h('span', { className: cx('kp-ticker', p.size === 'lg' && 'kp-ticker--lg') },
-      h(TickerLogo, { symbol: p.symbol, src: p.logo, size: p.size }),
+      h(TickerLogo, { symbol: p.symbol, src: p.logo, market: p.market, size: p.size }),
       h('span', { className: 'kp-ticker__text' },
         h('span', { className: 'kp-ticker__code' }, p.symbol),
         p.name ? h('span', { className: 'kp-ticker__name' }, p.name) : null));
@@ -580,8 +584,8 @@
   var DEC = { AL: 'up', TUT: 'info', BEKLE: 'warn', PAS: 'flat' };
   function DecisionBadge(p) {
     var d = DEC[p.decision] ? p.decision : 'PAS';
-    return h('span', { className: cx('kp-dec', 'kp-dec--' + DEC[d], p.size === 'lg' && 'kp-dec--lg'), title: 'Bot kararı: ' + d },
-      p.size === 'lg' && p.prefix !== false ? h('span', { className: 'kp-dec__pre' }, 'Bot kararı') : null, d);
+    return h('span', { className: cx('kp-dec', 'kp-dec--' + DEC[d], p.size === 'lg' && 'kp-dec--lg'), title: 'Sinyal: ' + d },
+      p.size === 'lg' && p.prefix !== false ? h('span', { className: 'kp-dec__pre' }, 'Sinyal') : null, d);
   }
 
   var GATE = { gecti: ['pass', 'check', 'Geçti'], kaldi: ['fail', 'x', 'Kaldı'], uyari: ['warn', 'alert', 'Uyarı'] };

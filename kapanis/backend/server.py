@@ -23,6 +23,7 @@ import mock_data
 import chart_data
 import identity
 import limits
+import insights
 import user_alerts
 import user_api
 from starlette.responses import JSONResponse
@@ -735,6 +736,7 @@ async def root():
 app.include_router(api)
 app.include_router(user_api.build_router(lambda: db, get_current_user, require_bot_key, require_owner))
 app.include_router(user_alerts.build_router(lambda: db, get_current_user, require_bot_key))
+app.include_router(insights.build_router(lambda: db, get_current_user))
 
 # Serve the prebuilt panel (frontend/build) from this same server, so the panel opens in seconds
 # instead of waiting for the React dev server to compile. /api routes above take precedence.

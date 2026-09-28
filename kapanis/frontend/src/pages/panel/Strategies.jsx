@@ -35,6 +35,25 @@ function History({ id }) {
 
 const pctCell = (v) => <span className={tone(v)}>{v == null ? "—" : `${v >= 0 ? "+" : "−"}%${U.fmtNum(Math.abs(v), 1)}`}</span>;
 
+// Canlı karne: kural yayına girdiği günden sonra verdiği her giriş/çıkış ve gerçek sonucu (geriye dönük doldurma yok)
+function LiveRecord({ r }) {
+  const rows = (r.islemler || []).map((t) => ({ ...t, _k: t.id }));
+  return <div className="mt-2 rounded-lg border border-hairline p-3">
+    <p className="m-0 font-semibold text-t-1">Canlı karne {r.baslangic ? `· ${relDay(r.baslangic)} başladı` : ""}</p>
+    <p className="kp-note">{r.kapali ? `${r.kapali} kapalı işlem · isabet %${r.isabet_yuzde} · ortalama ${pct(r.ort_getiri_yuzde)} (maliyet düşülmüş)` : "Henüz kapanmış işlem yok."}
+      {r.acik ? ` · ${r.acik} açık işlem.` : ""} Yalnız başlangıçtan sonra gelen girişler sayılır; geriye dönük kazanan eklenmez.</p>
+    {!!rows.length && <K.DataTable rows={rows} rowKey="_k" columns={[
+      { key: "kod", label: "Coin", render: (t) => <b>{t.kod}</b> },
+      { key: "giris_t", label: "Giriş", render: (t) => `${relDay(new Date(t.giris_t * 1000).toISOString())} · ${t.giris ?? "—"}` },
+      { key: "durum", label: "Durum", render: (t) => (t.durum === "acik" ? "açık" : `çıktı · ${t.cikis}`) },
+      { key: "sonuc", label: "Sonuç", num: true, strong: true, render: (t) => {
+        const v = t.durum === "acik" ? t.simdi_yuzde : t.getiri_yuzde;
+        return <span className={tone(v)}>{pct(v)}{t.durum === "acik" ? " (şimdilik)" : ""}</span>;
+      } },
+    ]} />}
+  </div>;
+}
+
 // Geçmiş veri testinden geçen tek kural: kripto trend takibi. Kanıt tablosu + bugünkü durum + trend alarmı.
 function TrendCard() {
   const q = useData("trend-board", "/strategies/trend", { refetchInterval: 600_000 });
@@ -81,6 +100,7 @@ function TrendCard() {
             : <K.Button variant="ghost" disabled={busy === r.kod} onClick={() => follow(r.kod)}>Haber ver</K.Button> },
         ]} />
       )}
+      {q.data?.canli && <LiveRecord r={q.data.canli} />}
       <p className="kp-note">"Haber ver": kural bu coinde girince ya da çıkınca Telegram'a ve Alarmlarım'a mesaj gelir. Portföyündeki kriptolarda çıkış seviyesi kırılınca
         ayrıca uyarı gelir. Emir gönderilmez; kesinlik yok.</p>
     </K.Card>

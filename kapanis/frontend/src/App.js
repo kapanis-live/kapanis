@@ -16,6 +16,8 @@ import MyPortfolio from "@/pages/panel/MyPortfolio";
 import MyAnalyses from "@/pages/panel/MyAnalyses";
 import Strategies from "@/pages/panel/Strategies";
 import MyAlerts from "@/pages/panel/MyAlerts";
+import MyReport from "@/pages/panel/MyReport";
+import PortfolioHealth from "@/pages/panel/PortfolioHealth";
 import Crisis from "@/pages/panel/Crisis";
 import Account from "@/pages/panel/Account";
 import { useAuth } from "@/context/AuthContext";
@@ -82,6 +84,8 @@ function App() {
           <Route path="/app/analizlerim" element={panel(<MyAnalyses />)} />
           <Route path="/app/stratejiler" element={panel(<Strategies />)} />
           <Route path="/app/alarmlarim" element={panel(<MyAlerts />)} />
+          <Route path="/app/karnem" element={panel(<MyReport />)} />
+          <Route path="/app/saglik" element={panel(<PortfolioHealth />)} />
           <Route path="/app/kriz" element={panel(<Crisis />)} />
           <Route path="/app/hesap" element={panel(<Account />)} />
           <Route path="/app/grafik" element={panel(<ChartPage />)} />

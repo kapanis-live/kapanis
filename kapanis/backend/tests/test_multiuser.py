@@ -528,6 +528,45 @@ class UserAlarmTest(MultiUserTest.__bases__[0]):
         texts = [e["metin"] for e in (await self.c.get("/api/alarms", headers=h)).json()["olaylar"]]
         self.assertTrue(any("GİRİŞ" in t for t in texts) and any("ÇIKIŞ" in t for t in texts))
 
+    async def test_portfolio_health_and_trend_live_record(self):
+        import unittest.mock as um
+        ua, ins = server.user_alerts, server.insights
+        h = auth("user_c")
+        for kod, adet, cost in (("ETH", 1, 100), ("SOL", 10, 10)):
+            await self.c.post("/api/portfolio/positions", headers=h, json={"piyasa": "KRIPTO", "kod": kod, "adet": adet, "maliyet": cost})
+        start = int(time.time()) - 130 * 86400
+
+        async def chart(symbol, tf="1d", market=None):
+            if symbol == "USDTRY=X":
+                return {"candles": [{"t": start + i * 86400, "c": 40.0} for i in range(130)]}
+            cs = [100 + (i % 9) * 2 + i * 0.3 for i in range(130)]   # SOL moves exactly like ETH
+            k = 1.0 if symbol == "ETH" else 0.1
+            return {"candles": [{"t": start + i * 86400, "c": c * k, "h": c * k * 1.01, "l": c * k * 0.99} for i, c in enumerate(cs)],
+                    "sma200": [50.0 * k] * 130}
+        with um.patch.object(ins.chart_data, "chart", chart), um.patch.object(ua.chart_data, "chart", chart):
+            hl = (await self.c.get("/api/portfolio/health", headers=h)).json()
+        self.assertEqual(len(hl["pozisyonlar"]), 2)
+        self.assertEqual(sum(p["agirlik_yuzde"] for p in hl["pozisyonlar"]), 100.0)
+        self.assertEqual(hl["korelasyon"][0]["r"], 1.0)
+        self.assertTrue(any("birlikte hareket" in w for w in hl["uyarilar"]))
+        self.assertTrue(any("stop yok" in w for w in hl["uyarilar"]))
+        self.assertEqual((await self.c.get("/api/karne", headers=h)).json()["islem"], 0)
+        # live record: an entry that happened before the record began is not back-filled
+        states = [{"kod": "BTC", "trendde": True, "degisim": time.time() - 10 * 86400, "degisim_kapanis": 90.0,
+                   "kapanis": 100.0, "giris_bugun": False, "mum": 0}]
+        with um.patch.object(ins.trend_rule, "universe_states", um.AsyncMock(return_value=states)):
+            self.assertEqual(await ins.record_trend(server.db), 0)
+            t0 = time.time()
+            states[0].update(trendde=False, degisim=t0 - 3600, degisim_kapanis=95.0)
+            await ins.record_trend(server.db)
+            states[0].update(trendde=True, degisim=t0 + 86400, degisim_kapanis=100.0, kapanis=100.0)
+            self.assertEqual(await ins.record_trend(server.db, now=t0 + 2 * 86400), 1)   # new entry after the start
+            states[0].update(trendde=False, degisim=t0 + 5 * 86400, degisim_kapanis=110.0, kapanis=110.0)
+            self.assertEqual(await ins.record_trend(server.db, now=t0 + 6 * 86400), 1)   # exit: closed with the result
+            rec = await ins.trend_record(server.db)
+        self.assertEqual((rec["kapali"], rec["acik"]), (1, 0))
+        self.assertAlmostEqual(rec["ort_getiri_yuzde"], 9.78, places=1)                  # +10 % minus 0.1 % per side
+
     async def test_position_stop_warning_once_per_level_and_limit(self):
         import unittest.mock as um
         h = auth("user_b")
@@ -574,6 +613,37 @@ class TrendRuleTest(unittest.TestCase):
         # below the 200-day average a breakout is not an entry
         st4 = trend_rule.state(self._candles(up), [120.0] * len(up), now)
         self.assertFalse(st4["trendde"])
+
+
+class InsightsTest(unittest.TestCase):
+    def test_report_card_from_own_trades(self):
+        import insights
+        doc = {"positions": [
+            {"id": "p1", "kod": "THYAO", "maliyet": 100, "acilis": "2026-09-01T10:00:00+00:00", "stop": 95},
+            {"id": "p2", "kod": "BTC", "maliyet": 50000, "acilis": "2026-09-10T10:00:00+00:00", "stop": 48000}],
+            "transactions": [
+            {"tur": "satis", "pozisyon_id": "p1", "kod": "THYAO", "piyasa": "BIST", "para": "TL", "fiyat": 120, "kar": 200,
+             "zaman": "2026-09-11T10:00:00+00:00"},
+            {"tur": "satis", "pozisyon_id": "p2", "kod": "BTC", "piyasa": "KRIPTO", "para": "USD", "fiyat": 47000, "kar": -300,
+             "zaman": "2026-09-12T10:00:00+00:00"}]}
+        after_sale = 1790000000.0  # a close after both sales
+        r = insights.report(doc, {"BIST:THYAO": (after_sale, 140.0)})
+        self.assertIsNone(insights.report(doc, {"BIST:THYAO": (1757000000.0, 140.0)})["islemler"][1]["sonra_yuzde"])
+        self.assertEqual((r["islem"], r["kazanan"], r["isabet_yuzde"]), (2, 1, 50))
+        self.assertEqual(r["gerceklesen"], {"TL": 200.0, "USD": -300.0})
+        self.assertEqual(r["stop_alti_satis"], 1)            # BTC sold below its stop
+        self.assertEqual(r["erken_satis"], 1)                # THYAO went 16.7 % higher after the sale
+        self.assertEqual(r["ort_gun_kazanan"], 10.0)
+
+    def test_correlation(self):
+        import insights
+        day = 86400
+        a = [(i * day, 100 + (i % 7) * 3 + i * 0.1) for i in range(120)]
+        b = [(t, c * 2) for t, c in a]
+        c = [(i * day, 100 + ((i * 5) % 11)) for i in range(120)]
+        self.assertEqual(insights.correlation(a, b), 1.0)
+        self.assertLess(abs(insights.correlation(a, c)), 0.8)
+        self.assertIsNone(insights.correlation(a[:10], b[:10]))
 
 
 class LastClosedTest(unittest.TestCase):

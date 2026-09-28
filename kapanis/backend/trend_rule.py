@@ -41,20 +41,20 @@ def state(candles: list[dict], sma200: list, now: float | None = None) -> dict |
     lo10 = min(x["l"] for x in candles[i - 10:i])
     s200 = sma200[i] if i < len(sma200) else None
     # replay the rule over the visible history so "in trend" means the rule would be holding now
-    hold, since = False, None
+    hold, since, since_close = False, None, None
     for j in range(20, i + 1):
         cj = candles[j]["c"]
         h20 = max(x["h"] for x in candles[j - 20:j])
         l10 = min(x["l"] for x in candles[j - 10:j])
         s = sma200[j] if j < len(sma200) else None
         if not hold and s is not None and cj > h20 and cj > s:
-            hold, since = True, candles[j]["t"]
+            hold, since, since_close = True, candles[j]["t"], cj
         elif hold and cj < l10:
-            hold, since = False, candles[j]["t"]
+            hold, since, since_close = False, candles[j]["t"], cj
     entry_today = hold and since == c["t"]
     exit_today = not hold and since == c["t"]
     return {"kapanis": c["c"], "mum": c["t"], "ust20": hi20, "alt10": lo10, "sma200": s200, "trendde": hold,
-            "giris_bugun": entry_today, "cikis_bugun": exit_today, "degisim": since,
+            "giris_bugun": entry_today, "cikis_bugun": exit_today, "degisim": since, "degisim_kapanis": since_close,
             "girise_uzaklik_yuzde": None if hold else round((max(hi20, s200 or 0) / c["c"] - 1) * 100, 2),
             "cikisa_uzaklik_yuzde": round((c["c"] / lo10 - 1) * 100, 2) if hold else None}
 

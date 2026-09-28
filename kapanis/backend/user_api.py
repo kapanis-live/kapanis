@@ -472,6 +472,8 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
             "stratejiler": await get_db().strategies.find({"user_id": uid}, {"_id": 0}).to_list(5000),
             "kriz_planlari": await get_db().risk_proposals.find({"user_id": uid}, {"_id": 0}).to_list(5000),
             "istekler": await get_db().commands.find({"user_id": uid}, {"_id": 0, "telegram_chat_id": 0}).to_list(5000),
+            "alarmlar": await get_db().user_alerts.find({"user_id": uid}, {"_id": 0}).to_list(5000),
+            "uyarilar": await get_db().user_alert_events.find({"user_id": uid}, {"_id": 0, "chat_id": 0}).to_list(5000),
         }
 
     @r.get("/account/export")
@@ -496,6 +498,8 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
         await d.risk_proposals.delete_many({"user_id": uid})
         await d.commands.delete_many({"user_id": uid})
         await d.telegram_links.delete_many({"user_id": uid})
+        await d.user_alerts.delete_many({"user_id": uid})
+        await d.user_alert_events.delete_many({"user_id": uid})
         await d.users.delete_one({"_id": ObjectId(uid)})
         return {"ok": True}
 

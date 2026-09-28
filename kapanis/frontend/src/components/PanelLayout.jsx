@@ -9,7 +9,7 @@ import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid, Bell, Activity, Wallet, FileBarChart, Globe2, Receipt, LineChart, FlaskConical,
-  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target, ClipboardCheck, UserRound, Briefcase, Users as UsersIcon,
+  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target, ClipboardCheck, UserRound, Briefcase, Users as UsersIcon, HeartPulse,
 } from "lucide-react";
 
 const NAV = [
@@ -65,6 +65,8 @@ const NAV = [
 // Sistem sahibi olmayan kullanıcı: kendi portföyü, piyasa sayfaları, hesabı (botun kişisel verisi kapalı)
 const USER_NAV = [
   { group: "Portföy", items: [{ to: "/app/portfoyum", label: "Portföyüm", icon: Briefcase },
+    { to: "/app/saglik", label: "Portföy sağlığı", icon: HeartPulse },
+    { to: "/app/karnem", label: "Karnem", icon: ClipboardCheck },
     { to: "/app/alarmlarim", label: "Alarmlarım", icon: Bell },
     { to: "/app/kriz", label: "Kriz Planı", icon: ShieldCheck }] },
   {

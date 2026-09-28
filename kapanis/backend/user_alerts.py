@@ -146,7 +146,9 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
     @r.get("/strategies/trend")
     async def trend_board(_: dict = Depends(current_user)):
         """The tested crypto trend rule: its history test and where each large coin stands today."""
-        return {"kanit": trend_rule.EVIDENCE, "coinler": await trend_rule.universe_states()}
+        import insights
+        return {"kanit": trend_rule.EVIDENCE, "coinler": await trend_rule.universe_states(),
+                "canli": await insights.trend_record(get_db())}
 
     @r.get("/bot/alarm-events")
     async def pending_events(_: bool = Depends(require_bot_key)):
@@ -300,6 +302,8 @@ async def loop(get_db):
             n = await run_once(get_db())
             if n:
                 log.info("User alarms fired: %d", n)
+            import insights
+            await insights.record_trend(get_db())
             w = await weekly_once(get_db())
             if w:
                 log.info("Weekly summaries queued: %d", w)

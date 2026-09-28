@@ -41,6 +41,14 @@ def main() -> int:
     sys.path.insert(0, str(ROOT))
     import db_backup  # noqa: E402
 
+    path = pathlib.Path(args.file)
+    if path.name.endswith(".enc"):  # the encrypted copy from Telegram: needs BACKUP_PASSWORD
+        if not os.getenv("BACKUP_PASSWORD"):
+            print("Şifreli yedek: BACKUP_PASSWORD ortam değişkenini ayarla.")
+            return 2
+        path = db_backup.decrypt(path, os.environ["BACKUP_PASSWORD"])
+        print(f"Şifre çözüldü: {path}")
+    args.file = str(path)
     only = {c.strip() for c in args.only.split(",")} if args.only else None
     docs: dict[str, list] = defaultdict(list)
     for coll, doc in db_backup.read(pathlib.Path(args.file)):

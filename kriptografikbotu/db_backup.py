@@ -71,3 +71,41 @@ def read(path: Path):
             if line.strip():
                 row = json_util.loads(line)
                 yield row["c"], row["d"]
+
+
+# ---------------- encrypted off-site copy ----------------
+# The backup file lives on the same server as the database's users: if the server is lost, so is the backup.
+# With BACKUP_PASSWORD set, the bot also sends an encrypted copy to the owner's Telegram chat after each backup.
+MAGIC = b"KPB1"
+
+
+def _key(password: str, salt: bytes) -> bytes:
+    import base64
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=390_000)
+    return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+
+
+def encrypt(path: Path, password: str) -> Path:
+    """backup.jsonl.gz -> backup.jsonl.gz.enc (password-derived key; salt stored in the file)."""
+    from cryptography.fernet import Fernet
+    salt = os.urandom(16)
+    out = path.with_name(path.name + ".enc")
+    out.write_bytes(MAGIC + salt + Fernet(_key(password, salt)).encrypt(path.read_bytes()))
+    os.chmod(out, 0o600)
+    return out
+
+
+def decrypt(path: Path, password: str) -> Path:
+    from cryptography.fernet import Fernet, InvalidToken
+    data = path.read_bytes()
+    if not data.startswith(MAGIC):
+        raise ValueError("Kapanış şifreli yedek dosyası değil")
+    try:
+        plain = Fernet(_key(password, data[4:20])).decrypt(data[20:])
+    except InvalidToken:
+        raise ValueError("Şifre yanlış ya da dosya bozuk")
+    out = path.with_name(path.name.removesuffix(".enc"))
+    out.write_bytes(plain)
+    return out

@@ -253,6 +253,14 @@ docker compose exec worker ls -l /app/kriptografikbotu/backups
 docker compose cp worker:/app/kriptografikbotu/backups ./yedek-indir     # sonra scp ile bilgisayara
 ```
 
+**Sunucu dışı kopya:** `deploy/bot.env` içine `BACKUP_PASSWORD=uzun-bir-sifre` yazarsan her gece yedeğin şifreli
+kopyası bot sohbetine dosya olarak gelir (45 MB'a kadar). Şifreyi başka bir yerde de sakla; şifresiz açılmaz.
+Şifreli dosyayı geri yüklemek: `BACKUP_PASSWORD=... python scripts/restore_backup.py DOSYA.jsonl.gz.enc --yes --db kapanis_geri`.
+
+**Site izleme:** bot 5 dakikada bir siteyi (internetten) ve API'yi (iç ağdan) yoklar; 10 dakika cevap yoksa ve
+düzelince Telegram'a yazar. Botun kendisi durursa bunu söyleyecek kimse yok: ücretsiz bir dış izleyici
+(ör. UptimeRobot, 5 dakikada bir https://kapanis.live) kurup e-posta uyarısı açman önerilir.
+
 Geri yükleme (önce yeni bir veritabanı adına, kontrol et, sonra `DB_NAME`/`STATE_DB_NAME`'i değiştir):
 
 ```bash

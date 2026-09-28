@@ -1,4 +1,5 @@
 import asyncio
+import os
 import contextvars
 import types
 import functools
@@ -5334,10 +5335,46 @@ async def backup_job(context: ContextTypes.DEFAULT_TYPE):
         path, counts = await asyncio.to_thread(db_backup.run)
         if not path.stat().st_size or not counts:
             raise RuntimeError("boş yedek")
+        if os.getenv("BACKUP_PASSWORD"):  # encrypted copy off the server (the server itself could be lost)
+            enc = await asyncio.to_thread(db_backup.encrypt, path, os.environ["BACKUP_PASSWORD"])
+            try:
+                if enc.stat().st_size < 45 * 1024 * 1024:
+                    with enc.open("rb") as f:
+                        await context.bot.send_document(
+                            config.ALLOWED_CHAT_ID, f, filename=enc.name, disable_notification=True,
+                            caption=f"🗄 Günlük veritabanı yedeği (şifreli, {sum(counts.values())} kayıt). Sunucu kaybolursa geri "
+                                    "yüklemek için sakla; şifre BACKUP_PASSWORD. Silme.")
+                else:
+                    await context.bot.send_message(config.ALLOWED_CHAT_ID, "⚠️ Yedek 45 MB'ı geçti, Telegram'a gönderilemedi; "
+                                                   "sunucuda duruyor. Başka bir depolama gerekiyor.")
+            finally:
+                enc.unlink(missing_ok=True)
     except Exception as e:
         log.exception("Database backup failed")
         await context.bot.send_message(config.ALLOWED_CHAT_ID, f"⚠️ Günlük veritabanı yedeği alınamadı: {type(e).__name__}. "
                                        "Ayrıntı sunucu loglarında; site çalışmaya devam ediyor.")
+
+
+_site_down: dict[str, int] = {}
+
+
+async def site_watch_job(context: ContextTypes.DEFAULT_TYPE):
+    """Every 5 minutes: is the site answering (inside the server and from the internet)? Tell the owner after
+    two failures in a row, and again when it is back."""
+    checks = {"site (internet)": config.PUBLIC_URL + "/", "API (iç ağ)": config.WEB_URL + "/api/auth/config"}
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        for name, url in checks.items():
+            try:
+                ok = (await client.get(url)).status_code < 500
+            except Exception:
+                ok = False
+            fails = 0 if ok else _site_down.get(name, 0) + 1
+            if fails == 2:
+                await context.bot.send_message(config.ALLOWED_CHAT_ID, f"🚨 {name} 10 dakikadır cevap vermiyor: {url}\n"
+                                               "Google Cloud → VM → SSH: docker compose ps ve docker compose logs --tail 50 web")
+            if ok and _site_down.get(name, 0) >= 2:
+                await context.bot.send_message(config.ALLOWED_CHAT_ID, f"✅ {name} yeniden cevap veriyor.")
+            _site_down[name] = fails
 
 
 async def ind_alarm_job(context: ContextTypes.DEFAULT_TYPE):
@@ -6351,6 +6388,8 @@ def main():
             app.job_queue.run_repeating(web_command_job, interval=config.WEB_COMMAND_INTERVAL, first=20)
             log.info("Web panel sync enabled: %s", config.WEB_URL)
             app.job_queue.run_repeating(user_alarm_job, interval=60, first=40, name="kullanici_alarmlari")
+            if config.WEB_URL != config.PUBLIC_URL:  # only where a separate public site exists (the cloud setup)
+                app.job_queue.run_repeating(site_watch_job, interval=300, first=120, name="site_izleme")
         if cloud_store.enabled():
             app.job_queue.run_repeating(cloud_state_job, interval=60, first=60, name="bulut_durum")
             app.job_queue.run_daily(backup_job, dtime(3, 30, tzinfo=macro.TR), name="db_backup")

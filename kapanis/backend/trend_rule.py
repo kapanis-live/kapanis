@@ -1,4 +1,4 @@
-"""The one rule that passed our history test: crypto trend following (Donchian 20/10 with a 200-day filter).
+"""The strongest candidate so far (status RESEARCH): crypto trend following (Donchian 20/10 + 200-day filter).
 
 Rule (daily closes only):
 - IN  when the close is above the highest high of the previous 20 days AND above the 200-day average
@@ -14,15 +14,18 @@ import chart_data
 
 EVIDENCE = {
     "tarih": "2026-09-28",
-    "evren": "76 kripto (batan/listeden çıkanlar dahil), 2019'dan bugüne, günlük kapanış, işlem başı %0,1 maliyet",
+    "durum": "ARAŞTIRMA",
+    "evren": "77 kripto (batan/listeden çıkanlar dahil), 2018'den bugüne, günlük kapanış, işlem başı %0,1 maliyet",
     "satirlar": [
-        {"donem": "1. yarı", "kural": 23.8, "al_tut": 0.2, "rastgele": 0.1, "kural_dusus": -60.5, "al_tut_dusus": -93.4, "piyasada": 23},
-        {"donem": "2. yarı", "kural": -0.7, "al_tut": -37.4, "rastgele": -7.7, "kural_dusus": -55.6, "al_tut_dusus": -90.3, "piyasada": 17},
+        {"donem": "Geliştirme (2018 – 1 yıl öncesi)", "kural": 9.6, "al_tut": -13.5, "rastgele": -2.1, "kural_dusus": -71.2,
+         "piyasada": 23, "gecen_varlik": 64},
+        {"donem": "Kilitli son 12 ay", "kural": 0.0, "al_tut": -54.1, "rastgele": 0.0, "kural_dusus": -17.8,
+         "piyasada": 9, "gecen_varlik": 51},
     ],
-    "not": ("Değerler coin başına ortanca yıllık getiri (%) ve en büyük düşüş (%). 'Rastgele' = aynı sürede piyasada kalan "
-            "rastgele giriş-çıkış. Kural yükselişlerin bir kısmını yakaladı, çöküşlerin çoğundan uzak durdu; "
-            "ikinci yarıda yine de kazandırmadı, sadece daha az kaybettirdi. Geçmiş sonuç geleceği garanti etmez. "
-            "BIST'te al-tut'u geçemedi, bu yüzden yalnız kriptoda sunuluyor."),
+    "not": ("Coin başına ortanca yıllık getiri (%). 'Rastgele' = aynı sürede piyasada kalan rastgele giriş-çıkış. "
+            "Geliştirme döneminde kural rastgeleyi geçti; hiç bakılmadan saklanan son 12 ayda ise piyasa %54 düşerken "
+            "kural çoğunlukla dışarıda kaldı ama rastgele dışarıda kalmaktan farkı ölçülemedi. Bu yüzden durumu ARAŞTIRMA: "
+            "kazandırdığı kanıtlanmadı, asıl etkisi düşen piyasada uzak durmak. BIST'te al-tut'u geçemedi."),
 }
 UNIVERSE = ["BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "ADA", "TRX", "AVAX", "LINK", "DOT", "BCH", "LTC", "NEAR",
             "UNI", "ATOM", "ETC", "FIL", "AAVE", "ARB", "OP", "SUI", "INJ", "HBAR", "XLM", "APT", "TIA", "ONDO", "HYPE", "ENA"]

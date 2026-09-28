@@ -11,6 +11,30 @@ GitHub: `valenciaennerman-cmd/kapanis` (private, iki klasör birlikte). Bulut ku
 
 Arayüz dili Türkçe. Kod yorumları İngilizce.
 
+## Güncel durum (28 Eylül 2026)
+
+**Yayın:** kapanis.live canlı (Google Cloud VM, Docker: web + worker + Caddy). Giriş Clerk production (Google, e-posta + şifre, e-posta kodu). Veri MongoDB Atlas. Güncelleme: kod GitHub'a (`valenciaennerman-cmd/kapanis`), sonra VM'de Google Cloud SSH penceresinden `bash ~/guncelle.sh`. Site görünümü değiştiyse önce `build-new.tgz` "Upload file" ile yüklenir.
+
+**Güvenlik:** bot uçları (`/api/bot/*`, `/api/ingest/*`, `/api/commands/pending`) internetten kapalı (Caddy 404 + `X-Kapanis-Public` işareti); worker web'e iç ağdan (`http://web:8001`) bağlanır. Hız sınırı: IP başına dakikada 180 istek, kullanıcı başına dakikada 40 grafik, en fazla 3 canlı bağlantı. Güvenlik başlıkları (HSTS, iframe yasağı, nosniff). Her gece 03:30 veritabanı yedeği (`db_backup.py`, 14 gün, geri yükleme `scripts/restore_backup.py`).
+
+**Kanıt kuralı:** öneri olarak yalnız geçmiş veri testinden geçen kural gösterilir (maliyet düşülür, dönem ikiye bölünür, batan coinler dahil edilir, al-tut ve aynı sürede rastgele gir-çık ile karşılaştırılır). Testler `research/` klasöründe, sonuçlar `research/README.md`.
+- Direnç kırılımında AL: işlem başı −0,21R, rastgeleden farksız → **otomatik AL önerileri kapalı** (`config.BUY_SIGNALS`, varsayılan kapalı). Plan teyidi/tarayıcı/BIST-ABD AL kartları yerine bilgi notu gelir.
+- Destek/direnç bölgeleri: rastgele seviyeden farksız → yalnız bilgi, karar gerekçesi değil.
+- Momentum rotasyonu: batan coinler dahil edilince çöktü → eklenmedi.
+- **Kripto trend takibi** (günlük kapanış 20 günün tepesi + 200 günlük ortalama üstü → gir; 10 günün dibi altı → çık): Strategy Engine 2.0 testinde (son 12 ay kilitli) durumu **ARAŞTIRMA**: geliştirme döneminde rastgele zamanlamayı geçti, kilitli dönemde fark ölçülemedi. Kazandırdığı kanıtlanmadı; asıl etkisi düşen piyasada dışarıda kalmak. Sitede bilgi ve alarm olarak sunulur, "kanıtlanmış" denmez. Canlı karnesi tutulur (geriye dönük doldurma yok).
+- **Strategy Engine 2.0** (`research/engine.py`, `regime.py`, `strategies.py`, `run_v2.py`): her aday aynı standartla (maliyet, batan coinler, kilitli son 12 ay, al-tut ve 20 rastgele eşle karşılaştırma, yıllık dilimler, rejime göre işlem sonuçları). Denenenler: trend içi geri çekilme, sıkışma kırılımı, göreli güç, yatayda dönüş → kripto ve BIST'te hepsi ELENDİ. Sonuçlar sitede Strateji Laboratuvarı'nda (`kapanis/backend/lab_results.json`).
+
+**Yeni özellikler (bot):** `/sessizlik` (bildirim gelmeyecek saatler, düz yazıyla: "hafta içi 12.00-14.30 arası bildirim atma"; biriken bildirimler sonra tek özet), `/sessiz` (hiç bildirim; `/plan` ile açılır), `/plan 45dk` (plan güncellemesi aralığı), `/ne ASTOR` ("ne yapayım": adetli plan, test edilmiş çıkış seviyesiyle), satışta gerçek fiyat ve tarih (`/sat ID FIYAT dün`), eski "Sattım @" düğmesi önce fiyat sorar, sinyal kartında canlı durum (aktif / geç kaldın / süresi doldu / geçersiz), ATR stopu zorunlu, stop sonrası 4 saat bekleme. Sesli komut kaldırıldı. `/okul` yerine `/sessizlik`.
+
+**Yeni özellikler (site):**
+- Alarmlarım: fiyat, RSI ve trend alarmları, yalnız mum kapanışında; portföy pozisyonlarının stop/hedef ve trend çıkış uyarıları kendiliğinden. Bağlı Telegram'a gider.
+- Grafikten alarm: grafikte fiyata tıkla ya da destek/direnç seç.
+- Haftalık özet: pazar 20:00 Telegram.
+- Strateji Kurucu: kanıt tablosu, 30 coinin trend durumu, "Haber ver", canlı karne; BIST filtresi "test edilmedi" etiketli.
+- Karnem: kendi kapattığın işlemlerden isabet, ortalama kazanç/kayıp, tutma süresi, stop altı satışlar, satış sonrası hareket.
+- Portföy sağlığı: ağırlık (TL), tepeden düşüş, trend durumu, birlikte hareket edenler, uyarılar.
+- 404 sayfası.
+
 ## Değiştirilemez kurallar
 
 Yeni özellik bu kuralları bozmamalı:

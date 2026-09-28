@@ -171,7 +171,7 @@ def build_router(get_db, current_user) -> APIRouter:
             if x["agirlik_yuzde"] and x["agirlik_yuzde"] > HEAVY_PCT and len(rows) > 1:
                 warnings.append(f"{x['kod']} portföyünün %{x['agirlik_yuzde']:g}'i: tek varlığa çok bağlısın.")
             if x["trend"] and not x["trend"]["trendde"]:
-                warnings.append(f"{x['kod']}: test edilmiş trend kuralına göre dışarıda (10 günün dibi {x['trend']['alt10']:.6g}).")
+                warnings.append(f"{x['kod']}: trend kuralına göre dışarıda (10 günün dibi {x['trend']['alt10']:.6g}).")
             if x["stop"] is None:
                 warnings.append(f"{x['kod']}: stop yok.")
         for pr in pairs:

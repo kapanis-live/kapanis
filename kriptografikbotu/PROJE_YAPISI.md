@@ -4,6 +4,26 @@ Son güncelleme: 27 Eylül 2026 (hesaplar, bulut). Bu dosya projenin bütün par
 
 ---
 
+## 0. Son eklenen dosyalar (28 Eylül 2026)
+
+Bot (`kriptografikbotu`):
+- `quiet.py` — sessizlik saatleri, sessiz mod, bekleyen bildirimler ve özet
+- `signal_life.py` — sinyal ömrü (aktif/geç/süresi doldu/geçersiz), stop sonrası bekleme, geçmiş isabet, Midas stop önerisi
+- `advisor.py` — `/ne KOD`: tek varlık için adetli plan
+- `db_backup.py`, `scripts/restore_backup.py` — günlük veritabanı yedeği ve geri yükleme
+- `research/` — kuralların geçmiş veri testleri ve sonuçları (README)
+- testler: `test_quiet.py`, `test_signal_life.py`
+
+Site (`kapanis/backend`):
+- `limits.py` — hız sınırları
+- `user_alerts.py` — kullanıcı alarmları (fiyat/RSI/trend), pozisyon uyarıları, haftalık özet, Telegram'a teslim kuyruğu
+- `trend_rule.py` — test edilmiş kripto trend kuralı ve kanıt tablosu
+- `insights.py` — Karnem (`/api/karne`), Portföy sağlığı (`/api/portfolio/health`), trend canlı karnesi
+
+Site (`kapanis/frontend/src/pages/panel`): `MyAlerts.jsx` (Alarmlarım), `MyReport.jsx` (Karnem), `PortfolioHealth.jsx` (Portföy sağlığı); `Chart.jsx` grafikten alarm; `Strategies.jsx` kanıt kartı ve canlı karne; `Positions.jsx` satış tarihi.
+
+Deploy (`kapanis/deploy`): `Caddyfile.live` (güvenlik başlıkları, bot yolları kapalı), `Dockerfile.prebuilt`. VM'de `~/guncelle.sh` yedek alır, GitHub'dan çeker, imajı kurar, Caddy'yi doğrular, yeniden başlatır, kontrol eder.
+
 ## 1. Ne yapıyor?
 
 Kişisel, Türkçe bir **karar destek sistemi**: kripto (yalnız spot), BIST (orta/uzun vade) ve ABD hisselerini izler, kurallarla değerlendirir, açıklar. **Hiç işlem yapmaz.**

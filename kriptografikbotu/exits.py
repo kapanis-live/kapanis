@@ -121,11 +121,11 @@ def analyze(pos: dict, sig: pd.DataFrame, htf: pd.DataFrame, tf: str, price: flo
             signals.append(("bilgi", f"Direnç bölgesi yakınında: {_g(top_zone['alt'])}–{_g(top_zone['ust'])} "
                                      f"({top_zone['dokunma']} dokunma; testte rastgele seviyeden farksız, karar için kullanma)"))
 
-    # The tested exit (crypto trend rule): a DAILY close below the lowest low of the previous 10 days.
+    # The trend rule's exit (research status: keeps you out of big falls, gains not proven): a DAILY close below the lowest low of the previous 10 days.
     trend_exit = daily_trend_exit(htf if pos.get("piyasa", "KRIPTO") == "KRIPTO" else None)
     if trend_exit and close < trend_exit:
-        signals.append(("kismi", f"Günlük kapanış 10 günün dibinin ({_g(trend_exit)}) altında — test edilmiş trend kuralı "
-                                 "burada çıkar (geçmişte büyük düşüşlerin çoğundan böyle uzak durdu)"))
+        signals.append(("kismi", f"Günlük kapanış 10 günün dibinin ({_g(trend_exit)}) altında — trend kuralı "
+                                 "burada çıkar (geçmişte büyük düşüşlerin çoğundan böyle uzak durdu; kazandırdığı kanıtlanmadı)"))
 
     # --- stop suggestion (never down) -----------------------------------------------------
     candidates = []

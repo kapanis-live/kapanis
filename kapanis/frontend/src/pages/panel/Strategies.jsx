@@ -12,7 +12,7 @@ const empty = { name: "", fk_max: "", momentum_min: "", quality_min: "" };
 const numberOrNull = (s) => (String(s).trim() === "" ? null : U.parseTr(String(s)));
 
 const pct = (v) => (v == null ? "—" : `${v >= 0 ? "+" : "−"}%${U.fmtNum(Math.abs(v), 2)}`);
-const tone = (v) => (v == null ? "" : v >= 0 ? "kp-num-up" : "kp-num-down");
+const tone = (v) => (v == null || v === 0 ? "" : v > 0 ? "kp-num-up" : "kp-num-down");
 
 // Geçmiş sonuçlar: her taramada seçilenlerin o günden bu yana getirisi, BIST 100 ile yan yana (ileriye dönük kayıt)
 function History({ id }) {
@@ -74,7 +74,7 @@ function TrendCard() {
     finally { setBusy(""); }
   };
   return (
-    <K.Card title="✅ Testten geçen kural: Kripto trend takibi">
+    <K.Card title="🔬 En güçlü aday: Kripto trend takibi (araştırma)">
       <p className="m-0 text-t-2">Günlük kapanış son 20 günün tepesini ve 200 günlük ortalamayı geçince <b>gir</b>, son 10 günün dibinin altına inince <b>çık</b>.
         Aşağıdaki sonuçlar, bu kural o dönemde kullanılsaydı ne olacağını gösterir.</p>
       {k && <>
@@ -83,7 +83,8 @@ function TrendCard() {
           { key: "kural", label: "Kural (yıllık)", num: true, strong: true, render: (r) => pctCell(r.kural) },
           { key: "al_tut", label: "Al-tut", num: true, render: (r) => pctCell(r.al_tut) },
           { key: "rastgele", label: "Rastgele gir-çık", num: true, render: (r) => pctCell(r.rastgele) },
-          { key: "kural_dusus", label: "En büyük düşüş", num: true, mobile: false, render: (r) => `%${r.kural_dusus} (al-tut %${r.al_tut_dusus})` },
+          { key: "gecen_varlik", label: "Rastgeleyi geçen coin", num: true, mobile: false, render: (r) => `%${r.gecen_varlik}` },
+          { key: "kural_dusus", label: "En büyük düşüş", num: true, mobile: false, render: (r) => `%${r.kural_dusus}` },
           { key: "piyasada", label: "Piyasada", num: true, mobile: false, render: (r) => `%${r.piyasada}` },
         ]} />
         <p className="kp-note">{k.evren}. {k.not}</p>
@@ -103,6 +104,30 @@ function TrendCard() {
       {q.data?.canli && <LiveRecord r={q.data.canli} />}
       <p className="kp-note">"Haber ver": kural bu coinde girince ya da çıkınca Telegram'a ve Alarmlarım'a mesaj gelir. Portföyündeki kriptolarda çıkış seviyesi kırılınca
         ayrıca uyarı gelir. Emir gönderilmez; kesinlik yok.</p>
+    </K.Card>
+  );
+}
+
+const VERDICT = { PRODUCTION: ["✅ Kanıtlandı", "kp-num-up"], RESEARCH: ["🔬 Araştırma", ""], REJECTED: ["✗ Elendi", "kp-num-down"] };
+
+// Strateji Laboratuvarı: denediğimiz her kural, aynı standartla, sonucuyla birlikte (elenenler dahil)
+function LabCard() {
+  const q = useData("strategy-lab", "/strategies/lab");
+  const d = q.data;
+  if (!d) return null;
+  const rows = d.sonuclar.map((r, i) => ({ ...r, _k: i }));
+  return (
+    <K.Card title="Strateji Laboratuvarı">
+      <p className="m-0 text-t-2">Bir kural ancak aynı sınavdan geçerse öneri olur. Şimdiye kadar denediklerimiz:</p>
+      <K.DataTable rows={rows} rowKey="_k" columns={[
+        { key: "strateji", label: "Strateji", render: (r) => <span><b>{r.strateji}</b> <span className="text-t-3">· {r.piyasa === "KRIPTO" ? "kripto" : "BIST"}</span></span> },
+        { key: "karar", label: "Sonuç", render: (r) => <span className={VERDICT[r.karar]?.[1]}>{VERDICT[r.karar]?.[0] || r.karar}</span> },
+        { key: "dev", label: "Geliştirme: kural / rastgele", num: true, render: (r) => <span>{pctCell(r.gelistirme["kural_yillik_%"])} / {pctCell(r.gelistirme["rastgele_%"])}</span> },
+        { key: "hold", label: "Kilitli 12 ay: kural / rastgele", num: true, mobile: false, render: (r) => <span>{pctCell(r.kilitli["kural_yillik_%"])} / {pctCell(r.kilitli["rastgele_%"])}</span> },
+        { key: "islem", label: "İşlem", num: true, mobile: false, render: (r) => r.islem?.islem ?? "—" },
+      ]} />
+      <ul className="kp-note m-0 pl-5">{d.standart.map((x) => <li key={x}>{x}</li>)}</ul>
+      <p className="kp-note">Yıllık getiriler varlık başına ortanca. Test tarihi {d.tarih}. Elenen bir kural sistemde öneri olarak kullanılmaz.</p>
     </K.Card>
   );
 }
@@ -146,8 +171,9 @@ export default function Strategies() {
     finally { setBusy(""); }
   };
   return <div className="kp-page">
-    <PageHeader title="Strateji Kurucu" subtitle="Yalnız geçmiş veride test edilmiş kurallar öneri olarak gösterilir; diğerleri deneme aracıdır." />
+    <PageHeader title="Strateji Kurucu" subtitle="Bir kural ancak geçmiş veri sınavından geçerse öneri olur. Şu an kanıtlanmış kural yok; en güçlü aday araştırmada." />
     <div className="mb-4"><TrendCard /></div>
+    <div className="mb-4"><LabCard /></div>
     <div className="kp-grid kp-split-l">
       <K.Card title="BIST filtresi (test edilmedi)">
         <div className="grid gap-3">

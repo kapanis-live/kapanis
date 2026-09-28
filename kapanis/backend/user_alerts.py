@@ -143,6 +143,13 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
             raise HTTPException(status_code=404, detail="Alarm bulunamadı.")
         return {"ok": True}
 
+    @r.get("/strategies/lab")
+    async def lab(_: dict = Depends(current_user)):
+        """Every strategy we tested, with the same standard and a verdict (PRODUCTION / RESEARCH / REJECTED)."""
+        import json
+        import pathlib
+        return json.loads((pathlib.Path(__file__).with_name("lab_results.json")).read_text(encoding="utf-8"))
+
     @r.get("/strategies/trend")
     async def trend_board(_: dict = Depends(current_user)):
         """The tested crypto trend rule: its history test and where each large coin stands today."""
@@ -226,7 +233,7 @@ async def run_once(db, now: float | None = None) -> int:
         else:
             text = (f"📉 {a['kod']}: trend takibi ÇIKIŞ — günlük kapanış {_fmt(st['kapanis'])}, 10 günün dibinin "
                     f"({_fmt(st['alt10'])}) altında. Kural bu noktada piyasadan çıkar.")
-        text += " Geçmiş testte işe yarayan tek kural bu; yine de kesinlik yok, karar senin."
+        text += " Bu kural araştırma aşamasında: kazandırdığı kanıtlanmadı, düşüşte dışarıda kalmaya yarıyor. Karar senin."
         if await _event(db, u, a["kod"], "KRIPTO", "1d", text, key=f"trend_{a['id']}_{st['mum']}_{int(st['trendde'])}"):
             fired += 1
 
@@ -261,7 +268,7 @@ async def run_once(db, now: float | None = None) -> int:
                 if st and st["kapanis"] < st["alt10"] and st["mum"] + 86400 > dt.datetime.fromisoformat(
                         p.get("acilis") or "1970-01-01T00:00:00+00:00").timestamp():
                     text = (f"📉 {p['kod']}: günlük kapanış {_fmt(st['kapanis'])}, 10 günün dibinin ({_fmt(st['alt10'])}) altında. "
-                            "Test edilmiş trend kuralı burada çıkar; geçmişte büyük düşüşlerin çoğundan böyle uzak durdu. "
+                            "Trend kuralı burada çıkar; geçmişte büyük düşüşlerin çoğundan böyle uzak durdu (kazandırdığı kanıtlanmadı). "
                             "Karar senin.")
                     if await _event(db, u, p["kod"], "KRIPTO", "1d", text, key=f"pos_{p['id']}_trend_{st['mum']}"):
                         fired += 1

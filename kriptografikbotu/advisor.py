@@ -65,7 +65,7 @@ def plan(pos: dict, a: dict) -> list[str]:
         lines.append("1) Şimdi: tut. Çıkış işareti yok; satmak için bir sebep oluşmadı.")
         rest = q
     if a.get("trend_cikis"):
-        lines.append(f"2) Test edilmiş çıkış: günlük kapanış {a['trend_cikis']:.6g} (son 10 günün dibi, her gün güncellenir) "
+        lines.append(f"2) Trend çıkışı: günlük kapanış {a['trend_cikis']:.6g} (son 10 günün dibi, her gün güncellenir) "
                      f"altına inerse kalanı sat ({_lots(pos, rest):g} adet). Direnç bölgelerine göre satma: geçmiş testte işe yaramadı.")
     if stop is not None:
         lines.append(f"3) Kalanın stopu: {stop:.6g} ({(stop / a['fiyat'] - 1) * 100:+.1f}%) — kapanışla; yalnız yukarı çekilir. "

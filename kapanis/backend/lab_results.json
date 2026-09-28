@@ -1,0 +1,302 @@
+{
+ "tarih": "2026-09-28",
+ "standart": [
+  "Günlük kapanışta karar, maliyet düşülür (kripto %0,1, BIST %0,2 her yön)",
+  "Kripto evreni batan/listeden çıkan coinleri içerir (LUNA, FTT, SRM...)",
+  "Son 12 ay kilitli: hiçbir ayar ona bakarak seçilmedi, en sonda bir kez ölçüldü",
+  "Rakip: al-tut ve aynı sürede piyasada kalan rastgele gir-çık (20 deneme)",
+  "Karar: PRODUCTION = geliştirme + kilitli dönemde rastgeleyi geçti; RESEARCH = yalnız geliştirmede; REJECTED = hiç"
+ ],
+ "sonuclar": [
+  {
+   "piyasa": "KRIPTO",
+   "strateji": "Trend takibi (20 gün tepe / 10 gün dip)",
+   "karar": "RESEARCH",
+   "gelistirme": {
+    "kural_yillik_%": 9.6,
+    "al_tut_%": -13.5,
+    "rastgele_%": -2.1,
+    "rastgeleyi_gecen_varlik_%": 64,
+    "en_buyuk_dusus_%": -71.2,
+    "piyasada_%": 22.6
+   },
+   "kilitli": {
+    "kural_yillik_%": 0.0,
+    "al_tut_%": -54.1,
+    "rastgele_%": 0.0,
+    "rastgeleyi_gecen_varlik_%": 51,
+    "en_buyuk_dusus_%": -17.8,
+    "piyasada_%": 8.7
+   },
+   "islem": {
+    "islem": 1106,
+    "isabet_%": 41.8,
+    "ort_net_%": 21.15,
+    "kar_faktoru": 3.37,
+    "ort_gun": 30.3
+   },
+   "rastgeleyi_gecen_yil": "3/6"
+  },
+  {
+   "piyasa": "KRIPTO",
+   "strateji": "Trend içi geri çekilme",
+   "karar": "REJECTED",
+   "gelistirme": {
+    "kural_yillik_%": -12.5,
+    "al_tut_%": -13.5,
+    "rastgele_%": -2.6,
+    "rastgeleyi_gecen_varlik_%": 29,
+    "en_buyuk_dusus_%": -84.0,
+    "piyasada_%": 18.6
+   },
+   "kilitli": {
+    "kural_yillik_%": 0.0,
+    "al_tut_%": -54.1,
+    "rastgele_%": 0.0,
+    "rastgeleyi_gecen_varlik_%": 16,
+    "en_buyuk_dusus_%": -16.5,
+    "piyasada_%": 2.2
+   },
+   "islem": {
+    "islem": 1174,
+    "isabet_%": 24.4,
+    "ort_net_%": 5.64,
+    "kar_faktoru": 1.47,
+    "ort_gun": 22.3
+   },
+   "rastgeleyi_gecen_yil": "0/5"
+  },
+  {
+   "piyasa": "KRIPTO",
+   "strateji": "Volatilite sıkışması sonrası kırılım",
+   "karar": "REJECTED",
+   "gelistirme": {
+    "kural_yillik_%": 0.0,
+    "al_tut_%": -13.5,
+    "rastgele_%": -2.9,
+    "rastgeleyi_gecen_varlik_%": 56,
+    "en_buyuk_dusus_%": -59.4,
+    "piyasada_%": 15.4
+   },
+   "kilitli": {
+    "kural_yillik_%": -0.8,
+    "al_tut_%": -54.1,
+    "rastgele_%": -3.4,
+    "rastgeleyi_gecen_varlik_%": 55,
+    "en_buyuk_dusus_%": -22.3,
+    "piyasada_%": 12.8
+   },
+   "islem": {
+    "islem": 857,
+    "isabet_%": 39.1,
+    "ort_net_%": 9.72,
+    "kar_faktoru": 2.14,
+    "ort_gun": 26.1
+   },
+   "rastgeleyi_gecen_yil": "3/7"
+  },
+  {
+   "piyasa": "KRIPTO",
+   "strateji": "Göreli güç (piyasadan güçlüler)",
+   "karar": "REJECTED",
+   "gelistirme": {
+    "kural_yillik_%": -13.6,
+    "al_tut_%": -13.5,
+    "rastgele_%": -1.1,
+    "rastgeleyi_gecen_varlik_%": 29,
+    "en_buyuk_dusus_%": -80.8,
+    "piyasada_%": 17.8
+   },
+   "kilitli": {
+    "kural_yillik_%": 0.0,
+    "al_tut_%": -54.1,
+    "rastgele_%": 0.0,
+    "rastgeleyi_gecen_varlik_%": 30,
+    "en_buyuk_dusus_%": -1.1,
+    "piyasada_%": 1.1
+   },
+   "islem": {
+    "islem": 466,
+    "isabet_%": 32.0,
+    "ort_net_%": 13.3,
+    "kar_faktoru": 1.74,
+    "ort_gun": 53.1
+   },
+   "rastgeleyi_gecen_yil": "0/5"
+  },
+  {
+   "piyasa": "KRIPTO",
+   "strateji": "Yatay piyasada ortalamaya dönüş",
+   "karar": "REJECTED",
+   "gelistirme": {
+    "kural_yillik_%": 0.0,
+    "al_tut_%": -13.5,
+    "rastgele_%": 0.0,
+    "rastgeleyi_gecen_varlik_%": 37,
+    "en_buyuk_dusus_%": -14.2,
+    "piyasada_%": 0.6
+   },
+   "kilitli": {
+    "kural_yillik_%": 0.0,
+    "al_tut_%": -54.1,
+    "rastgele_%": 0.0,
+    "rastgeleyi_gecen_varlik_%": 10,
+    "en_buyuk_dusus_%": 0.0,
+    "piyasada_%": 0.0
+   },
+   "islem": {
+    "islem": 196,
+    "isabet_%": 47.4,
+    "ort_net_%": -1.61,
+    "kar_faktoru": 0.71,
+    "ort_gun": 4.8
+   },
+   "rastgeleyi_gecen_yil": "0/0"
+  },
+  {
+   "piyasa": "BIST",
+   "strateji": "Trend takibi (20 gün tepe / 10 gün dip)",
+   "karar": "RESEARCH",
+   "gelistirme": {
+    "kural_yillik_%": 17.5,
+    "al_tut_%": 37.0,
+    "rastgele_%": 11.2,
+    "rastgeleyi_gecen_varlik_%": 73,
+    "en_buyuk_dusus_%": -39.7,
+    "piyasada_%": 38.9
+   },
+   "kilitli": {
+    "kural_yillik_%": -1.4,
+    "al_tut_%": 13.0,
+    "rastgele_%": 6.3,
+    "rastgeleyi_gecen_varlik_%": 36,
+    "en_buyuk_dusus_%": -22.0,
+    "piyasada_%": 39.8
+   },
+   "islem": {
+    "islem": 1133,
+    "isabet_%": 50.1,
+    "ort_net_%": 7.27,
+    "kar_faktoru": 3.06,
+    "ort_gun": 28.3
+   },
+   "rastgeleyi_gecen_yil": "6/9"
+  },
+  {
+   "piyasa": "BIST",
+   "strateji": "Trend içi geri çekilme",
+   "karar": "REJECTED",
+   "gelistirme": {
+    "kural_yillik_%": 10.5,
+    "al_tut_%": 37.0,
+    "rastgele_%": 11.1,
+    "rastgeleyi_gecen_varlik_%": 53,
+    "en_buyuk_dusus_%": -46.2,
+    "piyasada_%": 39.2
+   },
+   "kilitli": {
+    "kural_yillik_%": -1.0,
+    "al_tut_%": 13.0,
+    "rastgele_%": 2.3,
+    "rastgeleyi_gecen_varlik_%": 30,
+    "en_buyuk_dusus_%": -18.1,
+    "piyasada_%": 32.9
+   },
+   "islem": {
+    "islem": 1366,
+    "isabet_%": 38.5,
+    "ort_net_%": 4.75,
+    "kar_faktoru": 2.21,
+    "ort_gun": 23.3
+   },
+   "rastgeleyi_gecen_yil": "3/9"
+  },
+  {
+   "piyasa": "BIST",
+   "strateji": "Volatilite sıkışması sonrası kırılım",
+   "karar": "REJECTED",
+   "gelistirme": {
+    "kural_yillik_%": 4.2,
+    "al_tut_%": 37.0,
+    "rastgele_%": 3.0,
+    "rastgeleyi_gecen_varlik_%": 55,
+    "en_buyuk_dusus_%": -27.3,
+    "piyasada_%": 12.8
+   },
+   "kilitli": {
+    "kural_yillik_%": 0.0,
+    "al_tut_%": 13.0,
+    "rastgele_%": 0.0,
+    "rastgeleyi_gecen_varlik_%": 23,
+    "en_buyuk_dusus_%": -7.8,
+    "piyasada_%": 4.1
+   },
+   "islem": {
+    "islem": 401,
+    "isabet_%": 45.6,
+    "ort_net_%": 5.54,
+    "kar_faktoru": 2.66,
+    "ort_gun": 25.5
+   },
+   "rastgeleyi_gecen_yil": "3/8"
+  },
+  {
+   "piyasa": "BIST",
+   "strateji": "Göreli güç (piyasadan güçlüler)",
+   "karar": "REJECTED",
+   "gelistirme": {
+    "kural_yillik_%": 13.8,
+    "al_tut_%": 37.0,
+    "rastgele_%": 13.1,
+    "rastgeleyi_gecen_varlik_%": 47,
+    "en_buyuk_dusus_%": -47.7,
+    "piyasada_%": 40.9
+   },
+   "kilitli": {
+    "kural_yillik_%": 1.3,
+    "al_tut_%": 13.0,
+    "rastgele_%": 1.0,
+    "rastgeleyi_gecen_varlik_%": 38,
+    "en_buyuk_dusus_%": -18.9,
+    "piyasada_%": 30.2
+   },
+   "islem": {
+    "islem": 405,
+    "isabet_%": 50.1,
+    "ort_net_%": 25.57,
+    "kar_faktoru": 5.35,
+    "ort_gun": 80.9
+   },
+   "rastgeleyi_gecen_yil": "2/9"
+  },
+  {
+   "piyasa": "BIST",
+   "strateji": "Yatay piyasada ortalamaya dönüş",
+   "karar": "REJECTED",
+   "gelistirme": {
+    "kural_yillik_%": -0.0,
+    "al_tut_%": 37.0,
+    "rastgele_%": 0.1,
+    "rastgeleyi_gecen_varlik_%": 41,
+    "en_buyuk_dusus_%": -14.3,
+    "piyasada_%": 1.2
+   },
+   "kilitli": {
+    "kural_yillik_%": 0.0,
+    "al_tut_%": 13.0,
+    "rastgele_%": 0.0,
+    "rastgeleyi_gecen_varlik_%": 21,
+    "en_buyuk_dusus_%": 0.0,
+    "piyasada_%": 0.0
+   },
+   "islem": {
+    "islem": 250,
+    "isabet_%": 45.2,
+    "ort_net_%": -0.32,
+    "kar_faktoru": 0.88,
+    "ort_gun": 4.7
+   },
+   "rastgeleyi_gecen_yil": "0/0"
+  }
+ ]
+}

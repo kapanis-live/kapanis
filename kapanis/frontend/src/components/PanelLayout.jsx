@@ -32,6 +32,7 @@ const NAV = [
       { to: "/app/planlar", label: "Planlar & Fırsatlar", icon: Target },
       { to: "/app/kontrol", label: "Kontrol & Karşılaştır", icon: ClipboardCheck },
       { to: "/app/alarmlar", label: "Alarmlar", icon: Bell },
+      { to: "/app/alarmlarim", label: "Grafik alarmlarım", icon: Bell },
     ],
   },
   {

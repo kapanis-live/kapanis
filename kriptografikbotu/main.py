@@ -2481,10 +2481,17 @@ async def user_alarm_job(context: ContextTypes.DEFAULT_TYPE):
     for ev in events:
         link = f"{config.PUBLIC_URL}/app/grafik?kod={ev['kod']}&piyasa={ev['piyasa']}"
         try:
-            await context.bot.send_message(ev["chat_id"], ev["metin"] + "\nGerçek emir gönderilmedi; karar senin.",
-                                           reply_markup=InlineKeyboardMarkup([[
-                                               InlineKeyboardButton("📊 Grafiği aç", url=link),
-                                               InlineKeyboardButton("⏰ Alarmlarım", url=f"{config.PUBLIC_URL}/app/alarmlarim")]]))
+            chat = ev.get("chat_id") or (config.ALLOWED_CHAT_ID if ev.get("sahip") else None)
+            if not chat:
+                continue
+            if ev.get("kod"):
+                text = ev["metin"] + "\nGerçek emir gönderilmedi; karar senin."
+                buttons = [InlineKeyboardButton("📊 Grafiği aç", url=link),
+                           InlineKeyboardButton("⏰ Alarmlarım", url=f"{config.PUBLIC_URL}/app/alarmlarim")]
+            else:  # weekly summary
+                text = ev["metin"]
+                buttons = [InlineKeyboardButton("💼 Portföyüm", url=f"{config.PUBLIC_URL}/app/portfoyum")]
+            await context.bot.send_message(chat, text, reply_markup=InlineKeyboardMarkup([buttons]))
         except BadRequest as e:  # chat gone / blocked the bot: do not retry forever
             log.warning("User alarm %s not delivered: %s", ev["id"], e)
         except Exception as e:

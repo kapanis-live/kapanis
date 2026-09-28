@@ -474,6 +474,33 @@ class UserAlarmTest(MultiUserTest.__bases__[0]):
         await self.c.post(f"/api/bot/alarm-events/{events[0]['id']}/sent", headers=BOT)
         self.assertEqual((await self.c.get("/api/bot/alarm-events", headers=BOT)).json(), [])
 
+    async def test_weekly_summary_once_on_sunday_evening_and_owner_events_reach_the_bot(self):
+        import datetime as dt
+        import unittest.mock as um
+        ua = server.user_alerts
+        h = auth("user_a")
+        code = (await self.c.post("/api/telegram/link-code", headers=h)).json()["kod"]
+        await self.c.post("/api/bot/telegram/link", headers=BOT, json={"code": code, "chat_id": 5151})
+        await self.c.post("/api/portfolio/positions", headers=h,
+                          json={"piyasa": "KRIPTO", "kod": "SOL", "adet": 2, "maliyet": 100, "stop": 97})
+        # a Sunday 20:30 in Turkey; positions were opened "now", so the week's base is the cost (100)
+        sunday = dt.datetime(2026, 10, 4, 20, 30, tzinfo=ua.TR).timestamp()
+        start = int(sunday) - 10 * 86400
+        closes = [90, 92, 95, 96, 98, 99, 100, 99, 98, 99, 99.5]
+        with um.patch.object(ua.chart_data, "chart", self._fake_chart(closes, start, step=86400)):
+            self.assertEqual(await ua.weekly_once(server.db, now=sunday - 86400), 0)  # Saturday: nothing
+            self.assertEqual(await ua.weekly_once(server.db, now=sunday), 1)
+            self.assertEqual(await ua.weekly_once(server.db, now=sunday + 600), 0)   # once per week
+        ev = [e for e in (await self.c.get("/api/bot/alarm-events", headers=BOT)).json() if e["id"].startswith("ozet_")]
+        self.assertEqual(len(ev), 1)
+        self.assertIn("Haftalık özet", ev[0]["metin"])
+        self.assertIn("Stopa yakın", ev[0]["metin"])  # 99 vs stop 97: 2.1% above
+        # the owner has no Telegram id on the account: their events are marked for the bot's own chat
+        owner = await server.db.users.find_one({"email": "owner@example.com"})
+        await ua._event(server.db, owner, "BTC", "KRIPTO", "1d", "🔔 test")
+        owner_ev = [e for e in (await self.c.get("/api/bot/alarm-events", headers=BOT)).json() if e.get("sahip")]
+        self.assertEqual(len(owner_ev), 1)
+
     async def test_position_stop_warning_once_per_level_and_limit(self):
         import unittest.mock as um
         h = auth("user_b")

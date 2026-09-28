@@ -319,14 +319,16 @@ class UserAlarmDeliveryTest(unittest.IsolatedAsyncioTestCase):
                 sent.append((chat, text, kw["reply_markup"].inline_keyboard[0][0].url))
 
         events = [{"id": "e1", "chat_id": 4242, "kod": "BTC", "piyasa": "KRIPTO", "metin": "🔔 Alarmın: BTC"},
-                  {"id": "e2", "chat_id": 999, "kod": "THYAO", "piyasa": "BIST", "metin": "🔴 THYAO stop"}]
+                  {"id": "e2", "chat_id": 999, "kod": "THYAO", "piyasa": "BIST", "metin": "🔴 THYAO stop"},
+                  {"id": "e3", "chat_id": None, "sahip": True, "kod": "", "piyasa": "", "metin": "📅 Haftalık özet"}]
 
         async def mark(eid):
             marked.append(eid)
         with unittest.mock.patch.object(web_sync, "alarm_events", unittest.mock.AsyncMock(return_value=events)),                 unittest.mock.patch.object(web_sync, "alarm_event_sent", mark):
             await main.user_alarm_job(types.SimpleNamespace(bot=Bot()))
-        self.assertEqual([(c, u.endswith("kod=BTC&piyasa=KRIPTO")) for c, _, u in sent], [(4242, True)])
-        self.assertEqual(marked, ["e1", "e2"])  # a chat that is gone is not retried forever
+        self.assertEqual([(c, u.endswith("kod=BTC&piyasa=KRIPTO")) for c, _, u in sent][0], (4242, True))
+        self.assertEqual((sent[1][0], sent[1][2].endswith("/app/portfoyum")), (OWNER_CHAT, True))  # owner: bot's own chat
+        self.assertEqual(marked, ["e1", "e2", "e3"])  # a chat that is gone is not retried forever
 
 
 if __name__ == "__main__":

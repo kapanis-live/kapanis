@@ -13,7 +13,8 @@ import { LoadingState, ErrorState } from "@/components/states";
 import { AssetLogo } from "@/components/AssetLogo";
 import { Segmented, Chip, SearchField, ChangeBadge, SignalCard } from "@/components/kp";
 import { useTheme } from "@/lib/theme";
-import { formatApiErrorDetail } from "@/lib/api";
+import api, { formatApiErrorDetail } from "@/lib/api";
+import { toast } from "sonner";
 import { formatNumber, formatCompact } from "@/lib/format";
 import { px, baseCode, MARKET_LABEL } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
@@ -53,8 +54,10 @@ const trTime = (t, withTime) =>
   });
 
 // Fiyat %65 · hacim %17 · RSI %18; fareyle üzerine gelince açılış/yüksek/düşük/kapanış ve gösterge değerleri
-function CandleChart({ data, on, overlay }) {
+function CandleChart({ data, on, overlay, onPick }) {
   const ref = useRef(null);
+  const pickRef = useRef(onPick);
+  pickRef.current = onPick;
   const [hover, setHover] = useState(null);
   const { colors: c, theme } = useTheme();
   useEffect(() => {
@@ -85,6 +88,8 @@ function CandleChart({ data, on, overlay }) {
       level(overlay.plan?.iptal, c.down, "İptal");
       level(overlay.plan?.hedef, c.up, "Hedef");
     }
+    // Kullanıcının bu koddaki aktif alarmları
+    (overlay?.alarms || []).forEach((a) => level(a.seviye, c.wait, `Alarm ${a.yon === "ustu" ? "▲" : "▼"}`, 3));
     if (on.bolge && data.zones) {
       data.zones.destek.forEach((z) => level(z.orta, `${c.up}b0`, `Destek (${z.dokunma})`, 1));
       data.zones.direnc.forEach((z) => level(z.orta, `${c.down}b0`, `Direnç (${z.dokunma})`, 1));
@@ -147,6 +152,12 @@ function CandleChart({ data, on, overlay }) {
     chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, data.candles.length - 140), to: data.candles.length + 3 });
 
     const index = new Map(data.candles.map((k, i) => [k.t, i]));
+    // Grafiğe tıklayınca o fiyat alarm seviyesi olarak seçilir
+    chart.subscribeClick((param) => {
+      if (!param?.point || !pickRef.current) return;
+      const price = candles.coordinateToPrice(param.point.y);
+      if (price != null && Number.isFinite(price) && price > 0) pickRef.current(price);
+    });
     chart.subscribeCrosshairMove((param) => {
       const i = param?.time != null ? index.get(param.time) : undefined;
       setHover(i === undefined ? null : i);
@@ -179,6 +190,60 @@ function CandleChart({ data, on, overlay }) {
       </div>
       <div ref={ref} style={{ height: 440 + 150 * (Number(!!on.rsi) + Number(!!on.macd) + Number(!!on.stoch) + Number(!!on.bull_bear) +
         ["atr", "adx", "cci", "roc", "williams_r", "stoch_rsi", "ultimate", "obv", "mfi"].filter((key) => on[key]).length) }} className="w-full" data-testid="tv-chart" />
+    </div>
+  );
+}
+
+const ALARM_TFS = { KRIPTO: ["1h", "4h", "1d"], BIST: ["1d"], ABD: ["1d"] };
+const ALARM_TF_LABEL = { "1h": "1 saatlik", "4h": "4 saatlik", "1d": "Günlük" };
+
+// Grafikten alarm: tıkla ya da bölge seç, seviye gelsin; yön şimdiki fiyata göre kendiliğinden
+function AlarmBar({ d, code, market, chartTf, picked, setPicked, alarms }) {
+  const qc = useQueryClient();
+  const tfs = ALARM_TFS[market] || ["1d"];
+  const [tf, setTf] = useState(tfs.includes(chartTf) ? chartTf : "1d");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setTf(tfs.includes(chartTf) ? chartTf : "1d"), [chartTf, market]); // eslint-disable-line react-hooks/exhaustive-deps
+  const price = d.last?.price;
+  const level = picked ?? "";
+  const n = typeof level === "number" ? level : Number(String(level).replace(/\./g, "").replace(",", "."));
+  const yon = Number.isFinite(n) && price ? (n >= price ? "ustu" : "alti") : "ustu";
+  const zones = [...(d.zones?.direnc || []).slice(0, 2).map((z) => ["Direnç", z.orta]), ...(d.zones?.destek || []).slice(0, 2).map((z) => ["Destek", z.orta])];
+  const save = async () => {
+    if (!Number.isFinite(n) || n <= 0) return toast.error("Grafiğe tıkla ya da seviye yaz.");
+    setBusy(true);
+    try {
+      await api.post("/alarms", { piyasa: market, kod: code, tur: "fiyat", yon, seviye: Number(n.toPrecision(8)), tf });
+      qc.invalidateQueries({ queryKey: ["my-alarms"] });
+      toast.success(`${code} ${px(n)} ${yon === "ustu" ? "üstünde" : "altında"} ${ALARM_TF_LABEL[tf].toLowerCase()} kapanışta haber vereceğim.`);
+      setPicked(null);
+    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-hairline bg-raised p-4" data-testid="chart-alarm">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-t-2">⏰ Alarm seviyesi
+          <input inputMode="decimal" value={typeof level === "number" ? px(level) : level} placeholder="Grafiğe tıkla"
+            onChange={(e) => setPicked(e.target.value)}
+            className="num h-10 w-40 rounded-lg border border-strong bg-ink px-3 font-bold text-t-1 outline-none focus:border-info" />
+        </label>
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-t-2">Mum
+          <select value={tf} onChange={(e) => setTf(e.target.value)} className="h-10 rounded-lg border border-strong bg-ink px-3 text-t-1">
+            {tfs.map((t) => <option key={t} value={t}>{ALARM_TF_LABEL[t]}</option>)}
+          </select>
+        </label>
+        <K.Button variant="primary" disabled={busy} onClick={save}>
+          {Number.isFinite(n) && n > 0 ? `${yon === "ustu" ? "Üstünde" : "Altında"} kapanırsa haber ver` : "Alarm kur"}
+        </K.Button>
+      </div>
+      {zones.length > 0 && <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-t-3">Hızlı seç:</span>
+        {zones.map(([label, v]) => <button key={label + v} type="button" onClick={() => setPicked(v)}
+          className="rounded-lg border border-hairline px-2.5 py-1 font-semibold text-t-2 hover:bg-surface">{label} {px(v)}</button>)}
+      </div>}
+      <p className="m-0 text-xs text-t-3">Grafikte bir fiyata tıkla, seviye buraya gelir. Yalnız mum kapanışı sayılır; bir kez çalışır ve
+        bağlı Telegram'ına gelir. {alarms.length ? `Bu kodda ${alarms.length} aktif alarmın var (grafikte sarı çizgi).` : ""} Tümü: Alarmlarım.</p>
     </div>
   );
 }
@@ -298,6 +363,11 @@ export default function ChartPage() {
   };
   const d = q.data;
   const sigQ = useData("signals", "/signals", { enabled: owner });
+  const alarmQ = useData("my-alarms", "/alarms", LIVE);
+  const [picked, setPicked] = useState(null);
+  useEffect(() => setPicked(null), [code, market]);
+  const myAlarms = useMemo(() => (alarmQ.data?.alarmlar || []).filter((a) => a.durum === "aktif" && a.kod === code && a.piyasa === market),
+    [alarmQ.data, code, market]);
   const overlay = useMemo(() => {
     const ex = extras.data || {};
     const g = (ex.portfoy || []).find((x) => baseCode(x.ad) === code && x.piyasa === market);
@@ -307,8 +377,8 @@ export default function ChartPage() {
         const v = String(s.analysis?.bot_decision?.verdict || "").toUpperCase();
         return { t: Math.floor(new Date(s.created_at).getTime() / 1000), verdict: v.includes("AL") ? "AL" : v.includes("BEKLE") ? "BEKLE" : v.includes("TUT") ? "TUT" : "PAS" };
       });
-    return { entry: g && g.adet ? g.maliyet / g.adet : null, plan, signals };
-  }, [extras.data, sigQ.data, code, market]);
+    return { entry: g && g.adet ? g.maliyet / g.adet : null, plan, signals, alarms: myAlarms };
+  }, [extras.data, sigQ.data, code, market, myAlarms]);
 
   return (
     <div>
@@ -384,7 +454,8 @@ export default function ChartPage() {
                 })}
                 <p className="m-0 text-xs text-t-3">Seçimlerin bu tarayıcıda saklanır. Göstergeler yalnız grafiği değiştirir; botun karar kurallarını değiştirmez.</p>
               </div>}
-              <CandleChart data={d} on={on} overlay={overlay} />
+              <CandleChart data={d} on={on} overlay={overlay} onPick={(v) => setPicked(v)} />
+              <AlarmBar d={d} code={code} market={market} chartTf={tf} picked={picked} setPicked={setPicked} alarms={myAlarms} />
               <p className="m-0 text-sm text-t-3">
                 Saatler İstanbul saati. {d.note} VWAP: {d.vwap_note}. Hacim altta gösterilir; seçtiğin diğer göstergeler ayrı bölmelerde açılır.
               </p>

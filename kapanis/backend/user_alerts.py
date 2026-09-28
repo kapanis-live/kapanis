@@ -92,7 +92,8 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
         alarms = await d.user_alerts.find({"user_id": user["id"]}, {"_id": 0}).sort("olusturma", -1).to_list(200)
         events = await d.user_alert_events.find({"user_id": user["id"]}, {"_id": 0, "chat_id": 0}) \
             .sort("zaman", -1).to_list(50)
-        return {"alarmlar": alarms, "olaylar": events, "telegram": bool(user.get("telegram_chat_id")),
+        return {"alarmlar": alarms, "olaylar": events,
+                "telegram": bool(user.get("telegram_chat_id")) or user.get("role") in ("owner", "admin"),
                 "sinir": MAX_ACTIVE, "zaman_dilimleri": TIMEFRAMES}
 
     @r.post("/alarms")
@@ -136,7 +137,8 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
     @r.get("/bot/alarm-events")
     async def pending_events(_: bool = Depends(require_bot_key)):
         """Undelivered events of users with a linked Telegram chat (oldest first)."""
-        return await get_db().user_alert_events.find({"gonderildi": False, "chat_id": {"$ne": None}}, {"_id": 0}) \
+        return await get_db().user_alert_events.find(
+            {"gonderildi": False, "$or": [{"chat_id": {"$ne": None}}, {"sahip": True}]}, {"_id": 0}) \
             .sort("zaman", 1).to_list(50)
 
     @r.post("/bot/alarm-events/{event_id}/sent")
@@ -151,7 +153,9 @@ async def _event(db, user: dict, kod: str, piyasa: str, tf: str, text: str, key:
     """Store one firing. key makes it idempotent (position warnings); False if it already existed."""
     doc = {"id": key or f"ue_{ObjectId()}", "user_id": str(user["_id"]), "kod": kod, "piyasa": piyasa, "tf": tf,
            "metin": text, "zaman": _now().isoformat(), "expires_at": _now() + dt.timedelta(days=EVENT_DAYS),
-           "chat_id": user.get("telegram_chat_id"), "gonderildi": not user.get("telegram_chat_id")}
+           # the owner's Telegram is the bot's own chat (not stored on the account): the bot sends those there
+           "chat_id": user.get("telegram_chat_id"), "sahip": user.get("role") in ("owner", "admin"),
+           "gonderildi": not (user.get("telegram_chat_id") or user.get("role") in ("owner", "admin"))}
     res = await db.user_alert_events.update_one({"id": doc["id"]}, {"$setOnInsert": doc}, upsert=True)
     return res.upserted_id is not None
 
@@ -177,7 +181,7 @@ async def run_once(db, now: float | None = None) -> int:
     async def user_of(uid: str):
         if uid not in users:
             try:
-                users[uid] = await db.users.find_one({"_id": ObjectId(uid)}, {"telegram_chat_id": 1})
+                users[uid] = await db.users.find_one({"_id": ObjectId(uid)}, {"telegram_chat_id": 1, "role": 1})
             except Exception:
                 users[uid] = None
         return users[uid]
@@ -245,6 +249,97 @@ async def loop(get_db):
             n = await run_once(get_db())
             if n:
                 log.info("User alarms fired: %d", n)
+            w = await weekly_once(get_db())
+            if w:
+                log.info("Weekly summaries queued: %d", w)
         except Exception:
             log.exception("User alarm check failed")
         await asyncio.sleep(CHECK_SECONDS)
+
+
+# ---------------- weekly summary (Sunday evening, same delivery path) ----------------
+TR = dt.timezone(dt.timedelta(hours=3))
+WEEKLY_AT = (6, 20)       # Sunday (weekday 6) 20:00 Turkish time
+NEAR_STOP_PCT = 3.0
+
+
+def _money(v: float, cur: str) -> str:
+    return f"{'+' if v > 0 else '−' if v < 0 else ''}{_fmt(round(abs(v), 2))} {'TL' if cur == 'TL' else '$'}"
+
+
+def close_on_or_before(doc: dict, market: str, ts: float) -> float | None:
+    """Close of the last daily candle that had closed by ts."""
+    best = None
+    for c in doc.get("candles") or []:
+        if bar_close_ts(c, market, "1d") <= ts:
+            best = c["c"]
+    return best
+
+
+async def weekly_text(db, user: dict, now: float) -> str | None:
+    """One Telegram message: the week's result per currency, closed trades, fired alarms, positions near the stop."""
+    uid = str(user["_id"])
+    week_ago = now - 7 * 86400
+    since_iso = dt.datetime.fromtimestamp(week_ago, dt.timezone.utc).isoformat()
+    pf = await db.portfolios.find_one({"user_id": uid}) or {}
+    moves: dict[str, float] = {}
+    near, lines = [], []
+    for p in pf.get("positions", []):
+        if p.get("durum") != "acik":
+            continue
+        try:
+            doc = await chart_data.chart(p["kod"], "1d", p["piyasa"])
+        except Exception:
+            continue
+        last = close_on_or_before(doc, p["piyasa"], now)
+        if last is None:
+            continue
+        opened = dt.datetime.fromisoformat(p["acilis"]).timestamp() if p.get("acilis") else 0
+        base = p["maliyet"] if opened > week_ago else close_on_or_before(doc, p["piyasa"], week_ago)
+        if base:
+            cur = p.get("para") or "USD"
+            moves[cur] = moves.get(cur, 0.0) + p["adet"] * (last - base)
+        if p.get("stop") and last > p["stop"] and (last / p["stop"] - 1) * 100 <= NEAR_STOP_PCT:
+            near.append(f"{p['kod']} {_fmt(last)} (stop {_fmt(p['stop'])}, %{(last / p['stop'] - 1) * 100:.1f} yukarıda)")
+    realized: dict[str, float] = {}
+    sold = []
+    for t in pf.get("transactions", []):
+        if t.get("tur") == "satis" and t.get("zaman", "") >= since_iso:
+            cur = t.get("para") or "USD"
+            realized[cur] = realized.get(cur, 0.0) + float(t.get("kar") or 0)
+            sold.append(t["kod"])
+    fired = await db.user_alert_events.count_documents({"user_id": uid, "zaman": {"$gte": since_iso}, "tur": {"$ne": "ozet"}})
+    if not moves and not realized and not fired and not near:
+        return None
+    lines.append("📅 Haftalık özet")
+    if moves:
+        lines.append("Açık pozisyonlar bu hafta: " + " · ".join(_money(v, c) for c, v in moves.items())
+                     + " (günlük kapanışlarla, gerçekleşmemiş)")
+    if realized:
+        lines.append(f"Kapattıkların ({', '.join(dict.fromkeys(sold))}): " + " · ".join(_money(v, c) for c, v in realized.items()))
+    if fired:
+        lines.append(f"Bu hafta {fired} alarm/uyarı geldi (ayrıntı: Alarmlarım).")
+    if near:
+        lines.append("⚠️ Stopa yakın: " + "; ".join(near[:5]))
+    lines.append("Geçmiş sonuç geleceği göstermez; karar senin.")
+    return "\n".join(lines)
+
+
+async def weekly_once(db, now: float | None = None) -> int:
+    """Send the Sunday summary once per week (idempotent through the event id)."""
+    now = time.time() if now is None else now
+    local = dt.datetime.fromtimestamp(now, TR)
+    if (local.weekday(), local.hour) < WEEKLY_AT or local.weekday() != WEEKLY_AT[0]:
+        return 0
+    week = local.strftime("%G-%V")
+    sent = 0
+    async for u in db.users.find({"$or": [{"telegram_chat_id": {"$ne": None}}, {"role": {"$in": ["owner", "admin"]}}]},
+                                 {"telegram_chat_id": 1, "role": 1}):
+        key = f"ozet_{u['_id']}_{week}"
+        if await db.user_alert_events.find_one({"id": key}, {"_id": 1}):
+            continue
+        text = await weekly_text(db, u, now)
+        if text and await _event(db, u, "", "", "1w", text, key=key):
+            await db.user_alert_events.update_one({"id": key}, {"$set": {"tur": "ozet"}})
+            sent += 1
+    return sent

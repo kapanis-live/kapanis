@@ -567,6 +567,28 @@ class UserAlarmTest(MultiUserTest.__bases__[0]):
         self.assertEqual((rec["kapali"], rec["acik"]), (1, 0))
         self.assertAlmostEqual(rec["ort_getiri_yuzde"], 9.78, places=1)                  # +10 % minus 0.1 % per side
 
+    async def test_risk_size_is_arithmetic_with_reasons(self):
+        import unittest.mock as um
+        h = auth("user_d")
+        await self.c.put("/api/portfolio/cash", headers=h, json={"para": "TL", "tutar": 100000})
+        start = int(time.time()) - 400 * 86400
+
+        async def chart(symbol, tf="1d", market=None):
+            if symbol == "USDTRY=X":
+                return {"candles": [{"t": start + i * 86400, "c": 40.0, "h": 40.0, "l": 40.0} for i in range(400)]}
+            cs = [100 + (i % 10) for i in range(400)]
+            return {"candles": [{"t": start + i * 86400, "c": c, "h": c + 2, "l": c - 2} for i, c in enumerate(cs)],
+                    "sma50": [104.0] * 400, "sma200": [104.0] * 400}
+        with um.patch.object(server.risk_budget.chart_data, "chart", chart), um.patch.object(server.insights.chart_data, "chart", chart):
+            r = (await self.c.post("/api/risk/size", headers=h, json={"piyasa": "BIST", "kod": "THYAO", "stop": 95})).json()
+            self.assertEqual(r["adet"], float(int(r["adet"])))                 # whole lots on BIST
+            self.assertLessEqual(r["risk_tl"], 1000 + 1e-6)                    # 1 % of 100,000 TL at most
+            self.assertTrue(any("Oynaklık" in x for x in r["satirlar"]))
+            self.assertEqual((await self.c.post("/api/risk/size", headers=h, json={"piyasa": "BIST", "kod": "THYAO",
+                                                                                "stop": 500})).status_code, 400)
+            reg = (await self.c.get("/api/market/regime", headers=h)).json()
+            self.assertEqual(len(reg["rejimler"]), 3)
+
     async def test_position_stop_warning_once_per_level_and_limit(self):
         import unittest.mock as um
         h = auth("user_b")

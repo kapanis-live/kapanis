@@ -1,10 +1,60 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import { K, U } from "@/ds";
+import api, { formatApiErrorDetail } from "@/lib/api";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData } from "@/lib/useData";
 import { px } from "@/lib/portfolio";
 
 const pct = (v) => (v == null ? "—" : `${v >= 0 ? "+" : "−"}%${U.fmtNum(Math.abs(v), 1)}`);
 const tone = (v) => (v == null ? "" : v >= 0 ? "kp-num-up" : "kp-num-down");
+
+const REGIME_TONE = { TREND_UP: "kp-num-up", TREND_DOWN: "kp-num-down", PANIK: "kp-num-down" };
+
+function RegimeStrip() {
+  const q = useData("market-regime", "/market/regime", { refetchInterval: 900_000 });
+  if (!q.data) return null;
+  return <K.Card title="Piyasa durumu">
+    <div className="flex flex-wrap gap-4">{q.data.rejimler.map((r) =>
+      <div key={r.piyasa} className="flex flex-col"><span className="text-sm text-t-3">{r.piyasa}</span>
+        <b className={REGIME_TONE[r.rejim] || "text-t-1"}>{r.aciklama}</b></div>)}</div>
+    <p className="kp-note">{q.data.not}</p>
+  </K.Card>;
+}
+
+// "Kaç adet alayım?": risk matematiği (portföy × risk %, oynaklık, korelasyon, yoğunlaşma), tahmin değil
+function SizeCalc() {
+  const [f, setF] = useState({ piyasa: "BIST", kod: "", stop: "", risk: "" });
+  const [r, setR] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  const run = async () => {
+    if (!f.kod.trim()) return toast.error("Kod yaz.");
+    setBusy(true);
+    try {
+      const body = { piyasa: f.piyasa, kod: f.kod.trim() };
+      if (String(f.stop).trim()) body.stop = U.parseTr(String(f.stop));
+      if (String(f.risk).trim()) body.risk_yuzde = U.parseTr(String(f.risk));
+      setR((await api.post("/risk/size", body)).data);
+    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); setR(null); }
+    finally { setBusy(false); }
+  };
+  return <K.Card title="Kaç adet alayım? (risk hesabı)">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <K.Field label="Piyasa"><K.Select value={f.piyasa} onChange={set("piyasa")} options={[{ value: "BIST", label: "BIST" }, { value: "KRIPTO", label: "Kripto" }, { value: "ABD", label: "ABD" }]} /></K.Field>
+      <K.Field label="Kod"><K.TextInput value={f.kod} onChange={set("kod")} placeholder="ASTOR" /></K.Field>
+      <K.Field label="Stop" hint="boşsa 2 × ATR"><K.TextInput inputMode="decimal" value={f.stop} onChange={set("stop")} placeholder="0,00" /></K.Field>
+      <K.Field label="Risk %" hint="boşsa %1"><K.TextInput inputMode="decimal" value={f.risk} onChange={set("risk")} placeholder="1" /></K.Field>
+      <div className="flex items-end"><K.Button variant="primary" disabled={busy} onClick={run}>{busy ? "Hesaplanıyor…" : "Hesapla"}</K.Button></div>
+    </div>
+    {r && <div className="mt-3 flex flex-col gap-2">
+      <p className="m-0 text-lg text-t-1">En fazla <b>{U.fmtNum(r.adet, r.piyasa === "BIST" ? 0 : 6)} adet</b> ({r.para === "TL" ? "₺" : "$"}{U.fmtNum(r.tutar, 2)}) ·
+        stop {px(r.stop)} ({r.stop_kaynagi}) · stop kırılırsa kayıp ≈ ₺{U.fmtNum(r.risk_tl, 0)}</p>
+      <ul className="m-0 pl-5 text-t-2">{r.satirlar.map((x) => <li key={x}>{x}</li>)}</ul>
+      <p className="kp-note">{r.not}</p>
+    </div>}
+  </K.Card>;
+}
 
 // Portföy sağlığı: ağırlık, tepeden düşüş, test edilmiş trend kuralı, birlikte hareket edenler
 export default function PortfolioHealth() {
@@ -13,6 +63,8 @@ export default function PortfolioHealth() {
   const rows = d?.pozisyonlar || [];
   return <div className="kp-page">
     <PageHeader title="Portföy sağlığı" subtitle="Tek ekranda: neye ne kadar bağlısın, tepeden ne kadar düştün, hangileri aslında aynı pozisyon." />
+    <div className="mb-4"><RegimeStrip /></div>
+    <div className="mb-4"><SizeCalc /></div>
     {q.isLoading ? <p className="kp-note">Hesaplanıyor…</p> : !rows.length ? (
       <K.Card title="Açık pozisyon yok"><p className="kp-note m-0">Portföyüm'e pozisyon ekleyince burada sağlık özeti çıkar.</p></K.Card>
     ) : <>

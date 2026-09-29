@@ -132,6 +132,48 @@ function LabCard() {
   );
 }
 
+// Ay dönümü: ayın son 2 ve ilk 3 işlem günü (BIST hafta içi; kripto her gün). Takvim kuralı, veri gerekmez.
+function tomWindow(weekdaysOnly) {
+  const now = new Date();
+  const isTrading = (d) => !weekdaysOnly || (d.getDay() !== 0 && d.getDay() !== 6);
+  const days = (y, m) => { const out = []; for (let d = new Date(y, m, 1); d.getMonth() === m; d.setDate(d.getDate() + 1)) if (isTrading(d)) out.push(new Date(d)); return out; };
+  for (let k = 0; k < 2; k++) {
+    const y = now.getFullYear(), m = now.getMonth() + k;
+    const cur = days(y, m), next = days(y, m + 1);
+    const win = [...cur.slice(-2), ...next.slice(0, 3)];
+    const end = new Date(win[win.length - 1]); end.setHours(23, 59);
+    if (end >= now) return win;
+  }
+  return [];
+}
+const fmtDay = (d) => d.toLocaleDateString("tr-TR", { day: "numeric", month: "short", weekday: "short" });
+
+function TurnOfMonthCard() {
+  const lab = useData("strategy-lab", "/strategies/lab");
+  const rows = (lab.data?.sonuclar || []).filter((r) => r.strateji.startsWith("Ay dönümü"));
+  const today = new Date().toDateString();
+  return (
+    <K.Card title="✅ Testten geçen kural: Ay dönümü">
+      <p className="m-0 text-t-2">Ayın <b>son 2</b> ve yeni ayın <b>ilk 3</b> işlem gününde elde tut, diğer günlerde nakitte bekle. Maaş, fon girişleri ve ay sonu
+        dengelemesi bu günlerde alımı artırır; akademide on yıllardır bilinen bir etki. Geçmiş testte kripto ve BIST'te, hiç bakılmadan saklanan son 12 ay dahil,
+        aynı sürede rastgele piyasada kalmayı geçti.</p>
+      {!!rows.length && <K.DataTable rows={rows.map((r, i) => ({ ...r, _k: i }))} rowKey="_k" columns={[
+        { key: "piyasa", label: "Piyasa", render: (r) => (r.piyasa === "KRIPTO" ? "Kripto" : "BIST") },
+        { key: "dev", label: "Geliştirme: kural / rastgele", num: true, render: (r) => <span>{pctCell(r.gelistirme["kural_yillik_%"])} / {pctCell(r.gelistirme["rastgele_%"])}</span> },
+        { key: "hold", label: "Kilitli 12 ay: kural / rastgele", num: true, render: (r) => <span>{pctCell(r.kilitli["kural_yillik_%"])} / {pctCell(r.kilitli["rastgele_%"])}</span> },
+        { key: "gecen", label: "Rastgeleyi geçen varlık", num: true, mobile: false, render: (r) => `%${r.kilitli["rastgeleyi_gecen_varlik_%"]}` },
+      ]} />}
+      {[["BIST", true], ["Kripto", false]].map(([name, wd]) => {
+        const w = tomWindow(wd);
+        const inside = w.some((d) => d.toDateString() === today);
+        return <p key={name} className="m-0 text-t-1"><b>{name}</b>: {inside ? "şu an pencerenin içindesin" : "sıradaki pencere"} · {w.map(fmtDay).join(" · ")}</p>;
+      })}
+      <p className="kp-note">Getiriler varlık başına ortanca yıllık, maliyet düşülmüş. Kural kazancı büyük değil ve tek başına zengin etmez; asıl değeri, ayın geri kalanında
+        piyasada olmamanın riski azaltması. BIST'te resmi tatiller hesaba katılmadı (o günler kayar). Geçmiş sonuç geleceği garanti etmez; karar senin.</p>
+    </K.Card>
+  );
+}
+
 export default function Strategies() {
   const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState("");
@@ -171,7 +213,8 @@ export default function Strategies() {
     finally { setBusy(""); }
   };
   return <div className="kp-page">
-    <PageHeader title="Strateji Kurucu" subtitle="Bir kural ancak geçmiş veri sınavından geçerse öneri olur. Şu an kanıtlanmış kural yok; en güçlü aday araştırmada." />
+    <PageHeader title="Strateji Kurucu" subtitle="Bir kural ancak geçmiş veri sınavından geçerse öneri olur. Şu an geçen tek kural: ay dönümü." />
+    <div className="mb-4"><TurnOfMonthCard /></div>
     <div className="mb-4"><TrendCard /></div>
     <div className="mb-4"><LabCard /></div>
     <div className="kp-grid kp-split-l">

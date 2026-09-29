@@ -87,3 +87,62 @@ def mean_reversion_range(df):
 
 ALL = {"trend_takibi (mevcut)": trend_donchian, "trend_geri_cekilme": trend_pullback,
        "sikisma_kirilimi": vol_contraction, "goreli_guc": relative_strength, "yatayda_donus": mean_reversion_range}
+
+
+def weekly_trend(df):
+    """Slow trend: hold while the close is above its 200-day average for 5 days in a row; out after 5 days below."""
+    c, s = df.c.values, df.sma200.values
+    pos, hold, up, dn = np.zeros(len(df)), 0, 0, 0
+    for i in range(len(df)):
+        above = c[i] > s[i]
+        up, dn = (up + 1, 0) if above else (0, dn + 1)
+        if not hold and up >= 5:
+            hold = 1
+        elif hold and dn >= 5:
+            hold = 0
+        pos[i] = hold
+    return pos
+
+
+def abs_momentum(df):
+    """Time-series momentum: hold for the next month when the last 6 months' return is positive (monthly check)."""
+    r = (df.c / df.c.shift(126) - 1).values
+    pos, hold = np.zeros(len(df)), 0
+    for i in range(len(df)):
+        if i % 21 == 0:
+            hold = int(r[i] > 0) if r[i] == r[i] else 0
+        pos[i] = hold
+    return pos
+
+
+def near_52w_high(df):
+    """52-week-high effect: hold while the close is within 5 % of its 1-year high; out below 15 % from it."""
+    c = df.c.values
+    hi = df.h.rolling(252 if len(df) > 400 else 200).max().values
+    pos, hold = np.zeros(len(df)), 0
+    for i in range(len(df)):
+        if hi[i] != hi[i]:
+            continue
+        if not hold and c[i] >= 0.95 * hi[i]:
+            hold = 1
+        elif hold and c[i] < 0.85 * hi[i]:
+            hold = 0
+        pos[i] = hold
+    return pos
+
+
+def turn_of_month(df):
+    """Calendar: hold from the last 2 trading days of a month through the first 3 of the next."""
+    d = df.day
+    month = d.dt.month.values
+    pos = np.zeros(len(df))
+    n = len(df)
+    for i in range(n):
+        last = i + 2 < n and month[i + 2] != month[i]
+        first = i >= 3 and month[i - 3] != month[i]
+        pos[i] = 1 if (last or first) else 0
+    return pos
+
+
+NEW = {"yavas_trend_200g": weekly_trend, "mutlak_momentum_6ay": abs_momentum,
+       "yillik_zirveye_yakin": near_52w_high, "ay_donumu": turn_of_month}

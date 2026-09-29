@@ -66,6 +66,7 @@ const trTime = (t, withTime) =>
 
 // Fiyat %65 · hacim %17 · RSI %18; fareyle üzerine gelince açılış/yüksek/düşük/kapanış ve gösterge değerleri
 function CandleChart({ data, on, overlay, onPick, range }) {
+  const narrow = typeof window !== "undefined" && window.innerWidth < 640;
   const ref = useRef(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
@@ -77,7 +78,7 @@ function CandleChart({ data, on, overlay, onPick, range }) {
     const prec = precisionFor(data.last?.price);
     const chart = createChart(ref.current, {
       autoSize: true,
-      layout: { background: { type: "solid", color: "transparent" }, textColor: c.axis, fontSize: 13,
+      layout: { background: { type: "solid", color: "transparent" }, textColor: c.axis, fontSize: narrow ? 11 : 13,
         fontFamily: '"SF Pro Display", -apple-system, Inter, "Segoe UI", sans-serif', panes: { separatorColor: c.sep } },
       grid: { vertLines: { color: c.grid }, horzLines: { color: c.grid } },
       rightPriceScale: { borderColor: c.sep },
@@ -91,8 +92,9 @@ function CandleChart({ data, on, overlay, onPick, range }) {
     });
     candles.setData(data.candles.map((k) => ({ time: k.t, open: k.o, high: k.h, low: k.l, close: k.c })));
     // Seviyeler: alış ortalaman, planın tetik / iptal / hedef çizgileri
-    const level = (price, color, title, style = 2) =>
-      price && candles.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title });
+    // telefonda çizgi adları grafiği kapatır: yalnız eksen etiketi (ve bölgelerde o da yok)
+    const level = (price, color, title, style = 2, axis = true) =>
+      price && candles.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: narrow ? axis && style !== 1 : axis, title: narrow ? "" : title });
     if (on.seviye && overlay) {
       level(overlay.entry, c.info, "Alış ort.", 0);
       level(overlay.plan?.tetik, c.wait, "Tetik");
@@ -178,22 +180,22 @@ function CandleChart({ data, on, overlay, onPick, range }) {
       setHover(i === undefined ? null : i);
     });
     return () => chart.remove();
-  }, [data, on, c, theme, overlay, range]);
+  }, [data, on, c, theme, overlay, range, narrow]);
 
   const i = hover ?? data.candles.length - 1;
   const k = data.candles[i];
   const up = k.c >= k.o;
   return (
     <div className="relative w-full select-none">
-      <div className="pointer-events-none absolute left-1 top-1 z-10 flex flex-col gap-1 text-sm text-t-2">
+      <div className={cn("pointer-events-none absolute left-1 top-1 z-10 flex flex-col gap-1 text-t-2", narrow ? "text-[0.6875rem]" : "text-sm")}>
         <div className="num flex flex-wrap gap-x-3.5 gap-y-1">
           <span className="text-t-3">{trTime(k.t, ["15m", "1h", "4h"].includes(data.tf))}</span>
           {[["A", k.o], ["Y", k.h], ["D", k.l], ["K", k.c]].map(([l, v]) => (
             <span key={l}><b className="font-semibold text-t-3">{l}</b> <span className={cn("font-semibold", up ? "text-up" : "text-down")}>{px(v)}</span></span>
           ))}
-          <span><b className="font-semibold text-t-3">Hacim</b> {formatCompact(k.v)}</span>
+          {!narrow && <span><b className="font-semibold text-t-3">Hacim</b> {formatCompact(k.v)}</span>}
         </div>
-        <div className="num flex flex-wrap gap-x-3.5 gap-y-1">
+        {!narrow && <div className="num flex flex-wrap gap-x-3.5 gap-y-1">
           {LINES.filter(([key]) => on[key]).map(([key, label]) => (
             <span key={key} className="inline-flex items-center gap-1.5">
               <i className="h-0.5 w-3.5" style={{ background: c[key] || INDICATOR_COLORS[key] }} />
@@ -201,9 +203,9 @@ function CandleChart({ data, on, overlay, onPick, range }) {
             </span>
           ))}
           {on.rsi && <span><span className="text-t-3">RSI</span> <b className="font-semibold text-rsi">{data.rsi[i] == null ? "—" : Math.round(data.rsi[i])}</b></span>}
-        </div>
+        </div>}
       </div>
-      <div ref={ref} style={{ height: 440 + 150 * (Number(!!on.rsi) + Number(!!on.macd) + Number(!!on.stoch) + Number(!!on.bull_bear) +
+      <div ref={ref} style={{ height: (narrow ? 360 : 440) + (narrow ? 110 : 150) * (Number(!!on.rsi) + Number(!!on.macd) + Number(!!on.stoch) + Number(!!on.bull_bear) +
         ["atr", "adx", "cci", "roc", "williams_r", "stoch_rsi", "ultimate", "obv", "mfi"].filter((key) => on[key]).length) }} className="w-full" data-testid="tv-chart" />
     </div>
   );
@@ -443,7 +445,7 @@ export default function ChartPage() {
                   <ChangeBadge value={d.last.change_pct} size="lg" />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible [&>*]:shrink-0 [&>*]:whitespace-nowrap">
                 <button type="button" className="rounded-lg border border-hairline px-3 py-2 text-sm font-semibold text-t-1 hover:bg-raised"
                   aria-expanded={showIndicators} onClick={() => setShowIndicators((v) => !v)}>＋ İndikatör ekle</button>
                 {INDICATORS.flatMap((group) => group.items).filter(([key]) => on[key]).map(([key, label]) => (
@@ -470,10 +472,10 @@ export default function ChartPage() {
                 })}
                 <p className="m-0 text-xs text-t-3">Seçimlerin bu tarayıcıda saklanır. Göstergeler yalnız grafiği değiştirir; botun karar kurallarını değiştirmez.</p>
               </div>}
-              <div className="flex flex-wrap items-center gap-1 rounded-xl border border-hairline bg-raised p-1" data-testid="chart-ranges">
+              <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-hairline bg-raised p-1 sm:flex-wrap [&>*]:shrink-0" data-testid="chart-ranges">
                 {RANGES.map(([k, title, , rtf]) => (
                   <button key={k} type="button" title={title} onClick={() => set({ donem: k, tf: rtf })}
-                    className={cn("h-8 min-w-[2.5rem] rounded-lg px-2 text-sm font-semibold transition-colors",
+                    className={cn("h-8 min-w-[2.1rem] rounded-lg px-1.5 text-sm font-semibold transition-colors sm:min-w-[2.5rem] sm:px-2",
                       range === k ? "bg-surface text-t-1 shadow" : "text-t-3 hover:text-t-1")}>{k}</button>
                 ))}
                 <span className="mx-1 h-5 w-px bg-hairline" />

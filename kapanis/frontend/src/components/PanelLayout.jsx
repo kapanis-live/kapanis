@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate, Link } from "react-router-dom";
+import { usePrefetch, usePullToRefresh, haptic } from "@/lib/smooth";
 import { K } from "@/ds";
 import { Disclaimer } from "@/components/Disclaimer";
 import { useAuth } from "@/context/AuthContext";
@@ -194,6 +195,7 @@ function TopActions({ onLogout }) {
 }
 
 function SideNav({ onClick }) {
+  const prefetch = usePrefetch();
   const { owner } = useAuth();
   return (
     <nav className="space-y-5">
@@ -209,6 +211,8 @@ function SideNav({ onClick }) {
                   to={n.to}
                   end={n.end}
                   onClick={onClick}
+                  onMouseEnter={() => prefetch(n.to)}
+                  onTouchStart={() => prefetch(n.to)}
                   data-testid={`side-nav-${n.to === "/app" ? "overview" : n.to.split("/").pop()}`}
                   className={({ isActive }) =>
                     cn(
@@ -253,6 +257,9 @@ export function PanelLayout({ children }) {
   const myPortfolio = useData("my-portfolio", "/portfolio", { refetchInterval: 8000 });
   const loc = useLocation();
   const navigate = useNavigate();
+  const prefetch = usePrefetch();
+  const mainRef = useRef(null);
+  usePullToRefresh(mainRef);
 
   const handleLogout = async () => {
     await logout();
@@ -296,7 +303,7 @@ export function PanelLayout({ children }) {
           Defansif mod açık · risk hedefi %{myPortfolio.data.risk_target_pct} · Planı gör →
         </Link>}
 
-        <main key={loc.pathname} className="kp-main mx-auto max-w-[1400px] px-4 pb-24 pt-7 animate-fade-in md:px-7 lg:px-10 lg:pb-10">
+        <main ref={mainRef} key={loc.pathname} className="kp-main kp-page-enter mx-auto max-w-[1400px] px-4 pb-24 pt-7 md:px-7 lg:px-10 lg:pb-10">
           {children}
           <Disclaimer />
         </main>
@@ -306,8 +313,8 @@ export function PanelLayout({ children }) {
         {(owner ? MOBILE_NAV : USER_MOBILE_NAV).map((n) => {
           const Icon = n.icon;
           return (
-            <NavLink key={n.to} to={n.to} end={n.end}
-              className={({ isActive }) => cn("flex flex-col items-center gap-1 px-3 py-1 text-[11px]", isActive ? "text-brand" : "text-t-2")}>
+            <NavLink key={n.to} to={n.to} end={n.end} onTouchStart={() => prefetch(n.to)} onClick={haptic}
+              className={({ isActive }) => cn("flex flex-col items-center gap-1 px-3 py-1 text-[11px] transition-transform duration-100 active:scale-95", isActive ? "text-brand" : "text-t-2")}>
               <Icon className="h-4 w-4" />{n.label}
             </NavLink>
           );

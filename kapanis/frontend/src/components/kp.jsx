@@ -1,3 +1,4 @@
+import { useFlash } from "@/lib/smooth";
 // Kapanış tasarım sistemi bileşenleri (Claude Design "Kapanış" sistemi: tokens + bundle.css karşılıkları).
 // Bütün ölçüler rem: A− / A+ bütün arayüzü birlikte büyütür.
 import { cn } from "@/lib/utils";
@@ -155,4 +156,10 @@ export function Tile({ label, children }) {
       <span className="num text-lg font-bold text-t-1">{children}</span>
     </div>
   );
+}
+
+// Sayı değişince kısa yeşil/kırmızı parlama (fiyat, değer); hareket azaltma ayarında kapalı
+export function FlashValue({ value, children, className }) {
+  const ref = useFlash(value);
+  return <span ref={ref} className={className} style={{ padding: "0 0.15em", margin: "0 -0.15em" }}>{children}</span>;
 }

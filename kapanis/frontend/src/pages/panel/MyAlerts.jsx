@@ -98,7 +98,7 @@ export default function MyAlerts() {
       </K.Card>
       <div className="flex flex-col gap-4">
         <K.Card title={`Aktif alarmlar (${active.length})`}>
-          {q.isLoading ? <p className="kp-note">Yükleniyor…</p> : !active.length
+          {q.isLoading ? <div className="kp-skel h-40" aria-busy="true" /> : !active.length
             ? <p className="kp-note">Aktif alarm yok.</p> : <div className="flex flex-col gap-2">{active.map(row)}</div>}
         </K.Card>
         <K.Card title="Son uyarılar">

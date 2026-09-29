@@ -14,7 +14,7 @@ export default function MyReport() {
   const r = q.data;
   return <div className="kp-page">
     <PageHeader title="Karnem" subtitle="Kapattığın işlemlerden: ne kadar isabetli, ne kadar tuttun, stopa uydun mu, erken mi sattın." />
-    {q.isLoading ? <p className="kp-note">Hesaplanıyor…</p> : !r?.islem ? (
+    {q.isLoading ? <div className="kp-skel h-40" aria-busy="true" /> : !r?.islem ? (
       <K.Card title="Henüz kapalı işlem yok">
         <p className="kp-note m-0">Portföyüm'de bir pozisyonu "Sattım" ile kapattığında karnen burada oluşur.</p>
       </K.Card>

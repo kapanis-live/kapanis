@@ -1,11 +1,15 @@
-import { Loader2, Inbox, AlertTriangle } from "lucide-react";
+import { Inbox, AlertTriangle } from "lucide-react";
 import { TEXTS } from "@/lib/texts";
 
 export function LoadingState({ text = TEXTS.loading.default, testid = "loading-state" }) {
   return (
-    <div data-testid={testid} className="flex flex-col items-center justify-center gap-3 py-16 text-t-2 animate-fade-in">
-      <Loader2 className="h-6 w-6 animate-spin text-t-2" />
-      <span className="text-sm">{text}</span>
+    // iskelet: sayfanın gri taslağı; veri gelince yerine oturur, sayfa zıplamaz
+    <div data-testid={testid} aria-busy="true" aria-label={text} className="flex flex-col gap-4 py-2">
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))" }}>
+        {[0, 1, 2].map((i) => <div key={i} className="kp-skel h-24" />)}
+      </div>
+      <div className="kp-skel h-64" />
+      <span className="sr-only">{text}</span>
     </div>
   );
 }

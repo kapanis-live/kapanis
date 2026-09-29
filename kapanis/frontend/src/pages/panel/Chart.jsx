@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/PanelLayout";
 import { useData, LIVE } from "@/lib/useData";
 import { LoadingState, ErrorState } from "@/components/states";
 import { AssetLogo } from "@/components/AssetLogo";
-import { Segmented, Chip, SearchField, ChangeBadge, SignalCard } from "@/components/kp";
+import { Segmented, Chip, SearchField, ChangeBadge, SignalCard, FlashValue } from "@/components/kp";
 import { useTheme } from "@/lib/theme";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { toast } from "sonner";
@@ -72,8 +72,22 @@ function CandleChart({ data, on, overlay, onPick, range }) {
   pickRef.current = onPick;
   const [hover, setHover] = useState(null);
   const { colors: c, theme } = useTheme();
+  // Grafik yalnız sembol / aralık / gösterge / mum sayısı değişince baştan kurulur; dakikalık yenilemede
+  // sadece son mum ve göstergelerin son değeri güncellenir (titreme olmaz, yakınlaştırma korunur).
+  const live = useRef(null);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const n = data?.candles?.length || 0;
+  // overlay (alış, plan, alarm çizgileri) 8 sn'de bir yeni nesne olarak gelir: içerik değişmedikçe yeniden kurma
+  const overlayRef = useRef(overlay);
+  overlayRef.current = overlay;
+  const overlayKey = JSON.stringify(overlay || null);
+  const shapeKey = n ? `${data.symbol}|${data.tf}|${n}|${data.candles[0].t}` : "";
   useEffect(() => {
+    const data = dataRef.current;
+    const overlay = overlayRef.current;
     if (!ref.current || !data?.candles?.length) return undefined;
+    const lineSeries = [];
     const intraday = ["15m", "1h", "4h"].includes(data.tf);
     const prec = precisionFor(data.last?.price);
     const chart = createChart(ref.current, {
@@ -124,6 +138,7 @@ function CandleChart({ data, on, overlay, onPick, range }) {
       const s = chart.addSeries(LineSeries, { color, lineWidth: width, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
         ...(pane ? {} : { priceFormat: fmt }) }, pane);
       s.setData(data.candles.map((k, i) => (data[key]?.[i] == null ? { time: k.t } : { time: k.t, value: data[key][i] })));
+      lineSeries.push([key, s]);
       return s;
     };
     LINES.forEach(([k]) => on[k] && line(k, c[k] || INDICATOR_COLORS[k]));
@@ -179,8 +194,22 @@ function CandleChart({ data, on, overlay, onPick, range }) {
       const i = param?.time != null ? index.get(param.time) : undefined;
       setHover(i === undefined ? null : i);
     });
-    return () => chart.remove();
-  }, [data, on, c, theme, overlay, range, narrow]);
+    live.current = { candles, vol, vma, lines: lineSeries, key: shapeKey };
+    return () => { live.current = null; chart.remove(); };
+  }, [shapeKey, on, c, theme, overlayKey, range, narrow]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const L = live.current;
+    if (!L || L.key !== shapeKey || !data?.candles?.length) return;
+    const i = data.candles.length - 1;
+    const k = data.candles[i];
+    try {
+      L.candles.update({ time: k.t, open: k.o, high: k.h, low: k.l, close: k.c });
+      L.vol.update({ time: k.t, value: k.v, color: `${k.c >= k.o ? c.up : c.down}80` });
+      if (data.vol_ma?.[i] != null) L.vma.update({ time: k.t, value: data.vol_ma[i] });
+      L.lines.forEach(([key, s]) => { if (data[key]?.[i] != null) s.update({ time: k.t, value: data[key][i] }); });
+    } catch { /* eski zaman damgası: bir sonraki kurulumda düzelir */ }
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const i = hover ?? data.candles.length - 1;
   const k = data.candles[i];
@@ -440,7 +469,7 @@ export default function ChartPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="num text-[2.25rem] font-bold leading-[1.1] tracking-[-0.01em] text-t-1">
-                    {d.currency === "TRY" ? "₺" : "$"}{px(d.last.price)}
+                    <FlashValue value={d.last.price}>{d.currency === "TRY" ? "₺" : "$"}{px(d.last.price)}</FlashValue>
                   </span>
                   <ChangeBadge value={d.last.change_pct} size="lg" />
                 </div>

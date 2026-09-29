@@ -65,7 +65,7 @@ export default function PortfolioHealth() {
     <PageHeader title="Portföy sağlığı" subtitle="Tek ekranda: neye ne kadar bağlısın, tepeden ne kadar düştün, hangileri aslında aynı pozisyon." />
     <div className="mb-4"><RegimeStrip /></div>
     <div className="mb-4"><SizeCalc /></div>
-    {q.isLoading ? <p className="kp-note">Hesaplanıyor…</p> : !rows.length ? (
+    {q.isLoading ? <div className="kp-skel h-40" aria-busy="true" /> : !rows.length ? (
       <K.Card title="Açık pozisyon yok"><p className="kp-note m-0">Portföyüm'e pozisyon ekleyince burada sağlık özeti çıkar.</p></K.Card>
     ) : <>
       {d.uyarilar?.length ? <K.Callout tone="warn" title={`${d.uyarilar.length} dikkat noktası`}>

@@ -1,3 +1,4 @@
+import { FlashValue } from "@/components/kp";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -164,7 +165,7 @@ export default function MyPortfolio() {
                 <div className="kp-grid kp-g-4 kp-scroll">
                   {Object.entries(MK).map(([m, info]) => {
                     const s = sum(m);
-                    return <K.StatCard key={m} label={`${info.label} · ${s.n} pozisyon`} value={U.fmtPrice(s.value, info.cur, 2)}
+                    return <K.StatCard key={m} label={`${info.label} · ${s.n} pozisyon`} value={<FlashValue value={s.value}>{U.fmtPrice(s.value, info.cur, 2)}</FlashValue>}
                       change={s.n ? s.pct : undefined} changeLabel="Açık" sub={s.n ? `K/Z ${U.fmtSignedMoney(s.pl, info.cur)}` : "pozisyon yok"} />;
                   })}
                   <CashCard key={JSON.stringify(d.cash_balance)} cash={d.cash_balance} onDone={refresh} />

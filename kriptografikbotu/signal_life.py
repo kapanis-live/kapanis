@@ -57,8 +57,12 @@ async def evaluate(client: httpx.AsyncClient, d: dict) -> dict:
     closes = [float(r.close) for r in df.itertuples() if int(r.open_time) > signal_ms and int(r.open_time) + step <= now_ms]
     state = classify(entry, d.get("iptal"), closes, price, tf, mkt)
     age = (alerts_store.now_tr() - datetime.fromisoformat(d["zaman"])).total_seconds() / 60
+    stop, target = d.get("iptal"), d.get("hedef")
+    # R/R if bought now: the card's R/R is from the signal close and shrinks as the price runs away from it
+    rr_now = (round((target - price) / (price - stop), 2)
+              if stop is not None and target is not None and price > stop else None)
     return {"durum": state, "etiket": LABELS[state], "fiyat": price, "fark_yuzde": round((price / entry - 1) * 100, 2),
-            "yas_dk": round(age)}
+            "yas_dk": round(age), "rr_simdi": rr_now}
 
 
 def _age(minutes: float) -> str:
@@ -66,7 +70,9 @@ def _age(minutes: float) -> str:
 
 
 def status_text(life: dict) -> str:
-    return f"{life['etiket']} · {_age(life['yas_dk'])} önce · şimdi {life['fiyat']:.6g} ({life['fark_yuzde']:+.2f}%)"
+    rr = life.get("rr_simdi")
+    return (f"{life['etiket']} · {_age(life['yas_dk'])} önce · şimdi {life['fiyat']:.6g} ({life['fark_yuzde']:+.2f}%)"
+            + (f" · R/R {rr:.2f}" if rr is not None else ""))
 
 
 def stop_cooldown(pair: str, now: datetime | None = None) -> str | None:

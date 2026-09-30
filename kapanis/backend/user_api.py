@@ -87,6 +87,8 @@ class PositionBody(BaseModel):
     maliyet: float
     stop: Optional[float] = None
     hedef: Optional[float] = None
+    tez: Optional[str] = None          # karar kapsülü: neden aldım
+    cikis_sarti: Optional[str] = None  # karar kapsülü: ne olursa satarım
 
 
 class StopBody(BaseModel):
@@ -220,7 +222,9 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
         if sum(1 for p in doc["positions"] if p["durum"] == "acik") >= MAX_OPEN_POSITIONS:
             raise HTTPException(status_code=400, detail=f"En fazla {MAX_OPEN_POSITIONS} açık pozisyon.")
         pos = {"id": f"up_{ObjectId()}", "piyasa": mkt, "kod": kod, "adet": adet, "maliyet": maliyet, "stop": stop,
-               "hedef": hedef, "para": MARKETS[mkt], "acilis": _now().isoformat(), "durum": "acik"}
+               "hedef": hedef, "para": MARKETS[mkt], "acilis": _now().isoformat(), "durum": "acik",
+               **({"kapsul": {"tez": (body.tez or "").strip()[:500], "cikis_sarti": (body.cikis_sarti or "").strip()[:300]}}
+                  if (body.tez or "").strip() else {})}
         doc["positions"].append(pos)
         tx(doc, tur="alis", piyasa=mkt, kod=kod, adet=adet, fiyat=maliyet, tutar=round(adet * maliyet, 2),
            para=MARKETS[mkt], pozisyon_id=pos["id"])

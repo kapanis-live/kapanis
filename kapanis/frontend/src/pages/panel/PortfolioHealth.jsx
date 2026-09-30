@@ -56,6 +56,27 @@ function SizeCalc() {
   </K.Card>;
 }
 
+// Stres testi: geçmiş 1 yıldaki duyarlılıkla (beta) "şu olursa portföyüm ne olur?" — tahmin değil
+function StressCard() {
+  const q = useData("stress", "/portfolio/stress", { refetchInterval: 900_000 });
+  const d = q.data;
+  if (q.isLoading) return <div className="kp-skel h-40" aria-busy="true" />;
+  if (!d?.senaryolar?.length || !d.toplam_tl) return null;
+  return <K.Card title="Stres testi: şu olursa?">
+    <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(13rem, 1fr))" }}>
+      {d.senaryolar.map((sc) => (
+        <div key={sc.senaryo} className="rounded-lg border border-hairline p-3">
+          <p className="m-0 text-sm text-t-3">{sc.senaryo}</p>
+          <p className={`m-0 text-xl font-bold ${sc.portfoy_tl < 0 ? "kp-num-down" : sc.portfoy_tl > 0 ? "kp-num-up" : ""}`}>
+            {sc.portfoy_tl >= 0 ? "+" : "−"}₺{U.fmtNum(Math.abs(sc.portfoy_tl), 0)} <span className="text-sm">({pct(sc.portfoy_yuzde)})</span></p>
+          <p className="m-0 mt-1 text-xs text-t-3">{sc.kalemler.slice(0, 3).map((k) => `${k.kod} ${pct(k.tahmini_yuzde)}`).join(" · ")}</p>
+        </div>
+      ))}
+    </div>
+    <p className="kp-note">{d.not}</p>
+  </K.Card>;
+}
+
 // Portföy sağlığı: ağırlık, tepeden düşüş, test edilmiş trend kuralı, birlikte hareket edenler
 export default function PortfolioHealth() {
   const q = useData("health", "/portfolio/health", { refetchInterval: 300_000 });
@@ -65,6 +86,7 @@ export default function PortfolioHealth() {
     <PageHeader title="Portföy sağlığı" subtitle="Tek ekranda: neye ne kadar bağlısın, tepeden ne kadar düştün, hangileri aslında aynı pozisyon." />
     <div className="mb-4"><RegimeStrip /></div>
     <div className="mb-4"><SizeCalc /></div>
+    <div className="mb-4"><StressCard /></div>
     {q.isLoading ? <div className="kp-skel h-40" aria-busy="true" /> : !rows.length ? (
       <K.Card title="Açık pozisyon yok"><p className="kp-note m-0">Portföyüm'e pozisyon ekleyince burada sağlık özeti çıkar.</p></K.Card>
     ) : <>

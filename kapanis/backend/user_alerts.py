@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 import chart_data
+import tom
 import trend_rule
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ TIMEFRAMES = {"KRIPTO": ["1h", "4h", "1d"], "BIST": ["1d"], "ABD": ["1d"]}
 TF_SECONDS = {"1h": 3600, "4h": 14400, "1d": 86400}
 TF_LABEL = {"1h": "1 saatlik", "4h": "4 saatlik", "1d": "günlük"}
 EVENT_DAYS = 30
+CAPSULE_DAYS = 30
 
 
 class AlertBody(BaseModel):
@@ -80,6 +82,8 @@ def _fmt(x) -> str:
 
 
 def describe(a: dict) -> str:
+    if a["tur"] == "ay_donumu":
+        return f"{'BIST' if a['piyasa'] == 'BIST' else 'Kripto'} ay dönümü penceresi (giriş/çıkış günleri)"
     if a["tur"] == "trend":
         return f"{a['kod']} trend takibi (Donchian 20/10 + 200 gün, günlük)"
     what = "RSI" if a["tur"] == "rsi" else "kapanış"
@@ -106,11 +110,17 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
             raise HTTPException(status_code=400, detail="Piyasa KRIPTO, BIST ya da ABD olmalı.")
         if body.tf not in TIMEFRAMES[mkt]:
             raise HTTPException(status_code=400, detail=f"{mkt} için zaman dilimi: {', '.join(TIMEFRAMES[mkt])}.")
-        if body.tur not in ("fiyat", "rsi", "trend") or body.yon not in ("ustu", "alti"):
+        if body.tur not in ("fiyat", "rsi", "trend", "ay_donumu") or body.yon not in ("ustu", "alti"):
             raise HTTPException(status_code=400, detail="Tür fiyat/rsi/trend, yön ustu/alti olmalı.")
         if body.tur == "trend" and (mkt != "KRIPTO" or body.tf != "1d"):
             raise HTTPException(status_code=400, detail="Trend takibi yalnız kriptoda ve günlük kapanışta test edildi.")
-        if body.tur != "trend" and (not (0 < body.seviye < 1e9) or (body.tur == "rsi" and not 1 <= body.seviye <= 99)):
+        if body.tur == "ay_donumu":
+            if mkt not in ("BIST", "KRIPTO"):
+                raise HTTPException(status_code=400, detail="Ay dönümü BIST ve kripto için test edildi.")
+            body.kod, body.tf = ("XU100" if mkt == "BIST" else "BTC"), "1d"
+            if await get_db().user_alerts.find_one({"user_id": user["id"], "tur": "ay_donumu", "piyasa": mkt, "durum": "aktif"}):
+                raise HTTPException(status_code=400, detail="Bu piyasa için ay dönümü bildirimi zaten açık.")
+        if body.tur not in ("trend", "ay_donumu") and (not (0 < body.seviye < 1e9) or (body.tur == "rsi" and not 1 <= body.seviye <= 99)):
             raise HTTPException(status_code=400, detail="Seviye geçersiz (RSI için 1-99).")
         kod = (body.kod or "").strip().upper().removesuffix(".IS").removesuffix("/USDT")
         if not kod or len(kod) > 15 or not all(c.isalnum() or c in ".-" for c in kod):
@@ -149,6 +159,10 @@ def build_router(get_db, current_user, require_bot_key) -> APIRouter:
         import json
         import pathlib
         return json.loads((pathlib.Path(__file__).with_name("lab_results.json")).read_text(encoding="utf-8"))
+
+    @r.get("/strategies/tom")
+    async def tom_windows(_: dict = Depends(current_user)):
+        return {"pencereler": [tom.window("BIST"), tom.window("KRIPTO")]}
 
     @r.get("/strategies/trend")
     async def trend_board(_: dict = Depends(current_user)):
@@ -237,7 +251,29 @@ async def run_once(db, now: float | None = None) -> int:
         if await _event(db, u, a["kod"], "KRIPTO", "1d", text, key=f"trend_{a['id']}_{st['mum']}_{int(st['trendde'])}"):
             fired += 1
 
-    async for a in db.user_alerts.find({"durum": "aktif", "tur": {"$ne": "trend"}}):
+    # turn of the month: at noon (TR) on the entry day and on the exit day
+    local = dt.datetime.fromtimestamp(now, tom.TR)
+    if local.hour >= 12:
+        async for a in db.user_alerts.find({"durum": "aktif", "tur": "ay_donumu"}):
+            w = tom.window(a["piyasa"], local.date())
+            days = w["gunler"]
+            today = local.date().isoformat()
+            u = await user_of(a["user_id"])
+            if not u:
+                continue
+            close = "18:00 BIST kapanışı" if a["piyasa"] == "BIST" else "günlük kapanış (03:00 TR)"
+            name = "BIST" if a["piyasa"] == "BIST" else "Kripto"
+            if today == days[0]:
+                text = (f"📅 {name} ay dönümü penceresi bugün başlıyor: kural bugünkü {close} ile girer, "
+                        f"{days[-1][8:10]}.{days[-1][5:7]} kapanışında çıkar. Test edilmiş tek kural; kazancı küçük, karar senin.")
+            elif today == days[-1]:
+                text = f"📅 {name} ay dönümü penceresi bugün bitiyor: kural bugünkü {close} ile çıkar. Sıradaki pencere gelecek ay sonu."
+            else:
+                continue
+            if await _event(db, u, a["kod"], a["piyasa"], "1d", text, key=f"tom_{a['id']}_{today}"):
+                fired += 1
+
+    async for a in db.user_alerts.find({"durum": "aktif", "tur": {"$nin": ["trend", "ay_donumu"]}}):
         b = await bar(a["piyasa"], a["kod"], a["tf"])
         if not b:
             continue
@@ -256,6 +292,29 @@ async def run_once(db, now: float | None = None) -> int:
         text = f"🔔 Alarmın: {describe(a)} — {TF_LABEL.get(a['tf'], a['tf'])} mum {_fmt(value)} ile kapandı{extra}."
         await _event(db, u, a["kod"], a["piyasa"], a["tf"], text)
         fired += 1
+
+    # decision capsule: 30 days after buying, the thesis written at the time comes back with what happened since
+    async for pf in db.portfolios.find({"positions.kapsul": {"$exists": True}}, {"user_id": 1, "positions": 1}):
+        u = await user_of(pf["user_id"])
+        if not u:
+            continue
+        for p in pf["positions"]:
+            k = p.get("kapsul")
+            opened = dt.datetime.fromisoformat(p.get("acilis") or "1970-01-01T00:00:00+00:00").timestamp()
+            if not k or now - opened < CAPSULE_DAYS * 86400:
+                continue
+            b = await bar(p["piyasa"], p["kod"], "1d")
+            if not b:
+                continue
+            last = b[0]["c"]
+            ch = (last / p["maliyet"] - 1) * 100
+            state = "hâlâ elinde" if p.get("durum") == "acik" else f"sattın ({_fmt(p.get('kapanis_fiyat'))})"
+            text = (f"💊 Karar kapsülü — {p['kod']}, {CAPSULE_DAYS} gün önce {_fmt(p['maliyet'])}'den aldın.\n"
+                    f"O gün yazdığın: “{k['tez']}”\n"
+                    + (f"Çıkış şartın: “{k['cikis_sarti']}”\n" if k.get("cikis_sarti") else "")
+                    + f"Şimdi: {_fmt(last)} ({ch:+.1f}%), {state}. Tezin tuttu mu, şartın gerçekleşti mi? Cevabını günlüğüne yaz.")
+            if await _event(db, u, p["kod"], p["piyasa"], "1d", text, key=f"kapsul_{p['id']}"):
+                fired += 1
 
     async for pf in db.portfolios.find({"positions.durum": "acik"}, {"user_id": 1, "positions": 1}):
         u = await user_of(pf["user_id"])

@@ -40,12 +40,13 @@ def _nan(x) -> bool:
 
 async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entry: float,
                    iptal: float | None, hedef: float | None, timeframe: str = "15m",
-                   candle=None, volume_ok: bool | None = None) -> dict:
+                   candle=None, volume_ok: bool | None = None, volume_ratio: float | None = None) -> dict:
     """Run every entry rule.
 
     candle: the closed signal candle (row with open_time, close, volume, vol_avg20, atr14).
             None when evaluating at "Aldım" time, where entry is the live price.
     volume_ok: overrides the candle's volume check (e.g. the trigger candle was the previous one).
+    volume_ratio: that candle's volume / MA20, shown next to the overridden check.
     """
     coin = pair.split("/")[0]
     symbol = alerts_store.pair_to_symbol(pair)
@@ -71,7 +72,7 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
         rr = round((hedef - entry) / (entry - iptal), 2)
 
     # Macro: fail closed. Unknown regime counts as RİSK-OFF for sizing and thresholds.
-    macro_ok, risk_off, soon, why = True, False, [], ""
+    macro_ok, risk_off, soon, why, regime_text = True, False, [], "", ""
     try:
         m = await macro.summary()
         regime = m.get("rejim", {})
@@ -82,15 +83,18 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
             macro_ok, why = False, "FRED yenilenemedi, eldeki veri süresi dolmuş"
         else:
             risk_off = regime["skor"] <= -2
+            regime_text = f"rejim skoru {regime['skor']}" + (f" ({regime['etiket']})" if regime.get("etiket") else "")
         soon = [e for e in macro.upcoming(await macro.calendar(strict=True), 2) if e["kalan_saat"] >= 0]
     except Exception as e:
         macro_ok, why = False, f"takvim/rejim alınamadı ({e})"
     if not macro_ok:
         risk_off = True
+    # One reason for every line that depends on it (R/R threshold, tranche size, macro row), so they never disagree.
+    risk_reason = ("makro doğrulanamadı" if not macro_ok else f"RİSK-OFF, {regime_text}") if risk_off else ""
     min_rr = config.MIN_RR_RISK_OFF if risk_off else config.MIN_RR
     if rr is not None:
         checks.append(_check("R/R", rr >= min_rr,
-                             f"R/R {rr:.2f}, eşik {min_rr:g}" + (" (RİSK-OFF/doğrulanamadı)" if risk_off else "")))
+                             f"R/R {rr:.2f} (sinyal kapanışından), eşik {min_rr:g}" + (f" ({risk_reason})" if risk_off else "")))
 
     atr = None if candle is None else candle.atr14
     if not _nan(atr) and iptal is not None and entry > iptal:
@@ -110,6 +114,8 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
                       else "Volume MA20 yok, doğrulanamadı")
     else:
         vol_detail = "sinyal anındaki hacim teyidi " + ("vardı" if volume_ok else "yoktu/doğrulanamadı")
+        if volume_ratio is not None and volume_ratio == volume_ratio:
+            vol_detail += f" (tetik mumu hacmi x{volume_ratio:.2f} MA20)"
     volume_ok = bool(volume_ok)
     checks.append(_check("hacim", volume_ok, vol_detail))
 
@@ -131,9 +137,13 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
         eng = structure.analyze(frames, None, {"tetik": None, "iptal": iptal, "hedef": hedef},
                                 entry_tf="15m", htf_list=("1d", "4h"))
         s4 = eng["yapi"].get("4h", {})
-        ok4 = s4.get("trend") != "düşüş" and not (s4.get("choch") or "").startswith("düşüş")
-        checks.append(_check("yapı (4h)", ok4, f"4h {s4.get('trend', '?')}" + (f" · {s4['choch']}" if s4.get("choch") else "")
-                             + (" — yapıya karşı alım" if not ok4 else ""), blocking=False))
+        trend4 = s4.get("trend")
+        if not trend4 or trend4 == "?":  # unknown structure is "doğrulanamadı", never a pass
+            checks.append(_check("yapı (4h)", False, "4h yapı verisi yok, doğrulanamadı", blocking=False))
+        else:
+            ok4 = trend4 != "düşüş" and not (s4.get("choch") or "").startswith("düşüş")
+            checks.append(_check("yapı (4h)", ok4, f"4h {trend4}" + (f" · {s4['choch']}" if s4.get("choch") else "")
+                                 + (" — yapıya karşı alım" if not ok4 else ""), blocking=False))
         conf = eng["konfluens"]["skor"]
         checks.append(_check("konfluens", conf is not None and conf >= 50, f"setup kalitesi {conf}/100 (olasılık değil)",
                              blocking=False))
@@ -146,8 +156,11 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
     if not macro_ok:
         checks.append(_check("makro", False, f"doğrulanamadı: {why}"))
     else:
-        checks.append(_check("makro", not soon, "2 saat içinde makro veri yok" if not soon else
-                             f"{soon[0]['olay']} {soon[0]['kalan_saat']:g} saat sonra — veri öncesi giriş yok"))
+        # Passes only on "no release within 2 hours"; the regime itself works through R/R and tranche size.
+        checks.append(_check("makro", not soon, (f"{regime_text} · " if regime_text else "")
+                             + ("2 saat içinde önemli veri açıklaması yok" if not soon else
+                                f"{soon[0]['olay']} {soon[0]['kalan_saat']:g} saat sonra — veri öncesi giriş yok")
+                             + (" · RİSK-OFF: R/R eşiği ve kademe sıkı" if risk_off and not soon else "")))
 
     try:
         filters = await market.order_filters(client, symbol)
@@ -162,7 +175,8 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
     except Exception as e:
         senti = {"korku_acgozluluk": {"hata": str(e)[:80]}}
     greed = sentiment.greed_note(senti)
-    tranche, tranche_notes = positions.tranche_usd(pair, risk_off, volume_ok, exchange_min, greed=greed)
+    tranche, tranche_notes = positions.tranche_usd(pair, risk_off, volume_ok, exchange_min, greed=greed,
+                                                   risk_off_reason=risk_reason or None)
     s_ok, s_detail = sentiment.gate_check(senti)
     checks.append(_check("duygu", s_ok, s_detail, blocking=False))
     d_ok, d_detail = discipline.check("KRIPTO")
@@ -191,7 +205,9 @@ async def evaluate(client: httpx.AsyncClient, *, pair: str, direction: str, entr
             "acilis_utc": datetime.fromtimestamp(int(candle.open_time) / 1000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M"),
             "zaman_dilimi": timeframe, "kapanis": float(candle.close),
             "hacim": float(candle.volume), "hacim_ort20": None if _nan(candle.vol_avg20) else float(candle.vol_avg20)},
-        "korelasyon": [p["pair"] for p in positions.open_positions() if p["pair"] != pair],
+        # only other crypto trades: BIST/US stocks and imported holdings are not "the same trade" as a coin signal
+        "korelasyon": [p["pair"] for p in positions.open_positions()
+                       if p["pair"] != pair and p.get("piyasa", "KRIPTO") == "KRIPTO" and positions.is_trade(p)],
         "atr": None if _nan(atr) else float(atr),
         "adet": round(tranche / entry, 6) if tranche > 0 and entry > 0 else None,
         "midas_stop": signal_life.midas_stop(iptal, None if _nan(atr) else float(atr)),

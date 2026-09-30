@@ -589,6 +589,59 @@ class UserAlarmTest(MultiUserTest.__bases__[0]):
             reg = (await self.c.get("/api/market/regime", headers=h)).json()
             self.assertEqual(len(reg["rejimler"]), 3)
 
+    async def test_turn_of_month_notifies_entry_and_exit_days(self):
+        import datetime as dt
+        import unittest.mock as um
+        ua = server.user_alerts
+        h = auth("user_a")
+
+        async def chart(symbol, tf="1d", market=None):
+            return {"candles": [{"t": 1, "c": 100.0, "h": 101, "l": 99}], "rsi": [50.0]}
+        with um.patch.object(ua.chart_data, "chart", chart):
+            r = await self.c.post("/api/alarms", headers=h, json={"piyasa": "BIST", "kod": "-", "tur": "ay_donumu"})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual((await self.c.post("/api/alarms", headers=h, json={"piyasa": "BIST", "kod": "-", "tur": "ay_donumu"})).status_code, 400)
+            noon = lambda d: dt.datetime.fromisoformat(d + "T13:00:00+03:00").timestamp()  # noqa: E731
+            self.assertEqual(await ua.run_once(server.db, now=noon("2026-09-29")), 1)   # first day of the window
+            self.assertEqual(await ua.run_once(server.db, now=noon("2026-09-29")), 0)   # once
+            self.assertEqual(await ua.run_once(server.db, now=noon("2026-10-01")), 0)   # middle
+            self.assertEqual(await ua.run_once(server.db, now=noon("2026-10-05")), 1)   # last day
+        ev = [e["metin"] for e in (await self.c.get("/api/alarms", headers=h)).json()["olaylar"]]
+        self.assertTrue(any("başlıyor" in e for e in ev) and any("bitiyor" in e for e in ev))
+        w = (await self.c.get("/api/strategies/tom", headers=h)).json()["pencereler"]
+        self.assertEqual([x["piyasa"] for x in w], ["BIST", "KRIPTO"])
+
+    def test_tom_skips_bist_holidays(self):
+        import datetime as dt
+        import tom
+        self.assertEqual(tom.window("BIST", dt.date(2026, 10, 27))["gunler"][:2], ["2026-10-28", "2026-10-30"])  # 29 Ekim closed
+        self.assertEqual(tom.window("BIST", dt.date(2026, 5, 20))["gunler"][2], "2026-06-01")                    # Kurban Bayramı
+
+    async def test_stress_and_decision_capsule(self):
+        import unittest.mock as um
+        ua, ins = server.user_alerts, server.insights
+        h = auth("user_b")
+        r = await self.c.post("/api/portfolio/positions", headers=h, json={
+            "piyasa": "KRIPTO", "kod": "ETH", "adet": 1, "maliyet": 100, "tez": "ETF onayı gelecek", "cikis_sarti": "90 altı kapanış"})
+        self.assertEqual(r.status_code, 200, r.text)
+        start = int(time.time()) - 300 * 86400
+
+        async def chart(symbol, tf="1d", market=None):
+            if symbol == "USDTRY=X":
+                return {"candles": [{"t": start + i * 86400, "c": 40.0} for i in range(300)]}
+            k = 2.0 if symbol == "ETH" else 1.0   # ETH moves twice as much as BTC
+            cs = [100 * (1 + k * 0.01 * ((i % 7) - 3)) for i in range(300)]
+            return {"candles": [{"t": start + i * 86400, "c": c, "h": c, "l": c} for i, c in enumerate(cs)], "rsi": [50.0] * 300}
+        with um.patch.object(ins.chart_data, "chart", chart), um.patch.object(ua.chart_data, "chart", chart):
+            st = (await self.c.get("/api/portfolio/stress", headers=h)).json()
+            btc = next(x for x in st["senaryolar"] if x["senaryo"].startswith("BTC"))
+            self.assertAlmostEqual(btc["kalemler"][0]["beta"], 2.0, delta=0.1)
+            self.assertAlmostEqual(btc["portfoy_yuzde"], -40.0, delta=2)
+            self.assertEqual(await ua.run_once(server.db), 0)                          # too early
+            self.assertEqual(await ua.run_once(server.db, now=time.time() + 31 * 86400), 1)
+        ev = (await self.c.get("/api/alarms", headers=h)).json()["olaylar"]
+        self.assertIn("ETF onayı gelecek", ev[0]["metin"])
+
     async def test_position_stop_warning_once_per_level_and_limit(self):
         import unittest.mock as um
         h = auth("user_b")

@@ -618,11 +618,11 @@ async def link_telegram(code: str, chat_id: int, username: str | None) -> tuple[
     return False, "Bağlanamadı."
 
 
-async def telegram_add_position(chat_id: int, code: str, quantity: float, price: float) -> dict:
-    """Record a linked user's manually reported BIST purchase on the site."""
+async def telegram_add_position(chat_id: int, market_name: str, code: str, quantity: float, price: float) -> dict:
+    """Record a linked user's manually reported purchase (KRIPTO, BIST or ABD) on the site."""
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(f"{config.WEB_URL}/api/bot/telegram/position", headers=_headers(),
-                              json={"chat_id": chat_id, "piyasa": "BIST", "kod": code,
+                              json={"chat_id": chat_id, "piyasa": market_name, "kod": code,
                                     "adet": quantity, "maliyet": price})
     if r.status_code >= 400:
         if r.status_code == 404:

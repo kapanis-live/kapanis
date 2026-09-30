@@ -480,38 +480,77 @@ async def bagla(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ {info}")
 
 
+EKLE_USAGE = ("Kullanım: /ekle KOD ADET ALIŞ_FİYATI\n"
+              "Örnek: /ekle THYAO 10 300 · /ekle BTC 0.05 62000 · /ekle NVDA 3 120\n"
+              "Piyasayı kendim bulurum; karışırsa başına yaz: /ekle abd COIN 2 250 · /ekle kripto SOL 4 150 · /ekle bist ASTOR 5 90\n"
+              "Adedi bilmiyorsan: /ekle THYAO 300 TL ya da /ekle BTC 62000 $ yaz, adedi sorarım.")
+EKLE_MARKETS = {"BIST": "BIST", "KRIPTO": "KRIPTO", "KRİPTO": "KRIPTO","ABD": "ABD", "US": "ABD", "USA": "ABD"}
+EKLE_PRICE_UNITS = {"TL": "BIST", "₺": "BIST", "$": None, "USD": None, "DOLAR": None}
+
+
+def _ekle_cur(mkt: str) -> str:
+    return "TL" if mkt == "BIST" else "$"
+
+
+async def _ekle_market(code: str, forced: str | None) -> str:
+    """Which site market a /ekle code belongs to: the user's word first, then the BIST list, then live lookups."""
+    if forced:
+        return forced
+    if code in universe.bist_names() or code in bist.watchlist():
+        return "BIST"
+    mkt = await _detect_market(code)
+    if mkt == assets.MARKET:
+        raise ValueError("Altın/döviz sitede portföye eklenmiyor; yalnız kripto, BIST ve ABD hissesi.")
+    if mkt not in ("BIST", "KRIPTO", "ABD"):
+        raise ValueError(f"{code} ne kriptoda ne BIST'te ne ABD'de bulundu. Başına piyasayı yaz: /ekle abd {code} ADET FİYAT")
+    return mkt
+
+
+async def _ekle_send(update, code: str, mkt: str, qty: float, price: float):
+    if mkt == "BIST" and qty != int(qty):
+        raise ValueError("BIST'te adet tam sayı olmalı.")
+    row = await web_sync.telegram_add_position(update.effective_chat.id, mkt, code, qty, price)
+    account = f" (hesap: {row['hesap']})" if row.get("hesap") else ""
+    label = {"BIST": "BIST", "KRIPTO": "kripto", "ABD": "ABD"}[mkt]
+    await update.message.reply_text(f"✅ {row['kod']} ({label}) {row['adet']:g} adet × {row['maliyet']:g} {_ekle_cur(mkt)} "
+                                    f"portföyüne eklendi{account}.\n📊 {config.PUBLIC_URL}/app/portfoyum\n"
+                                    "Yanlış piyasaya düştüyse sitede sat/sil, başına piyasayı yazıp tekrar ekle. Gerçek emir gönderilmedi.")
+
+
 async def web_ekle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/ekle THYAO 10 300: add to the linked site's portfolio, never place an order."""
+    """/ekle [bist|kripto|abd] KOD ADET FİYAT: add to the linked site's portfolio, never place an order."""
     if update.effective_chat.type != "private" or not web_sync.enabled():
         return
     if not chat_rate_ok(update.effective_chat.id, "public", 30, 600):
         await update.message.reply_text("Çok sık mesaj gönderdin; birkaç dakika sonra tekrar dene.")
         return
-    args = context.args or []
-    if len(args) == 3 and args[2].upper() == "TL":
-        code, price = args[0].upper(), args[1].replace(",", ".")
-        try:
-            if not re.fullmatch(r"[A-Z0-9.]{2,12}", code) or float(price) <= 0:
-                raise ValueError()
-            context.user_data["site_ekle"] = (code, float(price))
-            await update.message.reply_text(f"{code} için alış fiyatı {price} TL. Kaç adet aldın? Yalnız sayıyı yaz.")
-        except ValueError:
-            await update.message.reply_text("Kullanım: /ekle THYAO 10 300 (kod, adet, alış fiyatı)")
-        return
+    args = list(context.args or [])
+    forced = EKLE_MARKETS.get(args[0].upper()) if args else None
+    if forced:
+        args = args[1:]
     if len(args) != 3:
-        await update.message.reply_text("Kullanım: /ekle THYAO 10 300 (kod, adet, alış fiyatı). /ekle THYAO 300 TL yazarsan adedi sorarım.")
+        await update.message.reply_text(EKLE_USAGE)
         return
-    code = args[0].upper()
+    code = args[0].upper().removesuffix(".IS").removesuffix("/USDT").removesuffix(".US")
     try:
+        if not re.fullmatch(r"[A-Z0-9.-]{1,12}", code):
+            raise ValueError("Kod geçersiz.")
+        unit = args[2].upper()
+        if unit in EKLE_PRICE_UNITS:  # "/ekle THYAO 300 TL": price known, ask the quantity
+            price = float(args[1].replace(",", "."))
+            if price <= 0:
+                raise ValueError("Fiyat sıfırdan büyük olmalı.")
+            mkt = await _ekle_market(code, forced or EKLE_PRICE_UNITS[unit])
+            context.user_data["site_ekle"] = (mkt, code, price)
+            await update.message.reply_text(f"{code} için alış fiyatı {price:g} {_ekle_cur(mkt)}. Kaç adet aldın? Yalnız sayıyı yaz.")
+            return
         qty, price = float(args[1].replace(",", ".")), float(args[2].replace(",", "."))
-        if not re.fullmatch(r"[A-Z0-9.]{2,12}", code) or qty <= 0 or price <= 0:
-            raise ValueError()
-        row = await web_sync.telegram_add_position(update.effective_chat.id, code, qty, price)
-        account = f" (hesap: {row['hesap']})" if row.get("hesap") else ""
-        await update.message.reply_text(f"✅ {row['kod']} {row['adet']:g} adet × {row['maliyet']:g} TL portföyüne eklendi{account}.\n"
-                                        f"📊 {config.PUBLIC_URL}/app/portfoyum\nGerçek borsa emri gönderilmedi.")
+        if qty <= 0 or price <= 0:
+            raise ValueError("Adet ve fiyat sıfırdan büyük olmalı.")
+        await _ekle_send(update, code, await _ekle_market(code, forced), qty, price)
     except ValueError as e:
-        await update.message.reply_text(f"❌ {e or 'Kod, adet ve fiyatı kontrol et.'}")
+        msg = str(e) if str(e) and not str(e).startswith("could not convert") else "Kod, adet ve fiyatı kontrol et."
+        await update.message.reply_text(f"❌ {msg}\n\n{EKLE_USAGE}")
     except Exception:
         log.exception("Telegram portfolio add failed")
         await update.message.reply_text("Şu an portföye eklenemedi; biraz sonra tekrar dene.")
@@ -523,17 +562,17 @@ async def site_or_owner_text_message(update: Update, context: ContextTypes.DEFAU
     pending = context.user_data.get("site_ekle")
     if pending:
         try:
-            qty = float(update.message.text.strip().replace(",", "."))
+            try:
+                qty = float(update.message.text.strip().replace(",", "."))
+            except ValueError:
+                raise ValueError("Kaç adet aldığını sayı olarak yaz.")
             if qty <= 0:
-                raise ValueError()
-            code, price = pending
-            row = await web_sync.telegram_add_position(update.effective_chat.id, code, qty, price)
+                raise ValueError("Adet sıfırdan büyük olmalı.")
+            mkt, code, price = pending
+            await _ekle_send(update, code, mkt, qty, price)
             context.user_data.pop("site_ekle", None)
-            account = f" (hesap: {row['hesap']})" if row.get("hesap") else ""
-            await update.message.reply_text(f"✅ {row['kod']} {row['adet']:g} adet portföyüne eklendi{account}. "
-                                            f"{config.PUBLIC_URL}/app/portfoyum")
         except ValueError as e:
-            await update.message.reply_text(f"❌ {e or 'Kaç adet aldığını sayı olarak yaz.'}")
+            await update.message.reply_text(f"❌ {e}")
         except Exception:
             log.exception("Telegram portfolio add failed")
             await update.message.reply_text("Şu an eklenemedi; biraz sonra tekrar dene.")
@@ -543,7 +582,7 @@ async def site_or_owner_text_message(update: Update, context: ContextTypes.DEFAU
         return await quant_confirm_prompt(update.message, context, update.message.text, n)
     if update.effective_chat.id == config.ALLOWED_CHAT_ID:
         return await text_message(update, context)
-    await update.message.reply_text("Hesabını /bagla ile bağlayıp /ekle KOD ADET FİYAT yazabilirsin. "
+    await update.message.reply_text("Hesabını /bagla ile bağlayıp /ekle KOD ADET FİYAT yazabilirsin (kripto, BIST, ABD). "
                                     "Analiz için web panelinde Grafik → Analiz et bölümünü kullan.")
 
 
@@ -1691,6 +1730,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(
                     f"⚠️ Bu sinyal artık {life['etiket']}: giriş {decision['kapanis']:g}, şimdi {life['fiyat']:.6g} "
                     f"({life['fark_yuzde']:+.2f}%), {life['yas_dk']} dk önce verildi. Eski sinyalin peşinden girmiş olursun.\n"
+                    + (f"Bu fiyattan R/R {life['rr_simdi']:.2f} (kartta yazan sinyal kapanışındandı).\n"
+                       if life.get("rr_simdi") is not None else "") +
                     "Gerçekten aldıysan kaydederim ve 'geç giriş' notu düşerim.",
                     reply_markup=InlineKeyboardMarkup([[
                         InlineKeyboardButton("✅ Evet, aldım", callback_data=f"al|{rest[0]}|onay"),
@@ -2338,7 +2379,9 @@ async def send_buy_signal(bot, coin: str, buy: dict):
             await send_chart(bot, cdf, f"{pair} 15m", {k: buy.get(k) for k in ("iptal", "hedef")}, f"📈 {pair} 15m")
         except Exception:
             log.exception("Crypto chart failed")
+    warned = [c["kural"] for c in buy.get("kurallar", []) if c["durum"] == "uyari"]
     lines = [f"🟢 SİNYAL AKTİF (alım adayı) — {pair}" if buy["ok"] else f"🟡 {pair}: teyit geldi ama kurallar geçmedi",
+             *([f"⚠️ Uyarı veren kural: {', '.join(warned)} (engellemiyor, aşağıda detayı var)"] if buy["ok"] and warned else []),
              f"Kapanış {_g(buy['close'])} | iptal {_g(buy['iptal'])} | hedef {_g(buy['hedef'])}", "", *buy["maddeler"]]
     markup = None
     if buy["ok"]:

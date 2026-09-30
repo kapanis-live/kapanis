@@ -87,7 +87,8 @@ async def buy_checklist(client: httpx.AsyncClient, coin: str, plan: dict, trigge
     volume_ok = bool(avg == avg and avg and trigger_candle.volume > avg)
     g = await gate.evaluate(client, pair=f"{coin}/{config.QUOTE}", direction="ABOVE", entry=float(last.close),
                             iptal=plan.get("iptal"), hedef=plan.get("hedef"), timeframe="15m",
-                            candle=last, volume_ok=volume_ok)
+                            candle=last, volume_ok=volume_ok,
+                            volume_ratio=float(trigger_candle.volume / avg) if avg == avg and avg else None)
     return {**g, "close": g["giris"]}
 
 

@@ -85,7 +85,9 @@ def check(market: str) -> tuple[bool, str]:
     if reason:
         return False, reason
     m = st["piyasa"][market]
-    limit = f", bugün {m['gunluk_zarar']:+,.2f}/{-m['gunluk_sinir']:,.2f} {m['para']}" if m["gunluk_sinir"] else ""
+    # gunluk_zarar is a loss as a positive number; show it as today's realized P/L (a loss is negative)
+    limit = (f", bugün gerçekleşen K/Z {-m['gunluk_zarar']:+,.2f} {m['para']} (sınır −{m['gunluk_sinir']:,.2f})"
+             if m["gunluk_sinir"] else "")
     return True, f"zarar serisi {st['seri']}/{config.LOSS_STREAK}{limit}"
 
 

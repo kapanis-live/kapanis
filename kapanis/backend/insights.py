@@ -101,6 +101,26 @@ def report(doc: dict, after: dict[str, tuple[float, float]] | None = None) -> di
     }
 
 
+# ---------------- stress test: historical sensitivity (beta), not a forecast ----------------
+FACTORS = {"BTC": ("BTC", "KRIPTO", "BTC %20 düşerse", -0.20), "XU100": ("XU100", "BIST", "BIST 100 %15 düşerse", -0.15),
+           "SPY": ("SPY", "ABD", "S&P 500 %10 düşerse", -0.10)}
+
+
+def beta(asset: list[tuple[float, float]], factor: list[tuple[float, float]], days: int = 250) -> float | None:
+    """Daily-return beta of an asset to a factor on common dates (last `days`)."""
+    da = {dt.datetime.fromtimestamp(t, dt.timezone.utc).date(): c for t, c in asset}
+    dbf = {dt.datetime.fromtimestamp(t, dt.timezone.utc).date(): c for t, c in factor}
+    common = sorted(set(da) & set(dbf))[-(days + 1):]
+    if len(common) < 60:
+        return None
+    ra = [da[common[i]] / da[common[i - 1]] - 1 for i in range(1, len(common))]
+    rf = [dbf[common[i]] / dbf[common[i - 1]] - 1 for i in range(1, len(common))]
+    mf = sum(rf) / len(rf)
+    ma = sum(ra) / len(ra)
+    var = sum((x - mf) ** 2 for x in rf)
+    return None if var <= 0 else round(sum((x - mf) * (y - ma) for x, y in zip(rf, ra)) / var, 2)
+
+
 def build_router(get_db, current_user) -> APIRouter:
     r = APIRouter(prefix="/api")
 
@@ -125,6 +145,53 @@ def build_router(get_db, current_user) -> APIRouter:
                 if key not in after:
                     after[key] = await last_bar(t["kod"], t["piyasa"])
         return report(doc, {k: v for k, v in after.items() if v})
+
+    @r.get("/portfolio/stress")
+    async def stress(user: dict = Depends(current_user)):
+        """"If BTC falls 20 % ..." using each holding's past 1-year sensitivity to that market. Plus USD/TRY +10 %."""
+        doc = await get_db().portfolios.find_one({"user_id": user["id"]}, {"_id": 0}) or {}
+        usdtry = await last_close("USDTRY=X", "ABD")
+        factors = {}
+        for key, (kod, mkt, _, _) in FACTORS.items():
+            try:
+                factors[key] = daily_closes(await chart_data.chart(kod, "1d", mkt), mkt)
+            except Exception:
+                factors[key] = []
+        rows, total = [], 0.0
+        for p in doc.get("positions", []):
+            if p.get("durum") != "acik":
+                continue
+            try:
+                closes = daily_closes(await chart_data.chart(p["kod"], "1d", p["piyasa"]), p["piyasa"])
+            except Exception:
+                continue
+            if not closes:
+                continue
+            fx = 1.0 if p.get("para") == "TL" else (usdtry or 0)
+            value = p["adet"] * closes[-1][1] * fx
+            total += value
+            rows.append({"kod": p["kod"], "piyasa": p["piyasa"], "para": p.get("para"), "deger_tl": value,
+                         "beta": {k: beta(closes, f) for k, f in factors.items()}})
+        scenarios = []
+        for key, (_, _, label, move) in FACTORS.items():
+            items, loss = [], 0.0
+            for r_ in rows:
+                b = r_["beta"][key]
+                if b is None:
+                    continue
+                chg = max(-1.0, b * move)
+                loss += r_["deger_tl"] * chg
+                items.append({"kod": r_["kod"], "beta": b, "tahmini_yuzde": round(chg * 100, 1), "tahmini_tl": round(r_["deger_tl"] * chg)})
+            scenarios.append({"senaryo": label, "portfoy_tl": round(loss), "portfoy_yuzde": round(loss / total * 100, 1) if total else None,
+                              "kalemler": sorted(items, key=lambda x: x["tahmini_tl"])})
+        usd_part = sum(r_["deger_tl"] for r_ in rows if r_["para"] != "TL")
+        scenarios.append({"senaryo": "Dolar/TL %10 yükselirse", "portfoy_tl": round(usd_part * 0.10),
+                          "portfoy_yuzde": round(usd_part * 0.10 / total * 100, 1) if total else None,
+                          "kalemler": [{"kod": r_["kod"], "beta": None, "tahmini_yuzde": 10.0, "tahmini_tl": round(r_["deger_tl"] * 0.10)}
+                                       for r_ in rows if r_["para"] != "TL"]})
+        return {"toplam_tl": round(total), "senaryolar": scenarios,
+                "not": ("Tahmin değil: her varlığın son 1 yılda o piyasanın günlük hareketine ne kadar eşlik ettiği (beta) ile "
+                        "hesaplandı. Gerçek düşüşlerde varlıklar genelde birlikte daha sert düşer; dolar senaryosu yalnız kur etkisi.")}
 
     @r.get("/portfolio/health")
     async def health(user: dict = Depends(current_user)):

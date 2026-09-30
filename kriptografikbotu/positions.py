@@ -128,7 +128,8 @@ def partial_close(pos_id: int, qty: float, price: float, reason: str,
 
 
 def tranche_usd(pair: str, risk_off: bool, volume_ok: bool,
-                exchange_min_usd: float = 0.0, greed: str | None = None) -> tuple[float, list[str]]:
+                exchange_min_usd: float = 0.0, greed: str | None = None,
+                risk_off_reason: str | None = None) -> tuple[float, list[str]]:
     """First-tranche size, decided in code (never by the LLM).
 
     Normal 25 USD; 15 USD in RİSK-OFF or without volume confirmation. Every open position,
@@ -140,7 +141,7 @@ def tranche_usd(pair: str, risk_off: bool, volume_ok: bool,
     notes = []
     if risk_off:
         usd = min(usd, config.REDUCED_TRANCHE_USD)
-        notes.append("RİSK-OFF (veya makro doğrulanamadı)")
+        notes.append(risk_off_reason or "RİSK-OFF (veya makro doğrulanamadı)")
     if not volume_ok:
         usd = min(usd, config.REDUCED_TRANCHE_USD)
         notes.append("hacim teyidi yok")
@@ -152,7 +153,8 @@ def tranche_usd(pair: str, risk_off: bool, volume_ok: bool,
     room = config.TOTAL_FIRST_TRANCHE_USD - open_usd
     if room < usd:
         usd = max(room, 0.0)
-        notes.append(f"açık pozisyonlar {open_usd:g} USD: korelasyon limiti {config.TOTAL_FIRST_TRANCHE_USD} USD")
+        notes.append(f"botun sinyal işlemlerinde açık {open_usd:g} USD (içe aktarılan varlıklar sayılmaz): "
+                     f"korelasyon limiti {config.TOTAL_FIRST_TRANCHE_USD} USD")
     floor = max(config.MIN_TRANCHE_USD, exchange_min_usd)
     if 0 < usd < floor:
         notes.append(f"kalan {usd:g} USD alt sınırın ({floor:g} USD) altında: limit dolu, pas")

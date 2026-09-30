@@ -30,14 +30,29 @@ async function call(fn, okText) {
 
 function BuyCard({ onDone }) {
   const [n, setN] = useState(0); // yeni form: kayıttan sonra alanlar temizlensin
+  const [tez, setTez] = useState("");
+  const [sart, setSart] = useState("");
   const submit = async (r) => {
-    const body = { piyasa: FROM_FORM[r.market], kod: r.code, adet: r.qty, maliyet: r.price, stop: r.stop, hedef: r.target };
+    const body = { piyasa: FROM_FORM[r.market], kod: r.code, adet: r.qty, maliyet: r.price, stop: r.stop, hedef: r.target,
+      ...(tez.trim() ? { tez: tez.trim(), cikis_sarti: sart.trim() } : {}) };
     if (await call(() => api.post("/portfolio/positions", body), `${r.code} portföyüne eklendi.`)) {
       onDone();
+      setTez(""); setSart("");
       setTimeout(() => setN((x) => x + 1), 1500);
     }
   };
-  return <K.Card title="Alım ekle"><K.BuyForm key={n} onSubmit={submit} /></K.Card>;
+  return <K.Card title="Alım ekle">
+    <K.BuyForm key={n} onSubmit={submit} />
+    <div className="mt-4 grid gap-3 border-t border-hairline pt-4 sm:grid-cols-2">
+      <K.Field label="💊 Neden alıyorum? (karar kapsülü)" hint="30 gün sonra bu not ve o günden beri olan sana geri gelir">
+        <K.TextInput value={tez} maxLength={500} placeholder="ör. bilanço iyi gelecek, sektör güçleniyor" onChange={(e) => setTez(e.target.value)} />
+      </K.Field>
+      <K.Field label="Ne olursa satarım?" hint="isteğe bağlı">
+        <K.TextInput value={sart} maxLength={300} placeholder="ör. 90 altında kapanış ya da bilanço kötü gelirse" onChange={(e) => setSart(e.target.value)} />
+      </K.Field>
+    </div>
+    <p className="mt-3 text-sm text-muted">Telegram’dan da eklenir (hesabın bağlıysa): <code>/ekle THYAO 10 300</code> · <code>/ekle BTC 0.05 62000</code> · <code>/ekle NVDA 3 120</code></p>
+  </K.Card>;
 }
 
 function CashCard({ cash, onDone }) {

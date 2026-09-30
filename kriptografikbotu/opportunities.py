@@ -142,7 +142,8 @@ async def _crypto_plans(client, blockers: dict) -> list[dict]:
             avg = trigger_bar.vol_avg20
             vol_ok = bool(not _nan(avg) and avg and trigger_bar.volume > avg)
             g = await gate.evaluate(client, pair=f"{coin}/{config.QUOTE}", direction="ABOVE", entry=price,
-                                    iptal=iptal, hedef=hedef, timeframe="15m", candle=None, volume_ok=vol_ok)
+                                    iptal=iptal, hedef=hedef, timeframe="15m", candle=None, volume_ok=vol_ok,
+                                    volume_ratio=float(trigger_bar.volume / avg) if not _nan(avg) and avg else None)
             row["kapi"] = _gate_summary(g)
             row["kademe_usd"] = g.get("kademe_usd")
             if tetik and price > tetik * (1 + CHASE_PCT["KRIPTO"] / 100):

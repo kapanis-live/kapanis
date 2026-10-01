@@ -27,6 +27,7 @@ import insights
 import risk_budget
 import user_alerts
 import user_api
+import advisor_api
 from starlette.responses import JSONResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -739,6 +740,7 @@ app.include_router(user_api.build_router(lambda: db, get_current_user, require_b
 app.include_router(user_alerts.build_router(lambda: db, get_current_user, require_bot_key))
 app.include_router(insights.build_router(lambda: db, get_current_user))
 app.include_router(risk_budget.build_router(lambda: db, get_current_user))
+app.include_router(advisor_api.build_router(get_current_user, require_owner))
 
 # Serve the prebuilt panel (frontend/build) from this same server, so the panel opens in seconds
 # instead of waiting for the React dev server to compile. /api routes above take precedence.

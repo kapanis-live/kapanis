@@ -30,3 +30,9 @@ backups/
 research/kl/
 research/*.json
 research/*.log
+
+# advisor paper log (research snapshots of /danis and /firsat runs)
+research/advisor_paper.jsonl
+
+# written by the deploy script before the image is built (the commit that is running)
+.git_commit

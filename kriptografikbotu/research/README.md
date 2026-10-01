@@ -30,3 +30,31 @@ buy & hold and 20 random-timing twins with the same exposure and holding length,
 
 No rule is PRODUCTION. The regime table per strategy (trades by regime at entry) is in results_v2.json; it is too thin
 and too bull-market-dominated to choose strategies by regime (no meta-strategy until a candidate passes on its own).
+
+## Stop-limit / order planning layer (2026-10-01)
+
+`stop_limit.py` (the layer: resistance clusters, stop-limit trigger and limit, structural/ATR stop, targets, trailing
+stop, position size, `TradePlan`), `stop_limit_bt.py` (history test, writes `stop_limit_results.json`),
+`../test_stop_limit.py` (formulas, fills, no look-ahead). It sits on top of the 0/1 strategies and changes none of them;
+it is not wired to the bot or the site. `python research/stop_limit.py BTC` prints a plan from live daily bars.
+
+Test: daily bars, 76 coins (dead ones included) and 40 BIST stocks, commission 0.1 % / 0.2 % per side plus 0.05 % / 0.10 %
+slippage on every stop fill, orders computed at one close and filled on the next day. Parameters were chosen on the
+development period only (before the last 730 days), one dimension at a time, the default kept unless a variant was
+0.5 %/yr better; the validation year confirms, the locked last year is scored once.
+
+Median yearly result per asset, rule vs its random twin (share of assets that beat their twin):
+
+| | Development | Validation | Locked last 12 months | Verdict |
+|---|---|---|---|---|
+| Crypto, defaults from the brief | -5.2 vs -0.3 (37 %) | -4.7 vs 0.0 (38 %) | -2.4 vs 0.0 (34 %) | fails everywhere |
+| Crypto, development-chosen | 7.8 vs 0.0 (65 %) | 0.2 vs -0.8 (46 %) | 3.6 vs -8.5 (64 %) | RESEARCH |
+| BIST, defaults from the brief | 5.7 vs 3.4 (62 %) | -4.7 vs 0.0 (36 %) | -0.6 vs 0.0 (45 %) | RESEARCH |
+| BIST, development-chosen | 23.3 vs 18.9 (60 %) | 1.4 vs 0.9 (43 %) | -0.1 vs 3.1 (36 %) | RESEARCH |
+
+What the development period said: a breakout buffer does not help (0 was best in crypto, 0.1 % in BIST); a trailing stop
+of 3 ATR beat every tighter one including the regime bands; the "R/R to the next resistance >= 1.5" filter removed
+profitable trades (no filter was best); selling half at TP1 halved the result; the breakout score did not separate
+good from bad breakouts in crypto and only weakly in BIST; a 1 ATR stop was the worst stop. Buying the confirmed close
+instead of the stop-limit fill gave a similar result (about 45 % of stop-limit fills closed back under the resistance
+on the entry day). BIST buy & hold beat every variant. Nothing is PRODUCTION; ABD was not tested.

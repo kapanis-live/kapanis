@@ -71,6 +71,8 @@ import quiet
 import panel_settings
 import signal_life
 import advisor
+import danisman
+import danisman_paper
 from alert_engine import AlertEngine
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO,
@@ -91,6 +93,7 @@ HELP = """📋 KOMUTLAR (menü: mesaj kutusundaki / tuşu)
 
 ⭐ TEMEL
 /firsat — "şu an alabileceğim tetiklenen hisse ya da coin var mı?" (düz yazıyla da sorabilirsin)
+  /firsat 287 ya da /firsat tara — kripto danışman taraması: en çok işlem gören pariteler aynı /danis analizinden geçer, en fazla 10 kurulum sıralanır (287 = portföy USDT; yazmazsan pozisyon tutarı hesaplanmaz)
 /takip — takip listem (16 coin, 35 BIST, 53 ABD). 30 dk'da bir sessizce sorar; tek/çoklu seç → 📊 durum (kod) / 🧠 analiz
   /takip THYAO BTC — direkt durum · /takip ekle X · /takip cikar X · /takip liste · /takip kapat|ac · /takip aralik 60
   /takip kural destek=1.5 rsi_alti=30 rsi_ustu=75 hacim=2 — son kapanışa göre koşullu uyarılar
@@ -106,6 +109,7 @@ HELP = """📋 KOMUTLAR (menü: mesaj kutusundaki / tuşu)
 
 🪙 KRİPTO
 /analiz BTC — analiz (birden fazla: /analiz ETH SOL)
+/danis HYPE — danışman: 15m/1h/4h/1d mumlardan trend, destek/direnç, kırılım durumu, stop-limit planı, stop, pozisyon tutarı (/danis SOL 287 = portföy 287 USDT; /danis tara 287 = tarama; /danis stats = geçmiş raporların 1s/4s/24s sonuçları). Elinde varsa TUT/KORU/AZALT der. Emir göndermez.
 /haber [BTC] — haberler · /vadeli BTC — funding, açık pozisyon · /duygu — Korku & Açgözlülük
 /new_alert BTC/USDT KAPANIS ABOVE 85000 15m 1h iptal=83850 hedef=85500 — kapanış alarmı
 /backtest BTC/USDT ABOVE 85000 15m — kuralı geçmişte dene
@@ -188,6 +192,7 @@ BOT_MENU = [
     ("tara", "Fırsat taraması: kripto + BIST"),
     # kripto
     ("analiz", "🪙 Kripto analizi: /analiz BTC"),
+    ("danis", "🪙 Danışman: alınır mı, stop-limit nereye? /danis HYPE"),
     ("haber", "🪙 Kripto haberleri: /haber BTC"),
     ("vadeli", "🪙 Funding / açık pozisyon: /vadeli BTC"),
     ("duygu", "🪙 Korku & Açgözlülük, BTC dominansı"),
@@ -1965,6 +1970,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_reply_markup(None)
             if rest[0] == "yorum":
                 await opportunity_ai(update, context)
+            elif rest[0] == "danis":
+                await advisor_scan(update, context, None)
             else:
                 await opportunity_report(_shim(update), context)
         elif kind == "temel":
@@ -2462,6 +2469,109 @@ async def advice_reply(bot, chat_id: int, code: str, question: str):
     await send_long(bot, chat_id, f"🤔 {code.upper()} — NE YAPAYIM?\n\n{text}")
     await run_analysis(bot, chat_id, f"[POZİSYON DANIŞMA] Kullanıcının sorusu: {question}", [], data=data,
                        buttons=None, allow_state_update=False)
+
+
+@authorized
+async def danis(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/danis HYPE [portföy USDT]: the structure report from the exchange's own candles. No order, no signal card."""
+    args = context.args or []
+    usage = ("Kullanım: /danis HYPE · /danis SOL 287 (portföy 287 USDT) · /danis tara 287 (en çok işlem gören pariteleri tara) · "
+             "/danis stats (canlı paper sonuçları; replay, all, versions seçenekleri)\n"
+             "Elinde o coin varsa pozisyonun otomatik alınır ve TUT / KÂRI KORU / AZALT önerisi gelir. "
+             "Portföy yazmazsan pozisyon tutarı hesaplanmaz.")
+    if not args or not re.fullmatch(r"[A-Za-z0-9]{2,12}", args[0].replace("/USDT", "").replace("/usdt", "")):
+        await update.message.reply_text(usage)
+        return
+    if args[0].lower() == "stats":       # /danis stats [replay|all|versions]: live records of the current ruleset by default
+        await advisor_stats(update, context, args[1].lower() if len(args) > 1 else "live")
+        return
+    try:
+        portfolio = float(args[1].replace(",", ".")) if len(args) > 1 else None   # unknown stays unknown: no default
+        if portfolio is not None and portfolio <= 0:
+            raise ValueError()
+    except ValueError:
+        await update.message.reply_text(usage)
+        return
+    if args[0].lower() == "tara":
+        await advisor_scan(update, context, portfolio)
+        return
+    coin = args[0].upper().replace("/USDT", "").removesuffix("USDT") or "BTC"
+    status = await update.message.reply_text(f"⏳ {coin}: 15m, 1h, 4h, 1d mumlar çekiliyor...")
+    crypto = [p for p in positions.open_positions() if p.get("piyasa", "KRIPTO") == "KRIPTO"]
+    mine = [p for p in crypto if p["pair"].split("/")[0].upper() == coin]
+    others = sorted({p["pair"].split("/")[0].upper() for p in crypto} - {coin})
+    try:
+        data = await danisman.fetch(coin, others)
+        qty = sum(p["adet"] for p in mine)
+        value = avg = None
+        if qty > 0:   # the position's value at the last traded price; the average cost over every open buy
+            value = qty * float(data["frames"]["15m"].c.iloc[-1])
+            avg = sum(p["adet"] * p["giris"] for p in mine) / qty
+        report = danisman.analyze(data, portfolio, value, avg)
+        danisman.paper_log([report], "danis")   # research snapshot only: nothing is ordered, nothing reads it back
+    except danisman.NoPair:
+        await status.edit_text(f"❌ {coin}: Binance'te USDT/USDC/FDUSD/BTC paritesi bulunamadı.")
+        return
+    except ValueError as e:
+        await status.edit_text(f"❌ {e}")
+        return
+    except Exception as e:
+        log.exception("Advisor failed for %s", coin)
+        await status.edit_text(f"❌ {coin} için veri alınamadı: {str(e)[:120]}")
+        return
+    await status.delete()
+    note = "" if portfolio else f"\n\n(Pozisyon tutarı için portföyünü yaz: /danis {coin} 287)"
+    await send_long(context.bot, update.effective_chat.id, "🧭 " + danisman.format_report(report) + note)
+
+
+STATS_MODES = {"live": "LIVE", "canli": "LIVE", "replay": "REPLAY", "all": "ALL", "hepsi": "ALL", "test": "TEST"}
+
+
+async def advisor_stats(update, context, mode: str = "live"):
+    """/danis stats: what happened after the advisor's past reports (paper log). Live records of the current ruleset
+    unless replay / all / versions is asked for. Read only; nothing is tuned from it."""
+    if mode not in STATS_MODES and mode not in ("versions", "surum"):
+        await update.message.reply_text("Kullanım: /danis stats (canlı veri) · /danis stats replay · /danis stats all · "
+                                        "/danis stats versions")
+        return
+    status = await update.message.reply_text("⏳ Paper log sonuçları güncelleniyor...")
+    try:
+        done = await danisman_paper.update_outcomes()
+        rows = await asyncio.to_thread(lambda: danisman_paper.store().all())
+        if mode in ("versions", "surum"):
+            text = danisman_paper.format_versions(danisman_paper.versions(rows), danisman.ruleset_hash())
+        else:
+            text = danisman_paper.format_stats(danisman.paper_stats(rows, STATS_MODES[mode]), done)
+    except Exception as e:
+        log.exception("Advisor paper stats failed")
+        await status.edit_text(f"❌ İstatistik hazırlanamadı: {str(e)[:120]}")
+        return
+    await status.delete()
+    await send_long(context.bot, update.effective_chat.id, text)
+
+
+async def paper_outcomes_job(context: ContextTypes.DEFAULT_TYPE):
+    """Fills in the 1h / 4h / 24h outcomes of the advisor's paper records. Measures only; changes no rule."""
+    try:
+        await danisman_paper.update_outcomes()
+    except Exception as e:
+        log.warning("Advisor paper outcomes failed: %s", e)
+
+
+async def advisor_scan(update, context, portfolio: float | None):
+    """The advisor over the most traded pairs (and the open crypto positions): setups worth watching, no order."""
+    msg = _shim(update).message
+    status = await msg.reply_text(f"⏳ En çok işlem gören {danisman.SCAN_LIMIT} parite danışmandan geçiriliyor (15m/1h/4h/1d)...")
+    held = sorted({p["pair"].split("/")[0].upper() for p in positions.open_positions() if p.get("piyasa", "KRIPTO") == "KRIPTO"})
+    try:
+        result = await danisman.scan(portfolio, held, paper="firsat")
+    except Exception as e:
+        log.exception("Advisor scan failed")
+        await status.edit_text(f"❌ Tarama yapılamadı: {str(e)[:120]}")
+        return
+    await status.delete()
+    note = "" if portfolio else "\n\n(Pozisyon tutarı için portföyünü yaz: /firsat 287)"
+    await send_long(context.bot, update.effective_chat.id, danisman.format_scan(result) + note)
 
 
 @authorized
@@ -5840,6 +5950,12 @@ def wants_opportunities(text: str) -> bool:
 
 @authorized
 async def firsat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/firsat: the plan-based check of both markets (as before). /firsat 287 or /firsat tara: the crypto advisor scan."""
+    first = (context.args or [""])[0].lower().replace(",", ".")
+    if first in ("tara", "kripto", "danis") or re.fullmatch(r"\d+(\.\d+)?", first):
+        rest = [a.replace(",", ".") for a in (context.args or []) if re.fullmatch(r"\d+([.,]\d+)?", a)]
+        await advisor_scan(update, context, float(rest[0]) if rest and float(rest[0]) > 0 else None)
+        return
     await opportunity_report(update, context)
 
 
@@ -5856,7 +5972,8 @@ async def opportunity_report(update, context):
     context.user_data["firsat"] = res
     await status.delete()
     kb = [[InlineKeyboardButton("🧠 Yapay zekâ yorumu", callback_data="firsat|yorum"),
-           InlineKeyboardButton("🔄 Yenile", callback_data="firsat|yenile")]]
+           InlineKeyboardButton("🔄 Yenile", callback_data="firsat|yenile")],
+          [InlineKeyboardButton("🧭 Kripto danışman taraması", callback_data="firsat|danis")]]
     for i in res["alinabilir"][:3]:
         if i.get("karar_id"):
             kb.append([InlineKeyboardButton(f"✅ {i['kod']} aldım", callback_data=f"al|{i['karar_id']}")])
@@ -6340,6 +6457,7 @@ def main():
     app.add_handler(CommandHandler(["start", "yardim"], start))
     app.add_handler(CommandHandler(["komutlar", "komut", "help"], komutlar))
     app.add_handler(CommandHandler("analiz", analiz))
+    app.add_handler(CommandHandler("danis", danis))
     app.add_handler(CommandHandler("plan", plan))
     app.add_handler(CommandHandler("pozisyon", pozisyon))
     app.add_handler(CommandHandler("sil", sil))
@@ -6444,6 +6562,7 @@ def main():
         app.job_queue.run_daily(universe_job, dtime(9, 30, tzinfo=macro.TR), name="evren")
         app.job_queue.run_daily(after_sale_job, dtime(19, 0, tzinfo=macro.TR), name="satis_sonrasi")
         app.job_queue.run_repeating(risk_news_job, interval=30 * 60, first=120, name="risk_haber")
+        app.job_queue.run_repeating(paper_outcomes_job, interval=30 * 60, first=420, name="danisman_paper")
         app.job_queue.run_repeating(takip_job, interval=5 * 60, first=180, name="takip_sor")  # asks every 30 min (/takip aralik)
         app.job_queue.run_repeating(watch_rules_job, interval=30 * 60, first=600, name="takip_kural")
         app.job_queue.run_repeating(kap_job, interval=15 * 60, first=240, name="kap")

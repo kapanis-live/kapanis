@@ -5,6 +5,7 @@
 
 # Environments and caches
 .venv/
+.venv-openbb/
 .uv-python/
 .uv-cache/
 __pycache__/

@@ -2556,6 +2556,11 @@ async def paper_outcomes_job(context: ContextTypes.DEFAULT_TYPE):
         await danisman_paper.update_outcomes()
     except Exception as e:
         log.warning("Advisor paper outcomes failed: %s", e)
+    try:   # the V2 advisor's records, after the first tracker (same store, one writer at a time): exit styles, whipsaws
+        from danisman_v2 import research
+        await research.update_outcomes()
+    except Exception as e:
+        log.warning("Advisor V2 research outcomes failed: %s", e)
 
 
 async def advisor_scan(update, context, portfolio: float | None):
@@ -5985,6 +5990,7 @@ async def build_extras() -> dict:
                            "usd_yuzde": g["reel"].get("usd_yuzde"), "tl_yuzde": g["reel"].get("tl_yuzde"),
                            "reel_yuzde": g["reel"].get("reel_yuzde"), "temettu": round(g["temettu"], 2),
                            "pozlar": [{"id": p["id"], "adet": p["adet"], "giris": p["giris"], "stop": p.get("stop"),
+                                       "stop_ilk": p.get("stop_ilk"),
                                        "hedef": p.get("hedef"), "acilis": p["acilis"], "tarih_yok": _date_unknown(p)}
                                       for p in g["poz"]]}
                           for g in pf["gruplar"]]

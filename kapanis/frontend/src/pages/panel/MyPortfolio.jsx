@@ -198,10 +198,8 @@ export default function MyPortfolio() {
                           priceLabel={price == null ? "Fiyat alınamadı (alış)" : undefined}
                           onOpenChart={() => navigate(chartHref(p.kod, p.piyasa))}
                           onRaiseStop={async (e) => { if (await call(() => api.patch(`/portfolio/positions/${p.id}/stop`, { stop: e.stop }), "Stop yükseltildi.")) refresh(); }}
-                          onSold={async (e) => {
-                            const r = await call(() => api.post(`/portfolio/positions/${p.id}/sell`, { fiyat: e.price }));
-                            if (r) { toast.success(`${p.kod} satışı kaydedildi: ${U.fmtSignedMoney(r.kar, CUR[p.para])}`); refresh(); }
-                          }} /></div>
+                          onSold={false}
+                          onDelete={async () => { if (await call(() => api.delete(`/portfolio/positions/${p.id}`), `${p.kod} silindi.`)) refresh(); }} /></div>
                       );
                     })}
                   </div>
@@ -227,7 +225,7 @@ export default function MyPortfolio() {
                           { key: "pl", label: "K/Z", num: true, mobile: false, render: (r) => <span className={r.kapanis_fiyat >= r.maliyet ? "kp-num-up" : "kp-num-down"}>{U.fmtSignedMoney((r.kapanis_fiyat - r.maliyet) * r.adet, CUR[r.para])}</span> },
                           { key: "pct", label: "%", num: true, render: (r) => <K.ChangeBadge value={(r.kapanis_fiyat / r.maliyet - 1) * 100} /> },
                         ]} />
-                    ) : <K.EmptyState icon="portfolio" title="Kapanan pozisyon yok" bordered={false}>“Sattım” dediğin pozisyonlar burada K/Z’siyle listelenir.</K.EmptyState>}
+                    ) : <K.EmptyState icon="portfolio" title="Kapanan pozisyon yok" bordered={false}>Daha önce satış olarak kaydedilen pozisyonlar burada K/Z’siyle listelenir.</K.EmptyState>}
                   </K.Card>
                 )}
               </div>

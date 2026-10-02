@@ -138,6 +138,13 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((r.status_code, r.json()["kar"]), (200, 25.0))
         r = await self.c.post(f"/api/portfolio/positions/{pid}/sell", headers=h, json={"fiyat": 45, "adet": 99})
         self.assertEqual(r.status_code, 400)
+        # deleting is not a sale: the record goes, no profit is booked, and only its owner may do it
+        self.assertEqual((await self.c.delete(f"/api/portfolio/positions/{pid}", headers=auth("user_b"))).status_code, 404)
+        self.assertEqual((await self.c.delete(f"/api/portfolio/positions/{pid}", headers=h)).status_code, 200)
+        doc = (await self.c.get("/api/portfolio", headers=h)).json()
+        self.assertEqual([p for p in doc["positions"] if p["id"] == pid], [])
+        self.assertEqual((doc["transactions"][-1]["tur"], doc["transactions"][-1].get("kar")), ("silme", None))
+        self.assertEqual((await self.c.delete(f"/api/portfolio/positions/{pid}", headers=h)).status_code, 404)
 
     async def test_owner_keeps_bot_data_via_clerk_and_legacy(self):
         await self.c.post("/api/ingest/positions", headers=BOT, json=[{"id": "pos_1", "symbol": "BTC/USDT"}])

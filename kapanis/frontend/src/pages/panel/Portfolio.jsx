@@ -309,13 +309,11 @@ function BulkCard({ count }) {
   );
 }
 
-// Bir varlığın alım kayıtları: adet, maliyet, alış tarihi, stop/hedef düzeltilir; kısmi satış ya da kayıt silme
-function LotRow({ lot, code, cur }) {
+// Bir varlığın alım kayıtları: adet, maliyet, alış tarihi, stop/hedef düzeltilir ya da kayıt silinir
+function LotRow({ lot, code, cur, onDelete }) {
   const init = { adet: PLAIN.format(lot.adet), giris: PLAIN.format(lot.giris), tarih: lot.tarih_yok ? "" : String(lot.acilis || "").slice(0, 10),
     stop: lot.stop == null ? "" : PLAIN.format(lot.stop), hedef: lot.hedef == null ? "" : PLAIN.format(lot.hedef) };
   const [f, setF] = useState(init);
-  const [sell, setSell] = useState(null); // { adet, fiyat } açıkken satış formu
-  const [sure, setSure] = useState(false);
   const unit = cur === "TRY" ? "₺" : "$";
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const save = () => {
@@ -338,16 +336,6 @@ function LotRow({ lot, code, cur }) {
     if (f.tarih && f.tarih !== init.tarih) payload.tarih = f.tarih;
     sendAction("holding.edit", payload, `${code} #${lot.id} düzeltmesi iletildi.`);
   };
-  const sold = async () => {
-    const a = U.parseTr(sell.adet);
-    const p = U.parseTr(sell.fiyat);
-    if (!(a > 0) || !(p > 0) || a > lot.adet * (1 + 1e-9)) {
-      toast.error(`Satılan adet (en çok ${PLAIN.format(lot.adet)}) ve satış fiyatını yaz.`);
-      return;
-    }
-    if (await sendAction("holding.sell", { id: lot.id, adet: a, fiyat: p }, `${code} satışı iletildi.`)) setSell(null);
-  };
-  const remove = () => (sure ? sendAction("holding.delete", { id: lot.id }, `${code} #${lot.id} kaydı siliniyor.`) : setSure(true));
   return (
     <div className="kp-col border-b border-hairline pb-4 last:border-0 last:pb-0">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -359,21 +347,9 @@ function LotRow({ lot, code, cur }) {
         <K.Field label="Stop" hint="yalnız yukarı çekilir"><K.TextInput prefix={unit} inputMode="decimal" value={f.stop} placeholder="—" onChange={set("stop")} /></K.Field>
         <K.Field label="Hedef"><K.TextInput prefix={unit} inputMode="decimal" value={f.hedef} placeholder="—" onChange={set("hedef")} /></K.Field>
       </div>
-      {sell && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <K.Field label="Satılan adet"><K.TextInput inputMode="decimal" value={sell.adet} onChange={(e) => setSell({ ...sell, adet: e.target.value })} /></K.Field>
-          <K.Field label="Satış fiyatı"><K.TextInput prefix={unit} inputMode="decimal" value={sell.fiyat} placeholder="0,00" onChange={(e) => setSell({ ...sell, fiyat: e.target.value })} /></K.Field>
-          <div className="flex items-end gap-3 lg:col-span-3">
-            <K.Button variant="primary" onClick={sold}>Satışı kaydet</K.Button>
-            <K.Button variant="ghost" onClick={() => setSell(null)}>Vazgeç</K.Button>
-          </div>
-        </div>
-      )}
       <div className="flex flex-wrap gap-3">
         <K.Button variant="primary" onClick={save}>Kaydet</K.Button>
-        {!sell && <K.Button onClick={() => setSell({ adet: PLAIN.format(lot.adet), fiyat: "" })}>Sattım (tamamı ya da bir kısmı)</K.Button>}
-        <K.Button variant="danger" onClick={remove}>{sure ? "Emin misin? Sil" : "Sil"}</K.Button>
-        {sure && <K.Button variant="ghost" onClick={() => setSure(false)}>Vazgeç</K.Button>}
+        <K.Button variant="danger" onClick={() => onDelete([lot])}>Sil</K.Button>
       </div>
     </div>
   );
@@ -449,6 +425,14 @@ export default function Portfolio() {
   const q = useData("extras", "/extras", LIVE);
   const [tab, setTab] = useState("Tümü");
   const [editing, setEditing] = useState(null);
+  const [gone, setGone] = useState([]); // silinen kayıtlar bot uygulayana kadar da görünmesin
+  // Tek tıkla siler: satış sayılmaz, fiyat sorulmaz
+  const removeLots = async (code, lots) => {
+    setGone((g) => [...g, ...lots.map((l) => l.id)]);
+    for (const l of lots) {
+      if (!(await sendAction("holding.delete", { id: l.id }, `${code} silindi.`))) setGone((g) => g.filter((id) => id !== l.id));
+    }
+  };
   return (
     <DataView query={q} loadingText="Portföy verisi yükleniyor...">
       {(d) => {
@@ -459,9 +443,10 @@ export default function Portfolio() {
           return {
             id: g.piyasa + code, code, market: g.piyasa, marketLabel: MARKET_UI[g.piyasa]?.label || g.piyasa, cur,
             qty: g.adet, cost: g.adet ? g.maliyet / g.adet : 0, price: g.fiyat, value: g.deger, costv: g.maliyet,
-            day: g.gun_yuzde, total: g.toplam_yuzde, pl: g.deger - g.maliyet, lots: g.pozlar || [],
+            day: g.gun_yuzde, total: g.toplam_yuzde, pl: g.deger - g.maliyet,
+            lots: (g.pozlar || []).filter((l) => !gone.includes(l.id)), old: !g.pozlar,
           };
-        });
+        }).filter((r) => r.old || r.lots.length);
         if (!all.length) {
           return (
             <div className="kp-page">
@@ -491,6 +476,8 @@ export default function Portfolio() {
           { key: "pl", label: "K/Z", num: true, render: (r) => <span className={r.pl >= 0 ? "kp-num-up" : "kp-num-down"}>{U.fmtSignedMoney(r.pl, r.cur)}</span> },
           { key: "edit", label: "", render: (r) => r.lots.length > 0 && (
             <K.Button variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(editing === r.id ? null : r.id); }}>{editing === r.id ? "Kapat" : "Düzenle"}</K.Button>) },
+          { key: "del", label: "", render: (r) => r.lots.length > 0 && (
+            <K.Button variant="ghost" onClick={(e) => { e.stopPropagation(); removeLots(r.code, r.lots); }}>Sil</K.Button>) },
         ];
         const warnings = d.yogunlasma?.uyarilar || [];
         const kiyas = d.kiyas?.kiyas || [];
@@ -508,9 +495,10 @@ export default function Portfolio() {
             {edited && (
               <K.Card title={`${edited.code} · düzenle`} actions={<K.Button variant="ghost" onClick={() => setEditing(null)}>Kapat</K.Button>}>
                 <div className="kp-col">
-                  {edited.lots.map((lot) => <LotRow key={`${lot.id}-${lot.adet}-${lot.giris}-${lot.stop}-${lot.hedef}-${lot.acilis}`} lot={lot} code={edited.code} cur={edited.cur} />)}
+                  {edited.lots.map((lot) => <LotRow key={`${lot.id}-${lot.adet}-${lot.giris}-${lot.stop}-${lot.hedef}-${lot.acilis}`} lot={lot} code={edited.code} cur={edited.cur}
+                    onDelete={(lots) => removeLots(edited.code, lots)} />)}
                 </div>
-                <p className="kp-note">“Sil” kaydı tamamen kaldırır: satış sayılmaz, K/Z'ye ve günlüğe girmez. Gerçekten sattıysan Pozisyonlar sayfasında “Sattım”ı kullan.</p>
+                <p className="kp-note">“Sil” kaydı tek tıkla kaldırır: satış sayılmaz, K/Z'ye ve günlüğe girmez.</p>
               </K.Card>
             )}
             <AddCard />

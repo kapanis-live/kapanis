@@ -6,7 +6,7 @@ request body or URL. Kapanış records what the user tells it; it never connects
 portfolios (one document per user)
   user_id, rev, cash_balance {TL, USD},
   positions   [{id, piyasa, kod, adet, maliyet, stop, hedef, acilis, durum, kapanis_fiyat, kapanis}]
-  transactions[{id, zaman, tur: alis|satis|nakit, piyasa, kod, adet, fiyat, tutar, para, pozisyon_id, kar}]
+  transactions[{id, zaman, tur: alis|satis|nakit|silme, piyasa, kod, adet, fiyat, tutar, para, pozisyon_id, kar}]
 
 telegram_links: {code_hash, user_id, expires_at, used} - one-time codes, 10 minutes, stored hashed.
 """
@@ -284,6 +284,17 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
             pos["adet"] = round(pos["adet"] - qty, 10)
         await save(doc)
         return {"pozisyon": pos, "kar": profit}
+
+    @r.delete("/portfolio/positions/{pid}")
+    async def delete_position(pid: str, user: dict = Depends(current_user)):
+        """Remove an open record without a sale (entered by mistake, or the user does not want to give a price).
+        No profit or loss is booked: the report card only counts sales."""
+        doc = await load(user["id"])
+        pos = find_open(doc, pid)
+        doc["positions"] = [p for p in doc["positions"] if p["id"] != pid]
+        tx(doc, tur="silme", piyasa=pos["piyasa"], kod=pos["kod"], adet=pos["adet"], para=pos["para"], pozisyon_id=pid)
+        await save(doc)
+        return {"silindi": pid}
 
     @r.put("/portfolio/cash")
     async def set_cash(body: CashBody, user: dict = Depends(current_user)):

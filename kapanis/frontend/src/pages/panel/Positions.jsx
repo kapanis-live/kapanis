@@ -6,10 +6,8 @@ import { K, U } from "@/ds";
 import { sendAction } from "@/lib/actions";
 import { DataView } from "@/components/DataView";
 import { EmptyState } from "@/components/states";
-import { QueuedBadge } from "@/components/QueuedBadge";
 import { AssetLogo, chartHref } from "@/components/AssetLogo";
 import { Segmented, KButton, ChangeBadge, Tile } from "@/components/kp";
-import api, { formatApiErrorDetail } from "@/lib/api";
 import { formatNumber, formatTime } from "@/lib/format";
 import { px, qty, MARKET_LABEL } from "@/lib/portfolio";
 import { TEXTS } from "@/lib/texts";
@@ -21,37 +19,19 @@ const sym = (p) => (p.currency === "TL" ? "₺" : "$");
 const money = (v, p) => `${sym(p)}${formatNumber(Math.abs(v), { decimals: 2 })}`;
 const signedMoney = (v, p) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${money(v, p)}`;
 
-// Tasarım sistemindeki PositionCard: başlık, büyük kâr/zarar, üç kutucuk, "Grafiği aç" + "Sattım".
-// "Sattım" yalnız botun kaydını günceller; borsada işlem yapmaz.
+// Tasarım sistemindeki PositionCard: başlık (tıklayınca grafik açılır), büyük kâr/zarar, üç kutucuk, "Sil".
+// "Sil" yalnız botun kaydını kaldırır; borsada işlem yapmaz, satış saymaz.
 function PositionCard({ p, queued, onQueued }) {
   const navigate = useNavigate();
-  const [selling, setSelling] = useState(false);
-  const [price, setPrice] = useState(String(p.current ?? ""));
-  const [when, setWhen] = useState(""); // boş = şimdi; önceden sattıysan gün/saat seç
-  const [busy, setBusy] = useState(false);
+  // Tek tıkla kaydı kaldırır: satış sayılmaz, fiyat sorulmaz, K/Z'ye girmez
+  const remove = async () => {
+    if (await sendAction("holding.delete", { id: Number(String(p.id).replace("pos_", "")) }, `${code(p.symbol)} silindi.`)) onQueued(p.id);
+  };
   const invested = p.entry * p.size;
   const value = (p.current ?? p.entry) * p.size;
   const open = p.status === "open";
   const go = () => navigate(chartHref(p.symbol, p.market));
-
-  const save = async () => {
-    const n = U.parseTr(price); // tr-TR sayı: "1.045,00" da doğru okunur
-    if (!Number.isFinite(n) || n <= 0) {
-      toast.error("Sattığın fiyatı yaz.");
-      return;
-    }
-    setBusy(true);
-    try {
-      await api.post(`/positions/${p.id}/close`, when ? { price: n, when } : { price: n });
-      toast.success(`${code(p.symbol)} satışı bota iletildi.`, { description: "Telegram'a onay mesajı gelecek." });
-      onQueued(p.id);
-      setSelling(false);
-    } catch (err) {
-      toast.error(formatApiErrorDetail(err.response?.data?.detail) || "Kaydedilemedi.");
-    } finally {
-      setBusy(false);
-    }
-  };
+  if (queued) return null; // silindi: bot uygulayana kadar da görünmesin
 
   return (
     <div className="flex flex-col gap-5 rounded-xl border border-hairline bg-surface p-6" data-testid={`position-${p.id}`}>
@@ -81,34 +61,9 @@ function PositionCard({ p, queued, onQueued }) {
 
       {!open ? (
         <p className="m-0 text-[0.9375rem] text-t-3">Kapandı · açılış {formatTime(p.opened_at)}</p>
-      ) : queued ? (
-        <QueuedBadge label="Satış kaydediliyor" />
-      ) : selling ? (
-        <div className="flex flex-wrap items-end justify-between gap-4 pt-1">
-          <label className="flex flex-col gap-1.5 text-[0.9375rem] font-medium text-t-2">
-            Kaçtan sattın?
-            <span className="inline-flex h-11 items-center gap-1.5 rounded-[10px] border border-strong bg-ink px-3.5 focus-within:border-info">
-              <span className="font-semibold text-t-3">{sym(p)}</span>
-              <input type="text" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} autoFocus
-                className="num w-36 border-0 bg-transparent text-lg font-bold text-t-1 outline-none" data-testid={`position-sold-price-${p.id}`} />
-            </span>
-          </label>
-          <label className="flex flex-col gap-1.5 text-[0.9375rem] font-medium text-t-2">
-            Ne zaman? <span className="text-[0.8125rem] font-normal text-t-3">boş bırakırsan şimdi</span>
-            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)}
-              max={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
-              className="h-11 rounded-[10px] border border-strong bg-ink px-3.5 text-t-1 outline-none focus:border-info"
-              data-testid={`position-sold-when-${p.id}`} />
-          </label>
-          <div className="flex gap-3">
-            <KButton variant="ghost" onClick={() => setSelling(false)}>Vazgeç</KButton>
-            <KButton variant="primary" disabled={busy} onClick={save} data-testid={`position-sold-save-${p.id}`}>Kaydet</KButton>
-          </div>
-        </div>
       ) : (
-        <div className="flex flex-wrap justify-end gap-3">
-          <KButton className="min-w-[8.5rem]" onClick={go}>Grafiği aç</KButton>
-          <KButton className="min-w-[8.5rem]" onClick={() => setSelling(true)} data-testid={`position-sold-${p.id}`}>Sattım</KButton>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <KButton className="min-w-[8.5rem]" onClick={remove} data-testid={`position-delete-${p.id}`}>Sil</KButton>
         </div>
       )}
     </div>

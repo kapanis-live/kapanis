@@ -292,7 +292,10 @@
           h(Button, { variant: 'primary', type: 'submit' }, 'Kaydet'))) : null;
     return h('article', { className: 'kp-card kp-pos' },
       h('div', { className: 'kp-pos__head' },
-        h(Ticker, { symbol: p.symbol, name: p.name, logo: p.logo, size: 'lg' }),
+        /* Kapanış paneli düzeltmesi: başlığa tıklamak grafiği açar; ayrı "Grafiği aç" butonu yok */
+        h('button', { type: 'button', title: 'Grafiği aç', onClick: function () { p.onOpenChart && p.onOpenChart(p.symbol); },
+          style: { background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left', color: 'inherit', font: 'inherit', minWidth: 0 } },
+          h(Ticker, { symbol: p.symbol, name: p.name, logo: p.logo, size: 'lg' })),
         h('span', { className: 'kp-pos__qty' }, new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 8 }).format(p.qty) + ' adet')),
       h('div', { className: 'kp-pos__pl' },
         h('span', { className: cx('kp-pos__plval', 'is-' + tone) }, fmtSignedMoney(pl, cur)),
@@ -300,9 +303,10 @@
       h('div', { className: 'kp-pos__tiles' }, tiles),
       hasStop ? h(LevelBar, { stop: p.stop, target: p.target, cost: p.cost, price: p.price, cur: cur }) : null,
       form || h('div', { className: 'kp-pos__actions' },
-        h(Button, { variant: 'secondary', onClick: function () { p.onOpenChart && p.onOpenChart(p.symbol); } }, 'Grafiği aç'),
         hasStop && p.onRaiseStop !== false ? h(Button, { variant: 'secondary', onClick: function () { open('stop'); } }, 'Stopu yükselt') : null,
-        h(Button, { variant: 'secondary', onClick: function () { open('sell'); } }, 'Sattım')));
+        p.onSold !== false ? h(Button, { variant: 'secondary', onClick: function () { open('sell'); } }, 'Sattım') : null,
+        /* Kapanış paneli düzeltmesi: satış fiyatı sormadan kaydı kaldıran tek tıklık buton */
+        p.onDelete ? h(Button, { variant: 'secondary', onClick: function () { p.onDelete(p.symbol); } }, 'Sil') : null));
   }
 
   function signedPct(v) { return (v >= 0 ? '+' : '−') + '%' + fmtNum(Math.abs(v), 1); }

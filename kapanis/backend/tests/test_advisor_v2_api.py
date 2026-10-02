@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 os.environ["ADVISOR_DATA_ORIGIN"] = "TEST"
 os.environ.setdefault("ADVISOR_PAPER_FILE", str(Path(tempfile.mkdtemp()) / "advisor_paper.jsonl"))
@@ -22,7 +23,7 @@ from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 
 import advisor_v2_api as api  # noqa: E402
 import limits  # noqa: E402
-from test_advisor_api import candles  # noqa: E402
+from test_advisor_api import NOW, candles  # noqa: E402
 
 ADMIN = "admin@example.com"
 OWNER = {"id": "u1", "email": ADMIN, "role": "owner", "clerk_id": "c1", "email_verified": True}
@@ -94,6 +95,9 @@ def verdict(role, value):
 
 class AdvisorV2ApiTest(unittest.TestCase):
     def setUp(self):
+        clock = mock.patch("time.time", return_value=NOW)      # the candles end at NOW; the snapshot's "now" is the same moment
+        clock.start()
+        self.addCleanup(clock.stop)
         self.svc = api.engine()
         self.agents = sys.modules["danisman_v2.agents"]
         self.macro = sys.modules["danisman_v2.macro"]

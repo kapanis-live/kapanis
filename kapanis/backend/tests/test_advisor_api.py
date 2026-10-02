@@ -6,9 +6,10 @@ import json
 import os
 import sys
 import tempfile
-import time
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 # whatever these tests make the advisor record is a TEST record in a throw-away file, never the live paper log
 os.environ["ADVISOR_DATA_ORIGIN"] = "TEST"
@@ -24,6 +25,11 @@ import advisor_api  # noqa: E402
 import limits  # noqa: E402
 
 USER = {"id": "u1", "owner": True}
+# The engine takes "now" from time.time, and the 1h / 4h / 1d candles are cut on UTC boundaries: the same 15m candles give
+# another 4h picture at another time of day. In the last hour of every 4h block the last closed 4h candle of this path
+# closes under its SMA20, the advisor rightly blocks (HTF_DOWNTREND), and the tests that expect a sized plan fail.
+# So the candles end at one fixed moment and the tests run at that moment, never at the wall clock.
+NOW = datetime(2026, 1, 15, 10, 7, 30, tzinfo=timezone.utc).timestamp()
 
 
 async def current_user():
@@ -46,7 +52,7 @@ def candles() -> dict:
     path[n:] = np.linspace(path[n], 99.0, 34)
     o, c = path[:-1], path[1:]
     step = d.TFS["15m"]
-    start = int(time.time() * 1000) // step * step - (len(c) - 1) * step
+    start = int(NOW * 1000) // step * step - (len(c) - 1) * step
     m = pd.DataFrame({"t": start + np.arange(len(c)) * step, "o": o, "h": np.maximum(o, c) + 0.03,
                       "l": np.minimum(o, c) - 0.03, "c": c, "v": 1000.0})
     frames = {"15m": m}
@@ -59,6 +65,9 @@ def candles() -> dict:
 
 class AdvisorApiTest(unittest.TestCase):
     def setUp(self):
+        clock = mock.patch("time.time", return_value=NOW)
+        clock.start()
+        self.addCleanup(clock.stop)
         self.d = advisor_api.engine()
         self.calls = []
         frames = candles()

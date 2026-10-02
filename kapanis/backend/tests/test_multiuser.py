@@ -146,6 +146,33 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((doc["transactions"][-1]["tur"], doc["transactions"][-1].get("kar")), ("silme", None))
         self.assertEqual((await self.c.delete(f"/api/portfolio/positions/{pid}", headers=h)).status_code, 404)
 
+    async def test_advisor_v2_is_admin_only_through_the_real_session_path(self):
+        """The whole server: an RS256 session token, the verified e-mail from the Clerk profile, the role from the
+        database. ADMIN_EMAILS is checked against that e-mail, never against anything the request carries."""
+        url = "/api/admin/advisor/health"
+        spoof = {"X-Admin-Email": "owner@example.com", "X-User-Role": "owner", "X-Is-Admin": "true"}
+        body = {"symbol": "BTC", "email": "owner@example.com", "role": "owner", "isAdmin": True}
+        with unittest.mock.patch.dict(os.environ, {"ADMIN_EMAILS": "owner@example.com"}):
+            self.assertEqual((await self.c.get(url)).status_code, 401)                                    # no session
+            self.assertEqual((await self.c.get(url, headers=spoof)).status_code, 401)                     # headers are not a session
+            self.assertEqual((await self.c.get(url, headers=auth("user_x"))).status_code, 401)            # e-mail not verified
+            self.assertEqual((await self.c.get(url, headers=auth("user_a", exp_in=-60))).status_code, 401)  # expired token
+            self.assertEqual((await self.c.get(url, headers=auth("user_a"))).status_code, 403)            # a signed-in user
+            self.assertEqual((await self.c.get(f"{url}?email=owner@example.com&isAdmin=true",
+                                               headers={**auth("user_a"), **spoof})).status_code, 403)    # forged e-mail / role
+            r = await self.c.post("/api/admin/advisor/analyze", headers={**auth("user_a"), **spoof}, json=body)
+            self.assertEqual(r.status_code, 403)
+            r = await self.c.get(url, headers=auth("owner_clerk"))                                        # the admin
+            self.assertEqual(r.status_code, 200, r.text)
+            h = r.json()
+            self.assertEqual(h["session"], {"role": "admin", "email_verified": True, "on_admin_list": True, "auth": "clerk"})
+            self.assertEqual((h["auto_trading"], h["admin_list_set"]), (False, True))
+            self.assertNotIn("owner@example.com", r.text)                                                 # no e-mail comes back
+            self.assertNotIn("sk_test_dummy", r.text)
+        with unittest.mock.patch.dict(os.environ, {"ADMIN_EMAILS": "someone-else@example.com"}):
+            self.assertEqual((await self.c.get(url, headers=auth("owner_clerk"))).status_code, 403)       # owner, not on the list
+        self.assertEqual(await server.db.advisor_consensus_runs.count_documents({}), 0)                   # nobody ran anything
+
     async def test_owner_keeps_bot_data_via_clerk_and_legacy(self):
         await self.c.post("/api/ingest/positions", headers=BOT, json=[{"id": "pos_1", "symbol": "BTC/USDT"}])
         r = await self.c.get("/api/positions", headers=auth("owner_clerk"))

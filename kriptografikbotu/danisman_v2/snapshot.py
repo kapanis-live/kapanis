@@ -140,7 +140,7 @@ def public_zone(lvl: dict) -> dict:
 def structure(views: dict, sup: list[dict], res: list[dict], live15: dict | None, price: float) -> dict:
     """What the price has done at its levels, from closed 15m (and 1h) candles: breakout, failure, reclaim, retest."""
     b15, b1 = views["15m"], views["1h"]
-    i, c, h, l = b15.n - 1, b15.c, b15.h, b15.l
+    i, c, h, lw = b15.n - 1, b15.c, b15.h, b15.l
     step = d.TFS["15m"]
     atr15, atr1h = float(b15.atr[-1]), float(b1.atr[-1])
     bo = d.find_breakout(b15, sup, res, atr1h, live15)
@@ -164,21 +164,21 @@ def structure(views: dict, sup: list[dict], res: list[dict], live15: dict | None
             out["reclaim"] = {"level": _n(top), "failed_at": _iso(int(b15.t[downs[-1]]) + step),
                               "reclaim_candle_time": _iso(int(b15.t[t0]) + step), "held_bars": int(held),
                               "confirmed": bool(held >= cfg.RECLAIM_HOLD_BARS),
-                              "hold_high": _n(float(h[t0:i + 1].max())), "hold_low": _n(float(l[t0:i + 1].min()))}
+                              "hold_high": _n(float(h[t0:i + 1].max())), "hold_low": _n(float(lw[t0:i + 1].min()))}
         zone_hi = top + cfg.RETEST_ZONE_ATR1H * atr1h
         away = next((t for t in range(t0, i + 1) if c[t] > zone_hi), None)
-        back = None if away is None else next((t for t in range(away + 1, i + 1) if l[t] <= zone_hi), None)
-        conf = None if back is None else next((t for t in range(i, back - 1, -1) if l[t] <= zone_hi and c[t] > top), None)
+        back = None if away is None else next((t for t in range(away + 1, i + 1) if lw[t] <= zone_hi), None)
+        conf = None if back is None else next((t for t in range(i, back - 1, -1) if lw[t] <= zone_hi and c[t] > top), None)
         out["retest_zone"] = [_n(zone_lo), _n(zone_hi)]
         out["retest"] = {
             "broken_resistance": _n(top), "zone_low": _n(zone_lo), "zone_high": _n(zone_hi),
             "breakout_candle_time": _iso(int(b15.t[t0]) + step), "moved_away": away is not None,
-            "entered_zone": back is not None, "in_zone_now": bool(l[i] <= zone_hi),
+            "entered_zone": back is not None, "in_zone_now": bool(lw[i] <= zone_hi),
             "distance_atr15": _n(max(price - zone_hi, 0.0) / atr15, 2),
-            "structure_low": None if back is None else _n(float(l[back:i + 1].min())),
+            "structure_low": None if back is None else _n(float(lw[back:i + 1].min())),
             "confirmation": None if conf is None else {
                 "time": _iso(int(b15.t[conf]) + step), "closed": True, "bars_ago": int(i - conf), "high": _n(float(h[conf])),
-                "low": _n(float(l[conf])), "close": _n(float(c[conf]))}}
+                "low": _n(float(lw[conf])), "close": _n(float(c[conf]))}}
     # a support that the 1h candles closed under a short while ago (position protection reads this)
     c1, t1 = b1.c, b1.t
     j = b1.n - 1
@@ -195,14 +195,14 @@ def structure(views: dict, sup: list[dict], res: list[dict], live15: dict | None
             break
     out["lost_support"] = lost
     # the last closed 15m candle: did it reach the nearest resistance and get turned back?
-    rng = h[i] - l[i]
+    rng = h[i] - lw[i]
     wick = (h[i] - max(b15.o[i], c[i])) / rng if rng > 0 else 0.0
     out["rejection"] = bool(res and h[i] >= res[0]["zone"][0] and c[i] < res[0]["zone"][0] and wick >= cfg.REJECTION_WICK_RATIO)
     lows = d.confirmed_swings(b15, "L")
     out["higher_low_15m"] = None
-    if len(lows) >= 2 and l[lows[-2]] < l[lows[-1]] < c[i]:       # a higher low that the price is still above
-        out["higher_low_15m"] = {"price": _n(float(l[lows[-1]])), "time": _iso(int(b15.t[lows[-1]]) + step),
-                                 "previous": _n(float(l[lows[-2]]))}
+    if len(lows) >= 2 and lw[lows[-2]] < lw[lows[-1]] < c[i]:       # a higher low that the price is still above
+        out["higher_low_15m"] = {"price": _n(float(lw[lows[-1]])), "time": _iso(int(b15.t[lows[-1]]) + step),
+                                 "previous": _n(float(lw[lows[-2]]))}
     swing = d.sl.swing_low_at(b1, j)
     out["swing_low_1h"] = None if swing != swing else _n(swing)
     return out
@@ -261,8 +261,13 @@ def portfolio_facts(symbol: str, price: float, portfolio: dict | None, corr: dic
         values[symbol] = out["position_value"]
     out["holdings"] = [{"symbol": s, "value": _n(v, 2), "asset_class": d.coin_class(s)} for s, v in values.items()]
     crypto = sum(values.values())
-    share = lambda v: None if not value else _n(v / value * 100, 2)
-    by_class = lambda cls: sum(v for s, v in values.items() if d.coin_class(s) == cls)
+
+    def share(v):
+        return None if not value else _n(v / value * 100, 2)
+
+    def by_class(cls):
+        return sum(v for s, v in values.items() if d.coin_class(s) == cls)
+
     out.update(crypto_value=_n(crypto, 2), portfolio_crypto_exposure=share(crypto),
                portfolio_alt_exposure=share(by_class("ALT")), portfolio_meme_exposure=share(by_class("MEME")),
                portfolio_correlated_exposure=share(sum(values.get(s, 0.0) for s in out["correlation_group"])))
@@ -302,7 +307,10 @@ def build(data: dict, portfolio: dict | None = None, macro: dict | None = None, 
             continue
         b = views[tf]
         tr = d.trend_state(b)
-        swings = lambda kind, arr: [[_n(float(arr[k])), _iso(int(b.t[k]) + d.TFS[tf])] for k in d.confirmed_swings(b, kind)[-4:]]
+
+        def swings(kind, arr):
+            return [[_n(float(arr[k])), _iso(int(b.t[k]) + d.TFS[tf])] for k in d.confirmed_swings(b, kind)[-4:]]
+
         tail = slice(max(0, b.n - getattr(cfg, AI_CANDLES[tf])), b.n)
         frames[tf] = {"bars": counts[tf], "trend": TREND[tr["state"]], "trend_evidence": tr["reasons"],
                       "indicators": d.snapshot(b), "swing_highs": swings("H", b.h), "swing_lows": swings("L", b.l),

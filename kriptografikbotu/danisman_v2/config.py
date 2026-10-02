@@ -14,7 +14,7 @@ import json
 import os
 
 ADVISOR_VERSION = "2.0.0"
-RULESET_REVISION = 1             # raise it when the decision CODE changes in a way the values below cannot show
+RULESET_REVISION = 2             # raise it when the decision CODE changes in a way the values below cannot show
 
 
 def _env(name: str, default):

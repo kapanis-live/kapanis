@@ -131,7 +131,10 @@ def position_size(s: dict, entry: float, stop: float) -> dict:
     if not pv:
         return {"position": None, "note": "PORTFOLIO_REQUIRED_FOR_SIZING", "block": None}
     risk_budget = pv * cfg.RISK_PER_TRADE_PCT / 100
-    held = lambda key: (p.get(key) or 0.0) / 100 * pv
+
+    def held(key):
+        return (p.get(key) or 0.0) / 100 * pv
+
     caps = {"RISK_BUDGET": risk_budget / ((entry - stop) / entry), "MAX_NEW_POSITION": pv * cfg.MAX_NEW_POSITION_PCT / 100}
     if p["asset_class"] == "ALT":
         caps["MAX_ALT_EXPOSURE"] = pv * cfg.MAX_ALT_EXPOSURE_PCT / 100 - held("portfolio_alt_exposure")

@@ -91,7 +91,10 @@ def macro(obb) -> dict:
     """Rates, inflation, employment: slow series, read at most every half hour."""
     out = {"data": {}, "sources": [], "unavailable": []}
     today = dt.date.today()
-    ago = lambda n: (today - dt.timedelta(days=n)).isoformat()
+
+    def ago(n):
+        return (today - dt.timedelta(days=n)).isoformat()
+
     _try(out, "treasury_rates", "OpenBB · Federal Reserve H.15",
          lambda: _last(_rows(obb.federal_reserve.treasury_rates(start_date=ago(14))), "month_3", "year_2", "year_10", "year_30", scale=100))
     _try(out, "effective_fed_funds_rate", "OpenBB · New York Fed EFFR",

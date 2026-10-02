@@ -115,9 +115,9 @@ def log_runs(rows: list[dict]) -> int:
 
 
 # ---------------- simulation ----------------
-def _atr(h: np.ndarray, l: np.ndarray, c: np.ndarray) -> np.ndarray:
+def _atr(h: np.ndarray, lw: np.ndarray, c: np.ndarray) -> np.ndarray:
     prev = np.concatenate([[c[0]], c[:-1]])
-    tr = np.maximum(h - l, np.maximum(abs(h - prev), abs(l - prev)))
+    tr = np.maximum(h - lw, np.maximum(abs(h - prev), abs(lw - prev)))
     return pd.Series(tr).ewm(alpha=1 / 14, adjust=False).mean().values
 
 
@@ -164,15 +164,15 @@ def simulate(row: dict, bars: pd.DataFrame) -> dict:
     risk = fill - stop0
     if risk <= 0:
         return {"triggered": True, "fill_price": fill, "error": "stop girişin üstünde"}
-    t, h, l, c = w.t.values, w.h.values, w.l.values, w.c.values
+    t, h, lw, c = w.t.values, w.h.values, w.l.values, w.c.values
     a15, a1 = row.get("atr_15m") or float(atr15[start]), row.get("atr_1h") or atr1h_at(int(t[start])) or 0.0
     inval = row.get("invalidation")
 
     def run(target: float | None, trail: str | None) -> dict:
         stop, hi, lo, last_low, top = stop0, fill, fill, stop0, fill
         for i in range(start, len(w)):
-            lo = min(lo, l[i])
-            if l[i] <= stop:                                    # the stop first, whatever else the candle holds
+            lo = min(lo, lw[i])
+            if lw[i] <= stop:                                    # the stop first, whatever else the candle holds
                 why = "STOP" if stop == stop0 else "TRAIL"
                 return {"result_r": round((stop - fill) / risk, 2), "exit": why, "exit_candle": i, "stop_at_exit": float(stop),
                         "bars_held": i - start + 1, "mfe_r": round((hi - fill) / risk, 2), "mae_r": round((lo - fill) / risk, 2)}
@@ -185,9 +185,9 @@ def simulate(row: dict, bars: pd.DataFrame) -> dict:
                 stop = max(stop, top - cfg.TRAIL_REFERENCE_ATR1H * a1)
             elif trail == "HIGHER_LOW":
                 j = i - SWING_K                                 # a swing low is known SWING_K candles after it formed
-                if j - SWING_K >= start and l[j] == l[j - SWING_K:j + SWING_K + 1].min() and l[j] > last_low:
-                    last_low = l[j]
-                    stop = max(stop, l[j] - cfg.HIGHER_LOW_ATR15_BUFFER * a15)
+                if j - SWING_K >= start and lw[j] == lw[j - SWING_K:j + SWING_K + 1].min() and lw[j] > last_low:
+                    last_low = lw[j]
+                    stop = max(stop, lw[j] - cfg.HIGHER_LOW_ATR15_BUFFER * a15)
         return {"result_r": round(float((c[-1] - fill) / risk), 2), "exit": "OPEN_AT_HORIZON", "exit_candle": None,
                 "stop_at_exit": float(stop), "bars_held": len(w) - start, "mfe_r": round((hi - fill) / risk, 2),
                 "mae_r": round((lo - fill) / risk, 2)}
@@ -257,7 +257,10 @@ def _metrics(trades: list[dict]) -> dict:
     equity = np.concatenate([[0.0], np.cumsum(rs)])      # in R, from a flat start
     stops = [x for x in trades if x["exit"] in ("STOP", "TRAIL")]
     judged = [x["whipsaw"]["whipsaw_exit"] for x in stops if x.get("whipsaw") and x["whipsaw"]["whipsaw_exit"] is not None]
-    mean = lambda xs: round(statistics.fmean(xs), 2) if xs else None
+
+    def mean(xs):
+        return round(statistics.fmean(xs), 2) if xs else None
+
     return {"sample_size": n, "verdict": "MEASURED" if n >= cfg.MIN_SAMPLE else "INCONCLUSIVE",
             "expectancy_R": mean(rs), "win_rate": round(len(wins) / n * 100, 1), "avg_win_R": mean(wins), "avg_loss_R": mean(losses),
             "profit_factor": round(sum(wins) / -sum(losses), 2) if losses and sum(losses) < 0 else None,
@@ -292,8 +295,11 @@ def stats(rows: list[dict], origin: str = "LIVE", only_ruleset: str | None = Non
     # whipsaw: by how far the first stop sat from the entry, and by what the stop rested on (style B: no trailing)
     stopped = [(o["stop_distance_atr15"], o.get("stop_source"), o["variants"]["B"]["whipsaw"]["whipsaw_exit"])
                for _, o in entered if o["variants"]["B"]["exit"] == "STOP" and o["variants"]["B"]["whipsaw"]["whipsaw_exit"] is not None]
-    rate = lambda xs: {"stops": len(xs), "whipsaw_rate": round(sum(xs) / len(xs) * 100, 1) if xs else None,
-                       "verdict": "MEASURED" if len(xs) >= cfg.MIN_SAMPLE else "INCONCLUSIVE"}
+
+    def rate(xs):
+        return {"stops": len(xs), "whipsaw_rate": round(sum(xs) / len(xs) * 100, 1) if xs else None,
+                "verdict": "MEASURED" if len(xs) >= cfg.MIN_SAMPLE else "INCONCLUSIVE"}
+
     out["whipsaw"] = {
         "all": rate([w for _, _, w in stopped]),
         "by_stop_distance_atr15": {

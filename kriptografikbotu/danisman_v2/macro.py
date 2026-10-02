@@ -180,7 +180,10 @@ class OpenBBService:
         rated = [e for e in events if e["high_impact"] is not None]
         high = [e for e in events if e["high_impact"]]
         nxt = high[0] if high else None
-        within = lambda minutes: None if not rated else bool(nxt and nxt["minutes_from_now"] <= minutes)
+
+        def within(minutes):
+            return None if not rated else bool(nxt and nxt["minutes_from_now"] <= minutes)
+
         m, x = mac["data"], cross["data"]
         failed = [k for k, v in parts.items() if v["error"] and not v["data"]]
         partly = failed or any(v["error"] or v["unavailable"] for v in parts.values())

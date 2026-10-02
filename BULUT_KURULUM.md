@@ -62,7 +62,7 @@ Tam liste ve açıklamalar: `deploy/web.env.example`, `deploy/bot.env.example`.
 | `VITE_CLERK_PUBLISHABLE_KEY` | `pk_test_...` / `pk_live_...` (tarayıcıya gider, gizli değil) |
 | `CLERK_SECRET_KEY` | `sk_test_...` / `sk_live_...` (**gizli**, yalnız web'de) |
 | `CLERK_AUTHORIZED_PARTIES`, `CORS_ORIGINS` | sitenin adresi, ör. `https://kapanis.app` |
-| `OWNER_EMAIL` | `valenciaennerman@gmail.com`: botun portföyünü ve sinyallerini gören tek hesap |
+| `OWNER_EMAIL` | `admin@example.com` (kendi giriş e-postan): botun portföyünü ve sinyallerini gören tek hesap |
 | `JWT_SECRET` | uzun rastgele metin |
 | `TRUST_PROXY` | `1` |
 | `USER_DAILY_ANALYSES` | kullanıcı başına günlük yapay zekâ analizi (varsayılan 5; DeepSeek ücretli) |

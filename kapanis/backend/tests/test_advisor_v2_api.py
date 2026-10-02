@@ -12,8 +12,8 @@ from pathlib import Path
 
 os.environ["ADVISOR_DATA_ORIGIN"] = "TEST"
 os.environ.setdefault("ADVISOR_PAPER_FILE", str(Path(tempfile.mkdtemp()) / "advisor_paper.jsonl"))
-os.environ["DEEPSEEK_API_KEY"] = "sk-test-secret-deepseek-123456"
-os.environ["NVIDIA_API_KEY"] = "nvapi-test-secret-654321"
+os.environ["DEEPSEEK_API_KEY"] = "TEST_API_KEY_VALUE_DEEPSEEK"
+os.environ["NVIDIA_API_KEY"] = "TEST_API_KEY_VALUE_NVIDIA"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -24,7 +24,7 @@ import advisor_v2_api as api  # noqa: E402
 import limits  # noqa: E402
 from test_advisor_api import candles  # noqa: E402
 
-ADMIN = "valenciaennerman@gmail.com"
+ADMIN = "admin@example.com"
 OWNER = {"id": "u1", "email": ADMIN, "role": "owner", "clerk_id": "c1", "email_verified": True}
 USERS = {"owner": OWNER,
          "user": {"id": "u2", "email": "someone@example.com", "role": "user", "clerk_id": "c2", "email_verified": True},

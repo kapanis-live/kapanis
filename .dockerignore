@@ -5,6 +5,7 @@
 **/*.log
 **/*.log.*
 **/.venv
+**/.venv-openbb
 **/.uv-python
 **/node_modules
 **/__pycache__

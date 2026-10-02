@@ -10,3 +10,4 @@
 kriptografikbotu/data
 .git
 *.zip
+**/.venv-openbb

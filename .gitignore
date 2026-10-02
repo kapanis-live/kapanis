@@ -12,6 +12,7 @@
 
 # Local environments and builds
 **/.venv/
+**/.venv-openbb/
 **/.uv-python/
 **/node_modules/
 kapanis/frontend/build/

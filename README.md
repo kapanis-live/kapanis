@@ -13,6 +13,23 @@ kapanis/                 (bu depo, masaüstündeki düzenin aynısı)
 
 Ayrıntılı yapı: `kriptografikbotu/PROJE_YAPISI.md` · modüller: `kriptografikbotu/PROJE.md`.
 
+## Kripto Danışman V2 (yalnız yönetici: `/admin/advisor`)
+
+Karar desteği: analiz, stop-limit AL planı, pozisyon koruma planı, tarama. **Otomatik işlem yok; hiçbir borsaya emir gönderilmez.**
+
+| Katman | Görev |
+|---|---|
+| **Binance** | Emir hassasiyeti gereken fiyat verisi: 15m / 1h / 4h / 1d mumlar, yalnız kapanmış olanlar. |
+| **OpenBB** | Makro ve çapraz varlık bağlamı (takvim, faiz, enflasyon, istihdam, S&P 500 / VIX). Yalnız risk filtresi; alım sinyali değil. Üretim imajında henüz **yok** (`kapanis/deploy/OPENBB_STAGING.md`). |
+| **Teknik motor** | Deterministik hesap: göstergeler, teyitli swingler, destek/direnç bölgeleri, kırılım / geri test / geri alış. |
+| **3 bağımsız AI analizi** | Teknik, Risk ve Rejim rolleri aynı anlık görüntüyü ayrı ayrı okur; yorum ve veto verir, fiyat belirlemez. Üç rol, üç model değildir: varsayılan olarak aynı modeli kullanırlar. |
+| **Konsensüs** | Deterministik kurallar: Teknik BUY + Risk APPROVE + Rejim BLOCK değil. Risk ve rejim vetodur; eksik analist = AL yok. |
+| **Emir planlayıcı** | Tetik, limit, ilk teknik stop, geçersizlik, hedef, tutar; pozisyonda kâr al / zarar durdur / R. |
+| **Paper** | Doğrulama: her çalıştırma kaydedilir, çıkış biçimleri ve whipsaw ölçülür. Sonuçlar hiçbir kuralı değiştirmez. |
+
+Kurulumlar geçmiş veride kanıtlanmış bir üstünlük göstermedi (15m kırılım: işlem başına yaklaşık −0,21R); her plan ARAŞTIRMA durumundadır.
+Ayrıntı: `kriptografikbotu/danisman_v2/README.md`. Sunucu değişkenleri: `deploy/web.env.example` (`ADMIN_EMAILS`, `DEEPSEEK_API_KEY`, ...).
+
 ## Kurulum (yeni bilgisayar)
 
 1. Klasörü masaüstüne koy (başlatma dosyaları `Desktop\kriptografikbotu` ve `Desktop\kapanis` yollarını kullanır).

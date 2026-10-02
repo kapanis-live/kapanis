@@ -5,6 +5,11 @@ WORKDIR /app
 COPY kapanis/backend/requirements.cloud.txt /tmp/web-req.txt
 COPY kriptografikbotu/requirements.txt /tmp/bot-req.txt
 RUN pip install -r /tmp/web-req.txt -r /tmp/bot-req.txt
+# Optional: OpenBB for the admin advisor's macro snapshot, in its own venv (it needs a newer FastAPI than the backend).
+#   docker build --build-arg WITH_OPENBB=1 ...   then OPENBB_PYTHON=/opt/openbb/bin/python in deploy/web.env
+# About 1 GB more. The import at the end runs here because OpenBB builds its own package on the first import.
+ARG WITH_OPENBB=0
+RUN if [ "$WITH_OPENBB" = "1" ]; then python -m venv /opt/openbb && /opt/openbb/bin/pip install openbb     && /opt/openbb/bin/python -c "from openbb import obb"; fi
 COPY kapanis/backend/ kapanis/backend/
 COPY kriptografikbotu/ kriptografikbotu/
 COPY kapanis/frontend/build/ kapanis/frontend/build/

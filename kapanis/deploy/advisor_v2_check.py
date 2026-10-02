@@ -110,7 +110,7 @@ try:
     db = MongoClient(url, serverSelectionTimeoutMS=10000)[os.environ.get("DB_NAME") or os.environ.get("STATE_DB_NAME") or "kapanis"]
     show("MongoDB reachable", db.command("ping").get("ok") == 1.0, True)
     # the admin as the server knows them: the database identity of a Clerk-verified session (the e-mail is not printed)
-    owners = list(db["users"].find({"role": "owner", "clerk_id": {"$exists": True, "$ne": None}, "email_verified": True}, {"email": 1}))
+    owners = list(db["users"].find({"role": {"$in": ["owner", "admin"]}, "clerk_id": {"$exists": True, "$ne": None}, "email_verified": True}, {"email": 1}))
     show("Clerk-verified owner accounts in the database", len(owners), len(owners) == 1)
     admins = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
     show("that account's verified e-mail is on ADMIN_EMAILS", any((o.get("email") or "").lower() in admins for o in owners),

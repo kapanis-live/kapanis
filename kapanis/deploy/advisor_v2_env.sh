@@ -9,7 +9,7 @@
 # It prints configured=true/false and nothing else: no key, no e-mail, no line of an env file is ever shown.
 # --fix does two things, both from data that is already on the server:
 #   DEEPSEEK_API_KEY  copied from deploy/bot.env (the bot's own key) when deploy/web.env has none
-#   ADMIN_EMAILS      the owner's Clerk-verified e-mail as the DATABASE holds it (users: role owner, clerk_id,
+#   ADMIN_EMAILS      the owner's Clerk-verified e-mail as the DATABASE holds it (users: role owner or admin, clerk_id,
 #                     email_verified). Nothing typed here and nothing a browser sent is used.
 # OpenBB variables are only reported; this script never sets them. Exit code 1 = not ready, do not deploy.
 set -euo pipefail
@@ -46,7 +46,7 @@ import os
 from pymongo import MongoClient
 db = MongoClient(os.environ.get("MONGO_URL") or os.environ["STATE_MONGO_URL"], serverSelectionTimeoutMS=10000)[
     os.environ.get("DB_NAME") or os.environ.get("STATE_DB_NAME") or "kapanis"]
-rows = list(db.users.find({"role": "owner", "clerk_id": {"$exists": True, "$ne": None}, "email_verified": True}, {"email": 1}))
+rows = list(db.users.find({"role": {"$in": ["owner", "admin"]}, "clerk_id": {"$exists": True, "$ne": None}, "email_verified": True}, {"email": 1}))
 print(rows[0]["email"].strip().lower() if len(rows) == 1 and rows[0].get("email") else "")
 ' 2>/dev/null | tr -d '\r\n' || true)
     if printf '%s' "$owner" | grep -qE '^[^@[:space:],]+@[^@[:space:],]+\.[^@[:space:],]+$'; then

@@ -16,7 +16,7 @@ git show origin/main:kapanis/deploy/advisor_v2_env.sh | bash -s -- --fix       #
 ```
 
 `--fix` copies `DEEPSEEK_API_KEY` from `deploy/bot.env` and writes `ADMIN_EMAILS` from the database: the owner's
-Clerk-verified account (`users`: role owner, `clerk_id`, `email_verified`). Nothing typed and nothing a browser sent is
+Clerk-verified account (`users`: role owner or admin, `clerk_id`, `email_verified`). Nothing typed and nothing a browser sent is
 used. If it says there is no verified owner, sign in to the site once with the owner's account and run it again.
 `NOT READY` means: do not deploy.
 

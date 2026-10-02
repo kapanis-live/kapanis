@@ -106,5 +106,107 @@ class PanelSettingsTest(unittest.TestCase):
         self.assertNotIn("timezone", panel_settings.SPEC)
 
 
+class PanelHoldingTest(unittest.IsolatedAsyncioTestCase):
+    async def test_add_edit_delete_from_the_panel(self):
+        import positions
+        import web_sync
+        main.register_panel_actions(None)
+        h = web_sync.EXTRA_HANDLERS
+
+        async def levels(pos_like):
+            return 80000.0, 95000.0, "test"
+
+        async def review(pos):
+            return None
+        with unittest.mock.patch.object(main, "_suggest_levels", levels),                 unittest.mock.patch.object(main.exits, "review", review):
+            said = await h["holding.add"]({"kod": "btc", "piyasa": "KRIPTO", "adet": 0.05, "maliyet": 84000})
+            self.assertIn("Portföye eklendi", said)
+            await h["holding.add"]({"kod": "THYAO", "piyasa": "BIST", "adet": 10, "maliyet": 300})
+            self.assertIn("tam sayı", await h["holding.add"]({"kod": "THYAO", "piyasa": "BIST", "adet": 1.5, "maliyet": 300}))
+        btc, thy = positions.open_positions()
+        self.assertEqual((btc["piyasa"], btc["adet"], btc["giris"], btc["kaynak"]), ("KRIPTO", 0.05, 84000, "portföy"))
+        self.assertIn("düzeltildi", await h["holding.edit"]({"id": btc["id"], "adet": 0.1, "maliyet": 80000}))
+        self.assertEqual((positions.get(btc["id"])["adet"], positions.get(btc["id"])["giris"]), (0.1, 80000))
+        self.assertIn("tam sayı", await h["holding.edit"]({"id": thy["id"], "adet": 2.5, "maliyet": 300}))
+        self.assertIn("pozitif", await h["holding.edit"]({"id": thy["id"], "adet": 0, "maliyet": 300}))
+        self.assertIn("silindi", await h["holding.delete"]({"id": thy["id"]}))
+        self.assertIn("yok", await h["holding.delete"]({"id": thy["id"]}))
+        self.assertEqual([p["id"] for p in positions.open_positions()], [btc["id"]])
+        # a new portfolio from the panel: the open records go (kept in a backup file), the new rows come in
+        with unittest.mock.patch.object(main, "_suggest_levels", levels), \
+                unittest.mock.patch.object(main.exits, "review", review):
+            said = await h["holding.bulk"]({"temizle": True, "satirlar": [
+                {"kod": "eth", "piyasa": "KRIPTO", "adet": 2, "maliyet": 3000},
+                {"kod": "NVDA", "piyasa": "ABD", "adet": 3, "maliyet": 120},
+                {"kod": "THYAO", "piyasa": "BIST", "adet": 1.5, "maliyet": 300}]})
+        self.assertIn("1 açık kayıt", said)
+        self.assertEqual(said.count("✅"), 2)
+        self.assertIn("❌ THYAO", said)
+        self.assertEqual([(p["piyasa"], p["adet"]) for p in positions.open_positions()], [("KRIPTO", 2), ("ABD", 3)])
+        self.assertTrue((config.DATA_DIR / "positions_silinen.json").exists())
+        self.assertIn("2 açık kayıt", await h["holding.bulk"]({"temizle": True}))
+        self.assertEqual(positions.open_positions(), [])
+
+
+    async def test_cash_plans_alarms_watchlist_and_sale_from_the_panel(self):
+        import balance
+        import dca
+        import pf_alarm
+        import positions
+        import watchlist
+        import web_sync
+        main.register_panel_actions(None)
+        h = web_sync.EXTRA_HANDLERS
+        positions.save([])
+        self.assertIn("5,000.00 TL", await h["cash.set"]({"piyasa": "BIST", "tutar": 5000}))
+        self.assertEqual(balance.cash()["BIST"], 5000)
+        self.assertIn("❌", await h["cash.set"]({"piyasa": "BIST", "tutar": -1}))
+        with unittest.mock.patch.object(main.bist, "watchlist", return_value=["THYAO"]):
+            self.assertIn("Birikim planı kuruldu", await h["dca.add"]({"kod": "THYAO", "tutar": 1000, "gun": 15}))
+        plan = dca.plans()[-1]
+        self.assertEqual((plan["piyasa"], plan["tutar"], plan["gun"]), ("BIST", 1000, 15))
+        self.assertIn("silindi", await h["dca.delete"]({"id": plan["id"]}))
+        self.assertIn("Kuruldu", await h["palarm.add"]({"piyasa": "BIST", "tur": "yuzde", "deger": -10}))
+        alarm = pf_alarm.load()[-1]
+        self.assertEqual((alarm["esik"], alarm["yon"]), (4500, "ALTINA"))
+        self.assertIn("Silindi", await h["palarm.delete"]({"id": alarm["id"]}))
+        self.assertIn("❌", await h["palarm.add"]({"piyasa": "BIST", "tur": "yuzde", "deger": 0}))
+        self.assertIn("Eklendi", await h["watch.add"]({"kodlar": ["zzztest"], "piyasa": "KRIPTO"}))
+        self.assertIn("ZZZTEST", watchlist.load()["KRIPTO"])
+        self.assertIn("Çıkarıldı", await h["watch.remove"]({"kodlar": ["ZZZTEST"]}))
+        self.assertNotIn("ZZZTEST", watchlist.load()["KRIPTO"])
+        self.assertIn("KAPATILDI", await h["discipline.set"]({"islem": "kapat"}))
+        self.assertIn("açıldı", await h["discipline.set"]({"islem": "ac"}))
+        pos = positions.open_position("SOL/USDT", 100, 1000, 90, 130, "4h", source="portföy")
+        self.assertIn("kalan 6", await h["holding.sell"]({"id": pos["id"], "adet": 4, "fiyat": 120}))
+        self.assertIn("elde 6", await h["holding.sell"]({"id": pos["id"], "adet": 7, "fiyat": 120}))
+        said = await h["holding.edit"]({"id": pos["id"], "adet": 6, "maliyet": 100, "stop": 95, "tarih": "2026-03-01"})
+        self.assertIn("düzeltildi", said)
+        now = positions.get(pos["id"])
+        self.assertEqual((now["stop"], now["acilis"][:10], now["tarih_girildi"]), (95, "2026-03-01", True))
+        self.assertIn("goalpost", await h["holding.edit"]({"id": pos["id"], "adet": 6, "maliyet": 100, "stop": 80}))
+        self.assertIn("pozisyon kapandı", await h["holding.sell"]({"id": pos["id"], "fiyat": 110}))
+        self.assertEqual(positions.open_positions(), [])
+
+
+class OpportunityOrderTest(unittest.TestCase):
+    def test_usdt_and_usd_rows_lead_and_tl_rows_are_capped(self):
+        import opportunities
+        rows = [{"piyasa": "BIST", "kod": f"TL{i}", "durum": "yaklasiyor", "fiyat": 10.0, "uzaklik_yuzde": 1.0} for i in range(6)]
+        rows += [{"piyasa": "ABD", "kod": "NVDA", "durum": "yaklasiyor", "fiyat": 120.0, "uzaklik_yuzde": 1.0},
+                 {"piyasa": "KRIPTO", "kod": "SOL", "durum": "yaklasiyor", "fiyat": 150.0, "uzaklik_yuzde": 1.0}]
+        shown, hidden = opportunities._front(rows, 8)
+        self.assertEqual([i["kod"] for i in shown], ["SOL", "NVDA", "TL0", "TL1", "TL2"])
+        self.assertEqual(hidden, 3)
+        blockers = {"btc_kapi": "AÇIK", "makro": "0", "duygu": "50", "kademe": 25.0, "kademe_not": ""}
+        bist = {"seans": "açık", "endeks": "AÇIK", "butce": 0, "kademe_tl": 0.0, "kademe_not": ""}
+        text = opportunities.text({"zaman": "2026-10-02T10:00:00+03:00", "sure_sn": 1.0, "alinabilir": [], "kalemler": rows,
+                                   "kripto_engeller": blockers, "bist_engeller": bist})
+        self.assertLess(text.index("SOL"), text.index("NVDA"))
+        self.assertLess(text.index("NVDA"), text.index("TL0"))
+        self.assertNotIn("TL3", text)
+        self.assertIn("+3 BIST (TL) kalemi daha", text)
+
+
 if __name__ == "__main__":
     unittest.main()

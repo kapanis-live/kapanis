@@ -31,6 +31,7 @@ const NAV = [
       { to: "/app/stratejiler", label: "Strateji Kurucu", icon: FlaskConical },
       { to: "/app/kriz", label: "Kriz Planı", icon: ShieldCheck },
       { to: "/app/planlar", label: "Planlar & Fırsatlar", icon: Target },
+      { to: "/app/danisman", label: "Kripto Danışman", icon: Zap },
       { to: "/app/kontrol", label: "Kontrol & Karşılaştır", icon: ClipboardCheck },
       { to: "/app/alarmlar", label: "Alarmlar", icon: Bell },
       { to: "/app/alarmlarim", label: "Grafik alarmlarım", icon: Bell },

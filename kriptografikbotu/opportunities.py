@@ -38,6 +38,8 @@ log = logging.getLogger(__name__)
 CHASE_PCT = {"KRIPTO": 1.5, "BIST": 3.0, "ABD": 3.0}   # price this far above the signal close = it ran away
 SIGNAL_HOURS = {"KRIPTO": 6, "BIST": 72, "ABD": 72}   # how long an unacted ŞİMDİ AL is still worth showing
 NEAR_ATR = 0.5
+MARKET_ORDER = {"KRIPTO": 0, "ABD": 1, "BIST": 2}   # USDT and USD rows come first, TL rows last
+BIST_ROWS = 3                                        # TL rows listed per group; the rest are only counted
 
 
 def _nan(x) -> bool:
@@ -262,7 +264,7 @@ async def collect() -> dict:
     except Exception as e:
         log.warning("Scanner in opportunity check failed: %s", e)
         candidates = []
-    items = signals + crypto + stocks + us_items + candidates
+    items = sorted(signals + crypto + stocks + us_items + candidates, key=lambda i: MARKET_ORDER.get(i["piyasa"], 0))
     buyable = [i for i in items if (i["durum"] == "sinyal_gecerli") or
                (i["durum"] in ("tetik_teyitli", "gun_ici_ustunde") and (i.get("kapi") or {}).get("ok"))]
     return {"zaman": alerts_store.now_tr().isoformat(), "sure_sn": round(time.time() - t0, 1),
@@ -282,8 +284,16 @@ def _g(x) -> str:
     return "—" if x is None else f"{x:.6g}"
 
 
+def _front(rows: list[dict], limit: int) -> tuple[list[dict], int]:
+    """Rows to list (USDT/USD first, at most BIST_ROWS TL rows) and how many TL rows were left out."""
+    rows = sorted(rows, key=lambda i: MARKET_ORDER.get(i["piyasa"], 0))
+    tl = [i for i in rows if i["piyasa"] == "BIST"]
+    shown = ([i for i in rows if i["piyasa"] != "BIST"] + tl[:BIST_ROWS])[:limit]
+    return shown, len(tl) - sum(i["piyasa"] == "BIST" for i in shown)
+
+
 def text(res: dict) -> str:
-    buy = res["alinabilir"]
+    buy = sorted(res["alinabilir"], key=lambda i: MARKET_ORDER.get(i["piyasa"], 0))
     kb, bb = res["kripto_engeller"], res["bist_engeller"]
     lines = [f"🔎 ŞU AN ALINABİLECEK: {len(buy)} " + ("✅" if buy else "— şu an kurallara uyan giriş yok"),
              f"({datetime.fromisoformat(res['zaman']).strftime('%H:%M')} · {res['sure_sn']:g} sn · kripto canlı, BIST ~15 dk gecikmeli)"]
@@ -303,16 +313,20 @@ def text(res: dict) -> str:
         if not rows:
             continue
         lines += ["", title]
-        for i in rows[:8]:
+        shown, hidden = _front(rows, 8)
+        for i in shown:
             why = ""
             if i.get("kapi") and not i["kapi"]["ok"]:
                 why = " · eksik: " + ", ".join(i["kapi"]["kalan"][:4])
             dist = f" · tetiğe %{i['uzaklik_yuzde']:+.2f}" if i.get("uzaklik_yuzde") is not None and i["durum"] == "yaklasiyor" else ""
             lines.append(f"{FLAG.get(i['piyasa'], '🪙')} {i['kod']} {_g(i.get('fiyat'))} — {LABELS[i['durum']]}{dist}{why}")
-    waiting = [i for i in res["kalemler"] if i["durum"] == "bekliyor"]
+        if hidden:
+            lines.append(f"🇹🇷 +{hidden} BIST (TL) kalemi daha")
+    waiting, hidden = _front([i for i in res["kalemler"] if i["durum"] == "bekliyor"], 10)
     if waiting:
         lines += ["", "⏸ Bekleyen planlar: " + ", ".join(
-            f"{i['kod']} (tetiğe %{i['uzaklik_yuzde']:+.1f})" if i.get("uzaklik_yuzde") is not None else i["kod"] for i in waiting[:10])]
+            f"{i['kod']} (tetiğe %{i['uzaklik_yuzde']:+.1f})" if i.get("uzaklik_yuzde") is not None else i["kod"] for i in waiting)
+            + (f" · +{hidden} BIST (TL)" if hidden else "")]
     k_block = [f"BTC kapı {kb['btc_kapi']}", f"makro {kb['makro']}", f"duygu {kb['duygu']}",
                f"kademe {kb['kademe']:g} USD" + (f" ({kb['kademe_not']})" if kb["kademe_not"] else "")]
     if kb.get("veri"):

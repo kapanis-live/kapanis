@@ -5796,7 +5796,170 @@ def register_panel_actions(bot):
                                                "metin": text, "kaynak": f.get("kaynak")}])
         return f"📚 Panelden temel analiz {tick}: skor {f['puan']['skor']}/100, {label} (ayrıntı panelde)"
 
+    def as_owner():
+        """A stand-in for the owner's Telegram message: what the command would reply becomes the panel result."""
+        said = []
+
+        async def reply_text(text, **_):
+            said.append(text)
+        return types.SimpleNamespace(message=types.SimpleNamespace(reply_text=reply_text),
+                                     effective_chat=types.SimpleNamespace(id=config.ALLOWED_CHAT_ID)), said
+
+    async def command(handler, *args) -> str:
+        update, said = as_owner()
+        await handler(update, types.SimpleNamespace(args=[str(a) for a in args], bot=bot))
+        return "Panelden: " + "\n".join(said)
+
+    async def holding_add(p):
+        """/portfoy ekle from the panel: the same function, its Telegram reply becomes the result."""
+        update, said = as_owner()
+        args = [str(p.get("kod", "")).strip()] + [str(p.get(k, "")) for k in ("adet", "maliyet")]
+        args += [f"{k}={p[k]}" for k in ("stop", "hedef") if p.get(k) not in (None, "")]
+        await portfolio_add(update, args, p.get("piyasa") or None)
+        return "Panelden: " + "\n".join(said)
+
+    async def holding_sell(p):
+        """/sat ID FIYAT adet=N from the panel: part of a record or all of it, at the price the user sold at."""
+        pos = positions.get(int(p.get("id") or 0))
+        if not pos or pos["durum"] != "acik":
+            return "❌ Panel: satılacak açık pozisyon yok"
+        try:
+            price, qty = float(p["fiyat"]), float(p.get("adet") or pos["adet"])
+        except (KeyError, TypeError, ValueError):
+            return "❌ Panel: satış fiyatı ve adet sayı olmalı"
+        if not (math.isfinite(price) and math.isfinite(qty) and price > 0 and qty > 0):
+            return "❌ Panel: satış fiyatı ve adet pozitif olmalı"
+        if qty > pos["adet"] * (1 + 1e-9):
+            return f"❌ Panel: #{pos['id']} için elde {pos['adet']:g} adet var"
+        if pos.get("piyasa") == "BIST" and qty != int(qty):
+            return "❌ Panel: BIST'te adet tam sayı olmalı"
+        part, rest = positions.partial_close(pos["id"], qty, price, "panel")
+        return (f"💰 Panelden satış: #{pos['id']} {pos['pair']} {qty:g} adet @ {price:g} → "
+                f"{positions.pnl(part, price)['pnl_usd']:+.2f} {pos.get('para', 'USD')}"
+                + (f" · kalan {rest['adet']:g}" if rest else " (pozisyon kapandı)"))
+
+    async def cash_set(p):
+        """/bakiye nakit from the panel: cash per market, in that market's currency."""
+        mkt = str(p.get("piyasa", "")).upper()
+        try:
+            value = float(p.get("tutar"))
+        except (TypeError, ValueError):
+            value = -1
+        if mkt not in ("BIST", "KRIPTO", "ABD") or not math.isfinite(value) or value < 0:
+            return "❌ Panel: nakit için piyasa (BIST, KRIPTO, ABD) ve sıfır ya da pozitif tutar gerekli"
+        balance.set_cash(mkt, value)
+        return f"💵 Panelden nakit: {balance.MARKETS[mkt][0]} {value:,.2f} {balance.MARKETS[mkt][1]}"
+
+    async def dca_add(p):
+        return await command(birikim, "ekle", str(p.get("kod", "")).strip(), p.get("tutar"), f"gun={p.get('gun') or 1}")
+
+    async def dca_delete(p):
+        return await command(birikim, "sil", int(p.get("id") or 0))
+
+    async def palarm_add(p):
+        """/palarm from the panel: percent from now ("yuzde") or a balance level ("seviye")."""
+        word = {"KRIPTO": "kripto", "BIST": "bist", "ABD": "abd", "DIGER": "altin"}.get(str(p.get("piyasa", "")).upper())
+        try:
+            value = float(p.get("deger"))
+        except (TypeError, ValueError):
+            value = 0.0
+        if not word or not math.isfinite(value) or not value or (p.get("tur") != "yuzde" and value < 0):
+            return "❌ Panel: portföy alarmı için piyasa ve sıfırdan farklı bir değer gerekli"
+        update, said = as_owner()
+        await add_portfolio_alarm(update, f"{word} %{value:+g}" if p.get("tur") == "yuzde" else f"{word} {value!r}", "geçersiz")
+        return "Panelden: " + "\n".join(said)
+
+    async def palarm_delete(p):
+        return await command(palarm, "sil", int(p.get("id") or 0))
+
+    async def watch_add(p):
+        forced = {"KRIPTO": "kripto", "BIST": "bist", "ABD": "abd"}.get(str(p.get("piyasa") or "").upper())
+        codes = [str(k) for k in (p.get("kodlar") or [])][:20]
+        if not codes:
+            return "❌ Panel: takip listesine eklenecek kod yok"
+        text = await command(takip, "ekle", *([forced] if forced else []), *codes)
+        watchlist.CACHE.unlink(missing_ok=True)  # the panel list is rebuilt on the push that follows
+        return text
+
+    async def watch_remove(p):
+        codes = [str(k) for k in (p.get("kodlar") or [])][:50]
+        if not codes:
+            return "❌ Panel: takip listesinden çıkarılacak kod yok"
+        text = await command(takip, "cikar", *codes)
+        watchlist.CACHE.unlink(missing_ok=True)
+        return text
+
+    async def discipline_set(p):
+        what = p.get("islem")
+        if what not in ("ac", "kapat", "sifirla"):
+            return "❌ Panel: disiplin işlemi ac, kapat ya da sifirla olmalı"
+        return await command(disiplin, what)
+
+    async def holding_edit(p):
+        """Quantity and average cost of one open record (what /duzelt ID giris= miktar= does)."""
+        pos = positions.get(int(p.get("id") or 0))
+        if not pos or pos["durum"] != "acik":
+            return "❌ Panel: düzeltilecek açık pozisyon yok"
+        try:
+            qty, cost = float(p["adet"]), float(p["maliyet"])
+        except (KeyError, TypeError, ValueError):
+            return "❌ Panel: adet ve maliyet sayı olmalı"
+        if not (math.isfinite(qty) and math.isfinite(cost) and qty > 0 and cost > 0):
+            return "❌ Panel: adet ve maliyet pozitif olmalı"
+        if pos.get("piyasa") == "BIST" and qty != int(qty):
+            return "❌ Panel: BIST'te adet tam sayı olmalı"
+        changes = {"giris": cost, "miktar_usd": qty * cost, "adet": qty}
+        try:
+            for key in ("stop", "hedef"):  # optional; the goalpost rule (stop only up) is enforced by positions.update
+                if p.get(key) not in (None, ""):
+                    changes[key] = float(p[key])
+            if p.get("tarih"):             # the real buy day: benchmark and real-return rows need it
+                day = datetime.strptime(str(p["tarih"])[:10], "%Y-%m-%d").date()
+                if day > alerts_store.now_tr().date():
+                    return "❌ Panel: alış tarihi bugünden sonra olamaz"
+                changes.update(acilis=datetime(day.year, day.month, day.day, 10, 0, tzinfo=macro.TR).isoformat(),
+                               tarih_girildi=True)
+        except (TypeError, ValueError):
+            return "❌ Panel: stop/hedef sayı, tarih 2025-03-01 biçiminde olmalı"
+        if any(k in changes and not (math.isfinite(changes[k]) and changes[k] > 0) for k in ("stop", "hedef")):
+            return "❌ Panel: stop ve hedef pozitif olmalı"
+        pos, err = positions.update(pos["id"], **changes)
+        return f"❌ Panel: {err}" if err else f"✏️ Panelden düzeltildi:\n{_position_line(pos)}"
+
+    async def holding_delete(p):
+        """/kayitsil from the panel: the record is removed, it is not a sale."""
+        pos = positions.delete_position(int(p.get("id") or 0))
+        return (f"🗑 Panelden kayıt silindi: #{pos['id']} {pos['pair']} (satış sayılmaz; K/Z ve günlüğe girmez)"
+                if pos else "❌ Panel: silinecek kayıt yok")
+
+    async def holding_bulk(p):
+        """Several holdings in one go. temizle=True first removes every open record: a new portfolio, not sales."""
+        rows = p.get("satirlar") or []
+        if len(rows) > 60:
+            return "❌ Panel: tek seferde en fazla 60 satır"
+        lines = []
+        if p.get("temizle"):
+            old = positions.open_positions()
+            alerts_store._save(config.DATA_DIR / "positions_silinen.json", positions.load())  # the way back
+            for pos in old:
+                positions.delete_position(pos["id"])
+            lines.append(f"🗑 Panelden portföy silindi: {len(old)} açık kayıt (satış sayılmaz, kapananlar durur; "
+                         "yedek: positions_silinen.json)")
+        for row in rows:
+            try:
+                said = (await holding_add(row)).removeprefix("Panelden: ")
+            except Exception as e:
+                said = f"hata: {str(e)[:80]}"
+            ok = said.startswith("✅")
+            lines.append(f"✅ {str(row.get('kod', '')).upper()} {row.get('adet')} × {row.get('maliyet')}" if ok else
+                         f"❌ {row.get('kod')}: " + said.split("\n")[0].removeprefix("❌ "))
+        return "\n".join(lines) or "❌ Panel: satır yok"
+
     web_sync.EXTRA_HANDLERS.update({
+        "holding.add": holding_add, "holding.edit": holding_edit, "holding.delete": holding_delete,
+        "holding.bulk": holding_bulk, "holding.sell": holding_sell, "cash.set": cash_set,
+        "dca.add": dca_add, "dca.delete": dca_delete, "palarm.add": palarm_add, "palarm.delete": palarm_delete,
+        "watch.add": watch_add, "watch.remove": watch_remove, "discipline.set": discipline_set,
         "analysis.request": analysis, "strategy.scan": strategy_scan, "plan.add": plan_add_, "plan.remove": plan_remove, "firsat.run": firsat_run,
         "target.set": target_set, "watch.rules": rules_set, "paper.open": paper_open_, "paper.close": paper_close_,
         "lesson.request": lesson,
@@ -5811,7 +5974,8 @@ def register_panel_actions(bot):
 async def build_extras() -> dict:
     since7 = (alerts_store.now_tr() - timedelta(days=7)).isoformat()
     since30 = (alerts_store.now_tr() - timedelta(days=30)).isoformat()
-    doc = {"id": "extras", "guncelleme": alerts_store.now_tr().isoformat()}
+    # The panel merges fields into the stored document: an empty list clears the last deleted holding.
+    doc = {"id": "extras", "guncelleme": alerts_store.now_tr().isoformat(), "portfoy": []}
     pf = await collect_portfolio(verdicts=False) if positions.open_positions() else None
     if pf:
         doc["portfoy"] = [{"ad": risk.name(g), "piyasa": g["piyasa"], "adet": g["adet"], "para": g["para"],
@@ -5819,7 +5983,10 @@ async def build_extras() -> dict:
                            "gun_yuzde": None if g["gun_yuzde"] is None else round(g["gun_yuzde"], 2),
                            "toplam_yuzde": round((g["deger"] / g["maliyet"] - 1) * 100, 2) if g["maliyet"] else None,
                            "usd_yuzde": g["reel"].get("usd_yuzde"), "tl_yuzde": g["reel"].get("tl_yuzde"),
-                           "reel_yuzde": g["reel"].get("reel_yuzde"), "temettu": round(g["temettu"], 2)}
+                           "reel_yuzde": g["reel"].get("reel_yuzde"), "temettu": round(g["temettu"], 2),
+                           "pozlar": [{"id": p["id"], "adet": p["adet"], "giris": p["giris"], "stop": p.get("stop"),
+                                       "hedef": p.get("hedef"), "acilis": p["acilis"], "tarih_yok": _date_unknown(p)}
+                                      for p in g["poz"]]}
                           for g in pf["gruplar"]]
         doc["yogunlasma"] = pf["yogunlasma"]
         doc["usdtry"] = pf.get("usdtry")
@@ -5841,6 +6008,9 @@ async def build_extras() -> dict:
                                                             for k, v in discipline.violations(since7).items()}}
     doc["gunluk"] = journal.summary(since30)
     doc["birikim"] = [{**dca.label_dict(p), **dca.holdings(p)} for p in dca.plans()]
+    doc["nakit"] = balance.cash()
+    doc["portfoy_alarmlari"] = [{**a, "etiket": pf_alarm.label(a), "birim": pf_alarm.UNITS[a["piyasa"]]}
+                                for a in pf_alarm.load() if a["durum"] == "aktif"]
     doc["plan_listesi"] = [plan_key_name(k) for k in plan_list()]
     doc["duygu"] = await sentiment.summary()
     doc["karne"] = gate.rule_advice(gate.rule_stats(positions.load_decisions()))

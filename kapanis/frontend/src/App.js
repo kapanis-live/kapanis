@@ -38,6 +38,7 @@ import Discipline from "@/pages/panel/Discipline";
 import ChartPage from "@/pages/panel/Chart";
 import Plans from "@/pages/panel/Plans";
 import Tools from "@/pages/panel/Tools";
+import Advisor from "@/pages/panel/Advisor";
 
 // panel(): her giriş yapan; own(): yalnız sistem sahibi (botun kendi verisi)
 const panel = (el) => (
@@ -99,6 +100,7 @@ function App() {
           <Route path="/app/disiplin" element={own(<Discipline />)} />
           <Route path="/app/planlar" element={own(<Plans />)} />
           <Route path="/app/kontrol" element={own(<Tools />)} />
+          <Route path="/app/danisman" element={own(<Advisor />)} />
           <Route path="/app/rapor" element={own(<Report />)} />
           <Route path="/app/maliyet" element={own(<Cost />)} />
           <Route path="/app/backtest" element={own(<Backtest />)} />

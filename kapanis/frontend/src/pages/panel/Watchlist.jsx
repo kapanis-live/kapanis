@@ -10,7 +10,7 @@ import { Segmented, Chip, SearchField, KButton, ChangeBadge, Trend, RsiMeter, Ra
 import { formatPct, formatTime } from "@/lib/format";
 import { MARKET_LABEL, px, baseCode } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
-import { Copy, Plus, Sparkles } from "lucide-react";
+import { Plus, Sparkles } from "lucide-react";
 import { K, U } from "@/ds";
 import { sendAction } from "@/lib/actions";
 import { AiPanel } from "@/pages/panel/Chart";
@@ -100,15 +100,6 @@ function sortRows(rows, sort) {
   });
 }
 
-async function copy(text, what) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success(`${what} kopyalandı`, { description: `${text} — Telegram'da bota yapıştır.` });
-  } catch {
-    toast.error("Kopyalanamadı", { description: text });
-  }
-}
-
 function HeldTag() {
   return <span className="rounded-md bg-brand/15 px-1.5 py-0.5 text-xs font-semibold text-brand">Portföyde</span>;
 }
@@ -122,6 +113,19 @@ export default function Watchlist() {
   const [filters, setFilters] = useState([]);
   const [picked, setPicked] = useState([]);
   const [asked, setAsked] = useState(null);
+  const [draft, setDraft] = useState("");
+  // Sekmedeki piyasaya eklenir; birden çok kod boşluk ya da virgülle
+  const addCodes = async () => {
+    const kodlar = draft.toUpperCase().split(/[\s,;]+/).filter(Boolean);
+    if (!kodlar.length) {
+      toast.error("Eklenecek kodu yaz.");
+      return;
+    }
+    if (await sendAction("watch.add", { kodlar, piyasa: tab }, `${kodlar.join(", ")} takip listesine ekleniyor.`)) setDraft("");
+  };
+  const removePicked = async () => {
+    if (await sendAction("watch.remove", { kodlar: picked }, `${picked.join(", ")} listeden çıkarılıyor.`)) setPicked([]);
+  };
   const toggleFilter = (k) => setFilters((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
   const togglePick = (k) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
   const held = useMemo(() => new Set((q.data?.portfoy || []).map((g) => baseCode(g.ad))), [q.data]);
@@ -131,11 +135,18 @@ export default function Watchlist() {
     <div>
       <PageHeader title="Takip listesi" testid="page-watchlist"
         subtitle="İzlediğin kodların kodla hesaplanmış hızlı durumu. Satıra tıkla, grafiği açılsın."
-        action={<KButton icon={<Plus className="h-4 w-4" />} onClick={() => copy("/takip ekle ", "Ekleme komutu")}>Kod ekle</KButton>} />
+        action={(
+          <span className="flex items-center gap-2">
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCodes()}
+              placeholder={`${MARKET_LABEL[tab]}: kod ekle`} aria-label="Takip listesine eklenecek kod"
+              className="h-11 w-44 rounded-[10px] border border-hairline bg-ink px-3 text-base text-t-1 outline-none focus:border-info" />
+            <KButton icon={<Plus className="h-4 w-4" />} onClick={addCodes}>Ekle</KButton>
+          </span>
+        )} />
       <DataView query={q} loadingText="Takip listesi yükleniyor...">
         {(d) => {
           const tl = d.takip_listesi;
-          if (!tl?.piyasalar) return <EmptyState text="Bot takip listesi verisini henüz göndermedi (30 dakikada bir yeniler). Telegram: /takip" />;
+          if (!tl?.piyasalar) return <EmptyState text="Bot takip listesi verisini henüz göndermedi (30 dakikada bir yeniler). Yukarıdan kod ekleyebilirsin." />;
           const all = tl.piyasalar[tab] || [];
           const ok = all.filter((r) => !r.hata);
           const ups = ok.filter((r) => (r.gun_yuzde || 0) > 0).length;
@@ -255,9 +266,7 @@ export default function Watchlist() {
                   <span className="text-base text-t-1"><b>{picked.length}</b> kod seçili: <span className="text-t-2">{picked.join(", ")}</span></span>
                   <div className="flex gap-2">
                     <KButton variant="ghost" onClick={() => setPicked([])}>Temizle</KButton>
-                    <KButton variant="ghost" icon={<Copy className="h-4 w-4" />} onClick={() => copy(`/takip ${picked.join(" ")}`, "Komut")}>
-                      Komutu kopyala
-                    </KButton>
+                    <KButton variant="ghost" onClick={removePicked}>Listeden çıkar</KButton>
                     <KButton variant="primary" icon={<Sparkles className="h-4 w-4" />} disabled={picked.length > 10}
                       onClick={() => { setAsked(picked); setPicked([]); }}>
                       {picked.length > 10 ? "En fazla 10 kod" : "Yapay zekâ analizi"}

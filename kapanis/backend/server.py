@@ -457,7 +457,10 @@ USER_KEY_DAILY_ANALYSES = int(os.environ.get("USER_KEY_DAILY_ANALYSES", "50"))  
 GLOBAL_DAILY_ANALYSES = int(os.environ.get("GLOBAL_DAILY_ANALYSES", "100"))
 ACTION_TYPES = {"analysis.request", "plan.add", "plan.remove", "firsat.run", "target.set", "watch.rules",
                 "paper.open", "paper.close", "lesson.request", "check.request", "ind.create", "ind.delete",
-                "compare.request", "dividend.refresh", "backtest.run", "settings.set", "fundamentals.request"}
+                "compare.request", "dividend.refresh", "backtest.run", "settings.set", "fundamentals.request",
+                "holding.add", "holding.edit", "holding.delete", "holding.bulk", "holding.sell",
+                "cash.set", "dca.add", "dca.delete", "palarm.add", "palarm.delete", "watch.add", "watch.remove",
+                "discipline.set"}
 
 
 class ActionBody(BaseModel):

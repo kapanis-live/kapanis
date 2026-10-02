@@ -20,7 +20,7 @@ export default function Discipline() {
         const blocked = MK.find(([m]) => markets[m]?.engel);
         const state = !disc.aktif ? "kapali" : disc.bekleme_bitis || blocked ? "engel" : disc.seri >= 1 ? "uyari" : "acik";
         const limitStreak = disc.seri_sinir ?? 2;
-        const detail = !disc.aktif ? "Kurallar kapalı. Açmak için Telegram: /disiplin ac"
+        const detail = !disc.aktif ? "Kurallar kapalı. Aşağıdan açabilirsin."
           : disc.bekleme_bitis ? `Üst üste ${disc.seri} zarar: ${relDay(disc.bekleme_bitis)}'e kadar yeni AL gösterilmez (tilt koruması).`
           : blocked ? markets[blocked[0]].engel
           : disc.seri >= 1 ? `Üst üste ${disc.seri} zarar. Seri ${limitStreak}'ye ulaşırsa ${disc.bekleme_saat ?? 24} saat boyunca yeni AL gösterilmez.`
@@ -35,6 +35,16 @@ export default function Discipline() {
           <div className="kp-page">
             <K.PageHeader controls={false} title="Disiplin" subtitle="Kurallar kodda. Bot hatırlatır, işlem yapmaz." />
             <K.ShieldStatus state={state} detail={detail} />
+            <div className="flex flex-wrap gap-3">
+              <K.Button onClick={() => sendAction("discipline.set", { islem: disc.aktif ? "kapat" : "ac" }, disc.aktif ? "Disiplin kalkanı kapatılıyor (kayda geçer)." : "Disiplin kalkanı açılıyor.")}>
+                {disc.aktif ? "Kalkanı kapat" : "Kalkanı aç"}
+              </K.Button>
+              {disc.seri >= 1 && (
+                <K.Button variant="ghost" onClick={() => sendAction("discipline.set", { islem: "sifirla" }, "Zarar serisi sıfırlanıyor (kural olayı olarak kaydedilir).")}>
+                  Zarar serisini sıfırla
+                </K.Button>
+              )}
+            </div>
             <K.Card title="Haftanın dersi" actions={<K.Button variant="ghost" onClick={() => sendAction("lesson.request", {}, "Haftalık ders hazırlanıyor.")}>Şimdi hazırla</K.Button>}>
               {d.ders ? (() => {
                 const ai = splitAi(d.ders.metin);

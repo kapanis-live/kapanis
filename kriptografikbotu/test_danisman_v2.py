@@ -357,6 +357,11 @@ class ProtectionTest(unittest.TestCase):
         self.assertTrue(again["current_R_estimated"])                                             # and stays an estimate
         real = protection.build_protection_plan(snap(t.BELOW, portfolio=held(98.0, stop=97.5)))
         self.assertEqual((real["current_R_estimated"], real["r_basis"]), (False, "RECORDED_INITIAL_STOP"))
+        # the real first stop is given later: it replaces the stored assumption, and R stops being an estimate
+        later = protection.build_protection_plan(snap(t.BELOW, portfolio=held(98.0, stop=97.5)), p["new_state"])
+        self.assertEqual((later["initial_stop"], later["current_R_estimated"], later["new_state"]["initial_stop_assumed"]), (97.5, False, False))
+        kept = protection.build_protection_plan(snap(t.BELOW, portfolio=held(98.0, stop=97.0)), later["new_state"])
+        self.assertEqual(kept["initial_stop"], 97.5)                                              # a recorded first stop is not rewritten
         text = run(portfolio=held(98.0))["text"]
         self.assertIn("(tahmini", text)                                                           # never shown as a real R
         self.assertNotIn("(tahmini", run(portfolio=held(98.0, stop=97.5))["text"])

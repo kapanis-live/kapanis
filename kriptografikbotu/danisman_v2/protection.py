@@ -49,8 +49,16 @@ def build_protection_plan(s: dict, state: dict | None = None, manual_stop: float
     warnings, reasons, exits = portfolio_warnings(p), [], []
 
     # --- R: the distance to the first stop
-    initial_stop = state.get("initial_stop") or p.get("initial_stop")
-    assumed = bool(state.get("initial_stop_assumed")) if state.get("initial_stop") else False
+    # a stored REAL first stop stays; a real one given now replaces a stored assumption; an assumption is the last resort
+    given = p.get("initial_stop") if p.get("initial_stop") and p["initial_stop"] < entry else None
+    if state.get("initial_stop") and not state.get("initial_stop_assumed"):
+        initial_stop, assumed = state["initial_stop"], False
+    elif given:
+        initial_stop, assumed = given, False
+        if state.get("initial_stop_assumed"):
+            state = {k: v for k, v in state.items() if k not in ("last_stop", "last_stop_source", "invalidation", "max_R")}
+    else:
+        initial_stop, assumed = state.get("initial_stop"), bool(state.get("initial_stop"))
     if not initial_stop or initial_stop >= entry:
         initial_stop = floor_tick(entry - cfg.INITIAL_RISK_FALLBACK_ATR1H * atr1h, tick)
         assumed = True

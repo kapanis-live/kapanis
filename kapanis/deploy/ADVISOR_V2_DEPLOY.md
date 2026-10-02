@@ -29,14 +29,18 @@ bash ~/guncelle.sh
 ```
 
 It builds `kapanis:latest` from `kapanis/deploy/Dockerfile.prebuilt` with no build argument, so `WITH_OPENBB` is 0.
+The Dockerfile's OpenBB line is always visible in `docker history` as text (`if [ "$WITH_OPENBB" = "1" ] ...`); what counts is
+the value in front of it (`WITH_OPENBB=0`) and that `/opt/openbb` does not exist.
 
 ## 3. Image and services
 
 ```bash
 cd ~/kapanis
 docker images kapanis:latest --format 'size {{.Size}}  created {{.CreatedSince}}'
-docker history --no-trunc --format '{{.CreatedBy}}' kapanis:latest | grep -ciE 'openbb.*pip install|API_KEY=|SECRET=|PASSWORD='   # 0
-docker history --format '{{.CreatedBy}}' kapanis:latest | grep -c 'WITH_OPENBB=0'                                                  # 1 or more
+docker history --no-trunc --format '{{.CreatedBy}}' kapanis:latest | grep -ciE 'API_KEY=|SECRET=|PASSWORD=|TOKEN='    # 0: no secret build argument
+docker history --no-trunc --format '{{.CreatedBy}}' kapanis:latest | grep -c 'WITH_OPENBB=0'                            # 1 or more
+docker history --no-trunc --format '{{.CreatedBy}}' kapanis:latest | grep -c 'WITH_OPENBB=1'                            # 0
+docker run --rm --entrypoint sh kapanis:latest -c 'ls -d /opt/openbb 2>/dev/null | wc -l; pip list 2>/dev/null | grep -ci openbb'   # 0 and 0
 docker compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
 docker compose logs --since 10m web worker 2>&1 | grep -ciE 'traceback|error'       # look at the lines when it is not 0
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}'

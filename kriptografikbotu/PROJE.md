@@ -7,13 +7,13 @@ Kişisel kripto ve BIST karar destek sistemi. İşlem **açmaz**, uyarır ve kay
 - `kapanis/`: FastAPI + MongoDB backend ve React panel. Botun verisini gösterir, paneldeki işlemleri bota iletir,
   kullanıcı hesaplarını (Clerk) ve her kullanıcının kendi portföyünü tutar. Bulutta **web** süreci.
 
-GitHub: `valenciaennerman-cmd/kapanis` (private, iki klasör birlikte). Bulut kurulumu: o depodaki `BULUT_KURULUM.md`.
+GitHub: `kapanis-live/kapanis` (private, iki klasör birlikte). Bulut kurulumu: o depodaki `BULUT_KURULUM.md`.
 
 Arayüz dili Türkçe. Kod yorumları İngilizce.
 
 ## Güncel durum (28 Eylül 2026)
 
-**Yayın:** kapanis.live canlı (Google Cloud VM, Docker: web + worker + Caddy). Giriş Clerk production (Google, e-posta + şifre, e-posta kodu). Veri MongoDB Atlas. Güncelleme: kod GitHub'a (`valenciaennerman-cmd/kapanis`), sonra VM'de Google Cloud SSH penceresinden `bash ~/guncelle.sh`. Site görünümü değiştiyse önce `build-new.tgz` "Upload file" ile yüklenir.
+**Yayın:** kapanis.live canlı (Google Cloud VM, Docker: web + worker + Caddy). Giriş Clerk production (Google, e-posta + şifre, e-posta kodu). Veri MongoDB Atlas. Güncelleme: kod GitHub'a (`kapanis-live/kapanis`), sonra VM'de Google Cloud SSH penceresinden `bash ~/guncelle.sh`. Site görünümü değiştiyse önce `build-new.tgz` "Upload file" ile yüklenir.
 
 **Güvenlik:** bot uçları (`/api/bot/*`, `/api/ingest/*`, `/api/commands/pending`) internetten kapalı (Caddy 404 + `X-Kapanis-Public` işareti); worker web'e iç ağdan (`http://web:8001`) bağlanır. Hız sınırı: IP başına dakikada 180 istek, kullanıcı başına dakikada 40 grafik, en fazla 3 canlı bağlantı. Güvenlik başlıkları (HSTS, iframe yasağı, nosniff). Her gece 03:30 veritabanı yedeği (`db_backup.py`, 14 gün, geri yükleme `scripts/restore_backup.py`).
 

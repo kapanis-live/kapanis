@@ -183,7 +183,7 @@ Sonra `exit` ile çıkıp tekrar bağlan (Docker yetkisi yeni oturumda geçerli 
 ### 5.4 Kodu indir ve ayarları gir
 
 ```bash
-git clone git@github.com:valenciaennerman-cmd/kapanis.git
+git clone git@github.com:kapanis-live/kapanis.git
 cd kapanis
 echo "DOMAIN=kapanis.germanywestcentral.cloudapp.azure.com" > .env
 cp deploy/web.env.example deploy/web.env

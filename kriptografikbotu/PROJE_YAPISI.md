@@ -42,7 +42,7 @@ Temel kurallar:
 Desktop\
 ├── kriptografikbotu\        ← Telegram botu (Python)            bulutta: worker
 ├── kapanis\                 ← Web paneli (FastAPI + React)      bulutta: web
-│   GitHub: valenciaennerman-cmd/kapanis (private, iki klasör birlikte; eski kapanis-bot / kapanis-panel yalnız arşiv)
+│   GitHub: kapanis-live/kapanis (private, iki klasör birlikte; eski kapanis-bot / kapanis-panel yalnız arşiv)
 │   ├── backend\             ← FastAPI + MongoDB (port 8001), paneli de bu sunar
 │   └── frontend\            ← React arayüz (derlenmiş hali frontend\build)
 ├── HİSSEPNGYARATICI\        ← indirilen logo PNG'leri (kaynak; panel kopyasını kullanır)
@@ -236,7 +236,7 @@ Kullanıcılar yalnız Portföyüm, Grafik & Analiz, Makro, Vadeli ve Hesap'ı g
 | Çalışıyor mu? | `kriptografikbotu\kapanis_surecler.ps1` |
 | Arayüzü elle derle | `kapanis\frontend` içinde `npx craco build` |
 | Testler | bölüm 3.1 |
-| Arşiv | GitHub `valenciaennerman-cmd/kapanis` (bölüm 2). `.env`, `.env.atlas`, `data/`, loglar, `.venv`, `node_modules`, `build` gitmez |
+| Arşiv | GitHub `kapanis-live/kapanis` (bölüm 2). `.env`, `.env.atlas`, `data/`, loglar, `.venv`, `node_modules`, `build` gitmez |
 | Bulut | `BULUT_KURULUM.md` (birleşik depoda): Render ya da Linux VPS, Frankfurt, MongoDB Atlas, Clerk |
 
 Telefon: Tailscale kurulu. `kriptografikbotu\mobil-panel.ps1` paneli yalnız Tailscale ağına HTTPS ile açar; telefonda adres + `/app`, sonra "Ana ekrana ekle" (PWA).

@@ -87,6 +87,13 @@ async def yahoo_daily(client, symbol: str) -> pd.DataFrame:
     return df
 
 
+def split_gaps(df: pd.DataFrame, max_days: int = 3) -> list[pd.DataFrame]:
+    """A ticker that stops trading and comes back is a different asset (LUNA relaunch, FTT relisting, STRAX swap):
+    one frame across the gap would book the price jump as a trade."""
+    cuts = [0] + list(np.flatnonzero(df.t.diff().values > max_days * 86_400_000)) + [len(df)]
+    return [df.iloc[a:b].reset_index(drop=True) for a, b in zip(cuts, cuts[1:])]
+
+
 def indicators(df: pd.DataFrame) -> pd.DataFrame:
     c, h, l = df.c, df.h, df.l
     for n in (5, 20, 50, 200):
@@ -263,9 +270,9 @@ async def load(market: str) -> tuple[list[pd.DataFrame], pd.DataFrame]:
             frames = []
             for coin in CRYPTO:
                 try:
-                    df = await crypto_daily(client, coin)
-                    if len(df) > WARMUP + 120:
-                        frames.append(indicators(df))
+                    for part in split_gaps(await crypto_daily(client, coin)):
+                        if len(part) > WARMUP + 120:
+                            frames.append(indicators(part))
                 except Exception:
                     pass
             bench = next(f for f in frames if f.c.iloc[0] > 1000)  # BTC is the first coin

@@ -208,5 +208,20 @@ class OpportunityOrderTest(unittest.TestCase):
         self.assertIn("+3 BIST (TL) kalemi daha", text)
 
 
+class ResearchGapTest(unittest.TestCase):
+    def test_relisted_ticker_is_two_assets(self):
+        # LUNA: last old candle 0.00005, relaunch 18 days later at 6.38; one frame would book +12,700,000 % as a trade
+        import sys
+        sys.path.insert(0, str(pathlib.Path(__file__).parent / "research"))
+        import pandas as pd
+        import engine
+        day = 86_400_000
+        df = pd.DataFrame({"t": [0, day, 2 * day, 20 * day, 21 * day], "c": [80.0, 1.0, 0.00005, 6.38, 6.0]})
+        parts = engine.split_gaps(df)
+        self.assertEqual([len(p) for p in parts], [3, 2])
+        self.assertEqual(parts[1].c.iloc[0], 6.38)
+        self.assertEqual(len(engine.split_gaps(df.iloc[:3])), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,5 @@
 {
- "tarih": "2026-09-28",
+ "tarih": "2026-10-04",
  "standart": [
   "Günlük kapanışta karar, maliyet düşülür (kripto %0,1, BIST %0,2 her yön)",
   "Kripto evreni batan/listeden çıkan coinleri içerir (LUNA, FTT, SRM...)",
@@ -14,25 +14,25 @@
    "karar": "PRODUCTION",
    "gelistirme": {
     "kural_yillik_%": 5.6,
-    "al_tut_%": -13.5,
-    "rastgele_%": -4.4,
-    "rastgeleyi_gecen_varlik_%": 70,
-    "en_buyuk_dusus_%": -60.9,
+    "al_tut_%": -13.7,
+    "rastgele_%": -4.2,
+    "rastgeleyi_gecen_varlik_%": 69,
+    "en_buyuk_dusus_%": -60.0,
     "piyasada_%": 16.3
    },
    "kilitli": {
     "kural_yillik_%": -6.9,
     "al_tut_%": -54.1,
-    "rastgele_%": -14.5,
-    "rastgeleyi_gecen_varlik_%": 60,
+    "rastgele_%": -14.6,
+    "rastgeleyi_gecen_varlik_%": 61,
     "en_buyuk_dusus_%": -28.3,
     "piyasada_%": 16.4
    },
    "islem": {
-    "islem": 4577,
+    "islem": 4555,
     "isabet_%": 50.6,
-    "ort_net_%": 2783.77,
-    "kar_faktoru": 757.83,
+    "ort_net_%": 1.32,
+    "kar_faktoru": 1.36,
     "ort_gun": 5.0
    },
    "rastgeleyi_gecen_yil": "3/8"
@@ -71,12 +71,12 @@
    "strateji": "Trend takibi (20 gün tepe / 10 gün dip)",
    "karar": "RESEARCH",
    "gelistirme": {
-    "kural_yillik_%": 9.6,
-    "al_tut_%": -13.5,
-    "rastgele_%": -2.1,
-    "rastgeleyi_gecen_varlik_%": 64,
-    "en_buyuk_dusus_%": -71.2,
-    "piyasada_%": 22.6
+    "kural_yillik_%": 10.2,
+    "al_tut_%": -13.7,
+    "rastgele_%": -3.3,
+    "rastgeleyi_gecen_varlik_%": 63,
+    "en_buyuk_dusus_%": -69.3,
+    "piyasada_%": 22.9
    },
    "kilitli": {
     "kural_yillik_%": 0.0,
@@ -87,10 +87,10 @@
     "piyasada_%": 8.7
    },
    "islem": {
-    "islem": 1106,
+    "islem": 1105,
     "isabet_%": 41.8,
-    "ort_net_%": 21.15,
-    "kar_faktoru": 3.37,
+    "ort_net_%": 21.24,
+    "kar_faktoru": 3.4,
     "ort_gun": 30.3
    },
    "rastgeleyi_gecen_yil": "3/6"
@@ -129,11 +129,11 @@
    "strateji": "Trend içi geri çekilme",
    "karar": "REJECTED",
    "gelistirme": {
-    "kural_yillik_%": -12.5,
-    "al_tut_%": -13.5,
-    "rastgele_%": -2.6,
-    "rastgeleyi_gecen_varlik_%": 29,
-    "en_buyuk_dusus_%": -84.0,
+    "kural_yillik_%": -12.3,
+    "al_tut_%": -13.7,
+    "rastgele_%": -2.4,
+    "rastgeleyi_gecen_varlik_%": 30,
+    "en_buyuk_dusus_%": -82.2,
     "piyasada_%": 18.6
    },
    "kilitli": {
@@ -145,10 +145,10 @@
     "piyasada_%": 2.2
    },
    "islem": {
-    "islem": 1174,
-    "isabet_%": 24.4,
-    "ort_net_%": 5.64,
-    "kar_faktoru": 1.47,
+    "islem": 1173,
+    "isabet_%": 24.5,
+    "ort_net_%": 5.73,
+    "kar_faktoru": 1.48,
     "ort_gun": 22.3
    },
    "rastgeleyi_gecen_yil": "0/5"
@@ -158,26 +158,26 @@
    "strateji": "Volatilite sıkışması sonrası kırılım",
    "karar": "REJECTED",
    "gelistirme": {
-    "kural_yillik_%": 0.0,
-    "al_tut_%": -13.5,
+    "kural_yillik_%": 0.7,
+    "al_tut_%": -13.7,
     "rastgele_%": -2.9,
-    "rastgeleyi_gecen_varlik_%": 56,
-    "en_buyuk_dusus_%": -59.4,
-    "piyasada_%": 15.4
+    "rastgeleyi_gecen_varlik_%": 57,
+    "en_buyuk_dusus_%": -57.9,
+    "piyasada_%": 15.5
    },
    "kilitli": {
     "kural_yillik_%": -0.8,
     "al_tut_%": -54.1,
-    "rastgele_%": -3.4,
+    "rastgele_%": -3.9,
     "rastgeleyi_gecen_varlik_%": 55,
     "en_buyuk_dusus_%": -22.3,
     "piyasada_%": 12.8
    },
    "islem": {
-    "islem": 857,
-    "isabet_%": 39.1,
-    "ort_net_%": 9.72,
-    "kar_faktoru": 2.14,
+    "islem": 853,
+    "isabet_%": 39.3,
+    "ort_net_%": 9.96,
+    "kar_faktoru": 2.2,
     "ort_gun": 26.1
    },
    "rastgeleyi_gecen_yil": "3/7"
@@ -187,12 +187,12 @@
    "strateji": "Göreli güç (piyasadan güçlüler)",
    "karar": "REJECTED",
    "gelistirme": {
-    "kural_yillik_%": -13.6,
-    "al_tut_%": -13.5,
-    "rastgele_%": -1.1,
-    "rastgeleyi_gecen_varlik_%": 29,
-    "en_buyuk_dusus_%": -80.8,
-    "piyasada_%": 17.8
+    "kural_yillik_%": -14.7,
+    "al_tut_%": -13.7,
+    "rastgele_%": -0.8,
+    "rastgeleyi_gecen_varlik_%": 28,
+    "en_buyuk_dusus_%": -79.6,
+    "piyasada_%": 17.4
    },
    "kilitli": {
     "kural_yillik_%": 0.0,
@@ -203,10 +203,10 @@
     "piyasada_%": 1.1
    },
    "islem": {
-    "islem": 466,
+    "islem": 465,
     "isabet_%": 32.0,
-    "ort_net_%": 13.3,
-    "kar_faktoru": 1.74,
+    "ort_net_%": 13.43,
+    "kar_faktoru": 1.76,
     "ort_gun": 53.1
    },
    "rastgeleyi_gecen_yil": "0/5"
@@ -217,10 +217,10 @@
    "karar": "REJECTED",
    "gelistirme": {
     "kural_yillik_%": 0.0,
-    "al_tut_%": -13.5,
+    "al_tut_%": -13.7,
     "rastgele_%": 0.0,
-    "rastgeleyi_gecen_varlik_%": 37,
-    "en_buyuk_dusus_%": -14.2,
+    "rastgeleyi_gecen_varlik_%": 36,
+    "en_buyuk_dusus_%": -14.0,
     "piyasada_%": 0.6
    },
    "kilitli": {
@@ -361,11 +361,11 @@
    "strateji": "Yavaş trend (200 gün, 5 gün teyit)",
    "karar": "REJECTED",
    "gelistirme": {
-    "kural_yillik_%": -12.9,
-    "al_tut_%": -13.5,
-    "rastgele_%": -4.7,
+    "kural_yillik_%": -13.4,
+    "al_tut_%": -13.7,
+    "rastgele_%": -4.3,
     "rastgeleyi_gecen_varlik_%": 40,
-    "en_buyuk_dusus_%": -85.6,
+    "en_buyuk_dusus_%": -84.1,
     "piyasada_%": 38.9
    },
    "kilitli": {
@@ -377,11 +377,11 @@
     "piyasada_%": 7.9
    },
    "islem": {
-    "islem": 665,
+    "islem": 664,
     "isabet_%": 23.9,
-    "ort_net_%": 48.01,
-    "kar_faktoru": 4.1,
-    "ort_gun": 80.5
+    "ort_net_%": 48.21,
+    "kar_faktoru": 4.13,
+    "ort_gun": 80.4
    },
    "rastgeleyi_gecen_yil": "1/6"
   },
@@ -390,27 +390,27 @@
    "strateji": "Mutlak momentum (6 ay)",
    "karar": "REJECTED",
    "gelistirme": {
-    "kural_yillik_%": -11.1,
-    "al_tut_%": -13.5,
-    "rastgele_%": -4.9,
+    "kural_yillik_%": -11.2,
+    "al_tut_%": -13.7,
+    "rastgele_%": -5.2,
     "rastgeleyi_gecen_varlik_%": 38,
-    "en_buyuk_dusus_%": -87.9,
-    "piyasada_%": 43.3
+    "en_buyuk_dusus_%": -87.8,
+    "piyasada_%": 43.4
    },
    "kilitli": {
-    "kural_yillik_%": -1.7,
+    "kural_yillik_%": -0.3,
     "al_tut_%": -54.1,
     "rastgele_%": 0.0,
     "rastgeleyi_gecen_varlik_%": 31,
-    "en_buyuk_dusus_%": -24.1,
+    "en_buyuk_dusus_%": -24.0,
     "piyasada_%": 8.2
    },
    "islem": {
-    "islem": 607,
+    "islem": 603,
     "isabet_%": 29.5,
-    "ort_net_%": 36.97,
-    "kar_faktoru": 3.03,
-    "ort_gun": 97.4
+    "ort_net_%": 37.65,
+    "kar_faktoru": 3.11,
+    "ort_gun": 97.0
    },
    "rastgeleyi_gecen_yil": "2/7"
   },
@@ -419,11 +419,11 @@
    "strateji": "Yıllık zirveye yakınlık",
    "karar": "REJECTED",
    "gelistirme": {
-    "kural_yillik_%": 3.5,
-    "al_tut_%": -13.5,
+    "kural_yillik_%": 3.0,
+    "al_tut_%": -13.7,
     "rastgele_%": 0.0,
-    "rastgeleyi_gecen_varlik_%": 59,
-    "en_buyuk_dusus_%": -31.2,
+    "rastgeleyi_gecen_varlik_%": 57,
+    "en_buyuk_dusus_%": -30.8,
     "piyasada_%": 2.3
    },
    "kilitli": {

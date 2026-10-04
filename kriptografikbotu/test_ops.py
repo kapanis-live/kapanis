@@ -214,6 +214,7 @@ class DeleteButtonTest(unittest.TestCase):
         lot = lambda i, sym, qty: {"id": i, "pair": sym[:-4] + "/USDT", "symbol": sym, "piyasa": "KRIPTO", "adet": qty,
                                    "giris": 1.0, "durum": "acik", "miktar_usd": qty}
         positions.save([lot(1, "SHIBUSDT", 5e6), lot(2, "SHIBUSDT", 47971), lot(3, "BTCUSDT", 0.01)])
+        self.addCleanup(positions.save, [])                                     # the data folder is shared by this file
         said = main.delete_holding("KRIPTO", "SHIBUSDT")
         self.assertIn("5,047,971 adet, 2 kayıt", said)
         self.assertEqual([p["id"] for p in positions.load()], [3])              # nothing closed, nothing realized

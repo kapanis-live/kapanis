@@ -191,6 +191,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
               patch.object(bist_signals.store, "save_state", side_effect=lambda s: holder.__setitem__("state", copy.deepcopy(s))),
               patch.object(bist_signals.bist, "fetch", AsyncMock(return_value=bars)),
               patch.object(bist_signals.bist, "now_tr", return_value=now),
+              patch.object(bist_signals.time, "time", return_value=now.timestamp()),  # else the candidate ages out on the real clock
               patch.object(bist_signals.market, "add_indicators", side_effect=lambda df: df),
               patch.object(bist_signals, "evaluate", evaluate)):
             self.assertEqual(await bist_signals.hourly_check(), [])  # no hourly triggers for BIST any more

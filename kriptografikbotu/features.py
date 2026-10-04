@@ -161,7 +161,7 @@ async def backfill_history(days: int = 90) -> dict:
             if not c:
                 raise ValueError(f"History has no closes for {p['symbol']}")
             quotes.append((mkt, float(p["adet"]), c))
-    start = (alerts_store.now_tr().date() - timedelta(days=days)).isoformat()
+    start = (datetime.fromisoformat(_today()).date() - timedelta(days=days)).isoformat()
     dates = sorted(d for d in set(fx) | set(index) | set(gold) | {d for _, _, c in quotes for d in c} if d <= _today())
     last_fx = last_index = last_gold = None
     last_prices = [None] * len(quotes)

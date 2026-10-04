@@ -208,6 +208,24 @@ class OpportunityOrderTest(unittest.TestCase):
         self.assertIn("+3 BIST (TL) kalemi daha", text)
 
 
+class DeleteButtonTest(unittest.TestCase):
+    def test_sil_removes_every_lot_of_one_asset_without_a_sale(self):
+        import positions
+        lot = lambda i, sym, qty: {"id": i, "pair": sym[:-4] + "/USDT", "symbol": sym, "piyasa": "KRIPTO", "adet": qty,
+                                   "giris": 1.0, "durum": "acik", "miktar_usd": qty}
+        positions.save([lot(1, "SHIBUSDT", 5e6), lot(2, "SHIBUSDT", 47971), lot(3, "BTCUSDT", 0.01)])
+        said = main.delete_holding("KRIPTO", "SHIBUSDT")
+        self.assertIn("5,047,971 adet, 2 kayıt", said)
+        self.assertEqual([p["id"] for p in positions.load()], [3])              # nothing closed, nothing realized
+        self.assertEqual(len(alerts_store_backup()), 3)                         # the way back
+        self.assertIn("kalmamış", main.delete_holding("KRIPTO", "SHIBUSDT"))
+
+
+def alerts_store_backup():
+    import json
+    return json.loads((config.DATA_DIR / "positions_silinen.json").read_text(encoding="utf-8"))
+
+
 class ResearchGapTest(unittest.TestCase):
     def test_relisted_ticker_is_two_assets(self):
         # LUNA: last old candle 0.00005, relaunch 18 days later at 6.38; one frame would book +12,700,000 % as a trade

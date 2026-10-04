@@ -1892,17 +1892,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif kind == "pfsat":
             mkt, sym = rest[0], rest[1]
             await query.edit_message_reply_markup(None)
-            total = sum(p["adet"] for p in positions.open_positions() if p["symbol"] == sym)
-            half = int(total // 2) if mkt == "BIST" else total / 2
             context.user_data.pop("sihirbaz", None)
-            context.user_data["satis"] = {"mkt": mkt, "sym": sym, "toplam": total, "adim": "adet"}
-            unit = "adet"
-            await query.message.reply_text(
-                f"{bist.ticker(sym) if mkt == 'BIST' else sym}: elinde {_qty(total)} {unit}. Kaç {unit} sattın?\n(butona bas ya da sayı yaz)",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(f"Hepsi ({_qty(total)})", callback_data=f"st|adet|{total!r}")]
-                    + ([InlineKeyboardButton(f"Yarısı ({_qty(half)})", callback_data=f"st|adet|{half!r}")] if half > 0 else []),
-                    [InlineKeyboardButton("❌ İptal", callback_data="st|iptal")]]))
+            context.user_data.pop("satis", None)
+            await query.message.reply_text(delete_holding(mkt, sym), reply_markup=PORTFOLIO_BUTTONS)
         elif kind == "st":
             s = context.user_data.get("satis")
             await query.edit_message_reply_markup(None)
@@ -3462,7 +3454,7 @@ def _pct_badge(x: float | None) -> str:
 FILLER_WORDS = {"LOT", "ADET", "TANE", "TL", "USD", "USDT", "ALDIM", "ALDİM", "EKLE", "TEN", "DEN", "TAN", "DAN",
                 "FIYAT", "FİYAT", "MALIYET", "MALİYET", "HISSE", "HİSSE", "COIN", "VE", "SAT", "SATTIM"}
 PORTFOLIO_BUTTONS = InlineKeyboardMarkup([
-    [InlineKeyboardButton("➕ Ekle", callback_data="pf|ekle"), InlineKeyboardButton("💰 Sat", callback_data="pf|sat")],
+    [InlineKeyboardButton("➕ Ekle", callback_data="pf|ekle"), InlineKeyboardButton("🗑 Sil", callback_data="pf|sat")],
     [InlineKeyboardButton("📋 Detay (TUT/SAT)", callback_data="pf|detay"), InlineKeyboardButton("🔄 Yenile", callback_data="pf|yenile")],
     [InlineKeyboardButton("📊 Grafik", callback_data="pf|grafik"), InlineKeyboardButton("⚖️ Risk", callback_data="pf|risk")],
     [InlineKeyboardButton("💰 Bakiye / K-Z", callback_data="pf|bakiye"), InlineKeyboardButton("🤔 Ne yapayım?", callback_data="pf|ne")]])
@@ -3509,7 +3501,7 @@ async def add_holdings(update, context, text: str) -> bool:
 async def ask_sell(query, context):
     items = positions.open_positions()
     if not items:
-        await query.message.reply_text("Satacak pozisyon yok.")
+        await query.message.reply_text("Silinecek kayıt yok.")
         return
     groups = {}
     for p in items:
@@ -3524,7 +3516,21 @@ async def ask_sell(query, context):
 
     rows = [[InlineKeyboardButton(label(mkt, sym, g), callback_data=f"pfsat|{mkt}|{sym}")]
             for (mkt, sym), g in groups.items()]
-    await query.message.reply_text("Hangisini sattın?", reply_markup=InlineKeyboardMarkup(rows))
+    await query.message.reply_text("Hangisini sileyim? (basınca hemen silinir)", reply_markup=InlineKeyboardMarkup(rows))
+
+
+def delete_holding(mkt: str, sym: str) -> str:
+    """The portfolio's 🗑 Sil button: every open record of one asset goes at once. Not a sale: no price, no date,
+    no realized P/L. A sale with its P/L is still "sattım ..." as text or the Sattım button on a stop/target card."""
+    gone = [p for p in positions.open_positions() if p["symbol"] == sym and p.get("piyasa", "KRIPTO") == mkt]
+    if not gone:
+        return "Bu varlıkta açık kayıt kalmamış."
+    alerts_store._save(config.DATA_DIR / "positions_silinen.json", positions.load())  # the way back
+    for p in gone:
+        positions.delete_position(p["id"])
+    name = bist.ticker(sym) if mkt == "BIST" else assets.name(sym) if mkt == assets.MARKET else gone[0]["pair"]
+    return (f"🗑 {name} silindi: {_qty(sum(p['adet'] for p in gone))} adet, {len(gone)} kayıt. Satış sayılmaz; K/Z ve "
+            "Karne'ye girmez. Sitedeki portföy 1 dakika içinde güncellenir.")
 
 
 async def sell_holding(update, context, mkt: str, sym: str, text: str = "", when: str | None = None,
@@ -4010,6 +4016,9 @@ def _date_unknown(p: dict) -> bool:
     return p.get("kaynak") == "portföy" and not p.get("tarih_girildi")
 
 
+PORTFOLIO_PARALLEL = 6   # assets priced and reviewed at the same time
+
+
 async def collect_portfolio(only: str | None = None, verdicts: bool = True) -> dict:
     """Holdings grouped per asset: price, value, daily/total change, dividends, dollar/inflation return,
     concentration. Several buys of one asset become one row with an average cost."""
@@ -4025,20 +4034,26 @@ async def collect_portfolio(only: str | None = None, verdicts: bool = True) -> d
         g["poz"].append(p)
     out, errors = [], []
     async with httpx.AsyncClient() as client:
-        try:
-            fx = await corporate.usdtry_series(client)
-        except Exception as e:
-            log.warning("USD/TRY series failed: %s", e)
-            fx = None
-        cpi = await corporate.cpi_series(client)
-        for g in groups.values():
+        async def fx_series():
+            try:
+                return await corporate.usdtry_series(client)
+            except Exception as e:
+                log.warning("USD/TRY series failed: %s", e)
+                return None
+        fx, cpi = await asyncio.gather(fx_series(), corporate.cpi_series(client))
+        slots = asyncio.Semaphore(PORTFOLIO_PARALLEL)
+
+        async def one(g):
+            async with slots:
+                return await fill(g)
+
+        async def fill(g):
             mkt, sym = g["piyasa"], g["symbol"]
             try:
                 q = await (bist.day_quote(client, sym) if mkt == "BIST" else assets.quote(client, sym)
                            if mkt == assets.MARKET else us.day_quote(client, sym) if mkt == "ABD" else market.ticker_24h(client, sym))
             except Exception as e:
-                errors.append(f"{g['pair']}: fiyat alınamadı ({str(e)[:40]})")
-                continue
+                return f"{g['pair']}: fiyat alınamadı ({str(e)[:40]})"
             price, prev = q["fiyat"], q["onceki_kapanis"]
             cur = "USD" if mkt in ("KRIPTO", "ABD") else "TL"
             g.update(fiyat=price, para=cur, deger=g["adet"] * price,
@@ -4060,15 +4075,13 @@ async def collect_portfolio(only: str | None = None, verdicts: bool = True) -> d
                 except Exception as e:
                     log.warning("Dividends failed for %s: %s", sym, e)
             if verdicts and mkt != assets.MARKET:
-                found = []
-                for p in g["poz"]:
-                    if p.get("birikim"):
-                        continue  # accumulation buys are long-term: no TUT/SAT verdict
-                    reviewed = await exits.review(p)
-                    if reviewed:
-                        found.append(reviewed[0]["karar"])
+                # accumulation buys are long-term: no TUT/SAT verdict
+                reviews = await asyncio.gather(*[exits.review(p) for p in g["poz"] if not p.get("birikim")])
+                found = [r[0]["karar"] for r in reviews if r]
                 g["karar"] = max(found, key=exits.VERDICT_RANK.get) if found else None
-            out.append(g)
+            return g
+        for res in await asyncio.gather(*[one(g) for g in groups.values()]):   # one asset's network wait no longer holds the rest
+            (errors if isinstance(res, str) else out).append(res)
     totals: dict[str, dict] = {}
     for g in out:
         t = totals.setdefault(g["piyasa"], {"deger": 0.0, "maliyet": 0.0, "gun": 0.0, "temettu": 0.0,

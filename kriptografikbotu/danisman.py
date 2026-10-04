@@ -94,7 +94,8 @@ META_SECONDS = 6 * 3600          # exchange metadata is kept this long in memory
 EXCLUDE_TR = {"INACTIVE": "işleme kapalı / spot işlem izni yok", "LEVERAGED": "kaldıraçlı token",
               "EQUITY_TOKEN": "hisse / ETF tokenı", "STABLE": "stabil coin", "FIAT": "itibari para paritesi",
               "COMMODITY": "altın / emtia tokenı", "WRAPPED": "sarılmış varlık (aynı coinin kopyası)",
-              "LOW_VOLUME": "24 saatlik hacim düşük", "BAD_NAME": "desteklenmeyen kod"}
+              "LOW_VOLUME": "24 saatlik hacim düşük", "BAD_NAME": "desteklenmeyen kod",
+              "NOT_ON_BROKER": "Midas'ta USD ile alınamıyor (/midas)"}
 BASES = ("https://data-api.binance.vision", "https://api.binance.com")
 SLOPE_BARS = 5                   # an average's slope = its change over this many candles, in %
 LOOKBACK = 250                   # candles searched for swings, per timeframe
@@ -1115,10 +1116,12 @@ async def exchange_meta(client) -> dict | None:
     return _meta["data"]
 
 
-def exclusion(coin: str, ticker: dict, meta_row: dict | None, bases: set[str]) -> str | None:
+def exclusion(coin: str, ticker: dict, meta_row: dict | None, bases: set[str], blocked=()) -> str | None:
     """Why a coin is not scanned (an EXCLUDE_TR code), or None. Metadata first; names only for what it cannot say."""
     if not (coin and coin.isascii() and coin.isalnum()):
         return "BAD_NAME"
+    if coin in blocked:
+        return "NOT_ON_BROKER"
     if meta_row is not None:
         if meta_row["leveraged"]:
             return "LEVERAGED"
@@ -1162,9 +1165,14 @@ async def universe(client: httpx.AsyncClient, limit: int = SCAN_LIMIT, with_excl
             if q:
                 quoted.append((x["symbol"][:-len(q)], q, x, None))
     bases = {coin for coin, _, _, _ in quoted}
+    try:    # the user's own list (broker.py); the advisor works without it
+        import broker
+        blocked = broker.blocked()
+    except Exception:
+        blocked = set()
     best, excluded = {}, {}
     for coin, q, x, m in quoted:
-        why = exclusion(coin, x, m, bases)
+        why = exclusion(coin, x, m, bases, blocked)
         rank = SCAN_QUOTES.index(q)
         if why:
             if coin not in best and (coin not in excluded or rank < excluded[coin][0]):

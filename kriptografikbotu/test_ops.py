@@ -222,6 +222,29 @@ class ResearchGapTest(unittest.TestCase):
         self.assertEqual(parts[1].c.iloc[0], 6.38)
         self.assertEqual(len(engine.split_gaps(df.iloc[:3])), 1)
 
+    def test_impossible_result_is_flagged(self):
+        import sys
+        sys.path.insert(0, str(pathlib.Path(__file__).parent / "research"))
+        import numpy as np
+        import engine
+        self.assertIn("METRIC_ANOMALY", engine.anomaly(np.array([0.02, -0.01, 127354.0]))["anomali"])
+        self.assertEqual(engine.anomaly(np.array([0.05, -0.03, 0.4, -0.1])), {})
+
+
+class BrokerFilterTest(unittest.TestCase):
+    def test_blocked_coins_never_reach_a_scan(self):
+        import broker
+        import danisman
+        self.assertIn("STX", broker.blocked())                                   # the user's reported defaults
+        self.assertEqual(broker.change(["sol", "STXUSDT", "sol"], block=True), ["SOL"])
+        self.assertEqual(broker.change(["STX"], block=False), ["STX"])
+        self.assertEqual(broker.blocked(), {"JASMY", "INJ", "TAO", "SOL"})
+        t = {"lastPrice": "150", "highPrice": "155", "lowPrice": "140", "quoteVolume": "9e9"}
+        self.assertEqual(danisman.exclusion("SOL", t, None, {"SOL"}, broker.blocked()), "NOT_ON_BROKER")
+        self.assertIsNone(danisman.exclusion("STX", t, None, {"STX"}, broker.blocked()))
+        self.assertIn("NOT_ON_BROKER", danisman.EXCLUDE_TR)
+        broker.change(["SOL"], block=False)
+
 
 if __name__ == "__main__":
     unittest.main()

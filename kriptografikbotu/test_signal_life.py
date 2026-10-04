@@ -30,6 +30,15 @@ class ClassifyTest(unittest.TestCase):
         self.assertAlmostEqual(hi, 91.00)
         self.assertIsNone(sl.midas_stop(None, 0.8))
 
+    def test_stop_noise_is_measured_only_inside_the_tested_range(self):
+        self.assertEqual(sl.stop_noise(1.0), (89, 82))
+        self.assertEqual(sl.stop_noise(2.5), (72, 66))            # halfway between 2 and 3 ATR
+        self.assertIsNone(sl.stop_noise(0.2))
+        self.assertIsNone(sl.stop_noise(9))
+        g = {"midas_stop": (98.0, 99.0), "atr": 1.0, "giris": 101.0, "mum": {"zaman_dilimi": "15m"}}
+        self.assertIn("2.0 ATR", " ".join(gate.card_lines(g)))
+        self.assertNotIn("Gürültü", " ".join(gate.card_lines({**g, "mum": {"zaman_dilimi": "1h"}})))   # only 15m was tested
+
 
 class BookTest(unittest.TestCase):
     def setUp(self):

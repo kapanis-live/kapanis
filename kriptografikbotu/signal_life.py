@@ -115,3 +115,21 @@ def midas_stop(stop: float | None, atr: float | None) -> tuple[float, float] | N
     if stop is None or not atr or atr != atr:
         return None
     return stop - atr, stop - 0.5 * atr
+
+
+# research/whipsaw.py (78 coins incl. dead ones, 15m closes, 2023-01..2024-09; the following year gave the same
+# numbers within 2 points): stop distance in ATR(14, 15m) -> (% of entries whose low touched it within 24 hours,
+# % of those that later closed back above the entry). A measurement of noise, not a promise about one trade.
+STOP_NOISE = {0.5: (94.5, 87.1), 1.0: (88.7, 81.7), 1.5: (82.9, 76.3), 2.0: (77.5, 70.8), 3.0: (66.5, 60.8),
+              4.0: (56.1, 51.9), 6.0: (39.4, 39.4)}
+
+
+def stop_noise(k: float) -> tuple[int, int] | None:
+    """(touched %, came back %) for a touch stop k ATR under the entry; None outside the measured range."""
+    ks = sorted(STOP_NOISE)
+    if not ks[0] <= k <= ks[-1]:
+        return None
+    a = max(x for x in ks if x <= k)
+    b = min(x for x in ks if x >= k)
+    w = 0.0 if a == b else (k - a) / (b - a)
+    return tuple(round(STOP_NOISE[a][i] + w * (STOP_NOISE[b][i] - STOP_NOISE[a][i])) for i in (0, 1))

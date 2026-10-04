@@ -169,6 +169,16 @@ def yearly(eq: np.ndarray, days: int, dpy: int) -> float | None:
     return (eq[-1] / eq[0]) ** (dpy / days) - 1
 
 
+def anomaly(r: np.ndarray) -> dict:
+    """A result too good to be a strategy is usually a data fault (a relisted ticker, a missed split): say so."""
+    why = []
+    if len(r) and float(r.max()) > 10:
+        why.append(f"tek işlem +%{float(r.max()) * 100:.0f}")
+    if len(r) >= 30 and float(r[r > 0].sum()) > 20 * float(-r[r <= 0].sum()) > 0:
+        why.append("kâr faktörü 20'nin üstünde")
+    return {"anomali": "METRIC_ANOMALY: " + ", ".join(why) + " — veriyi kontrol et"} if why else {}
+
+
 def evaluate(frames: list[pd.DataFrame], strategy, market: str, seed: int = 11) -> dict:
     """Run one strategy over one universe with the full standard."""
     rng = random.Random(seed)
@@ -240,7 +250,7 @@ def evaluate(frames: list[pd.DataFrame], strategy, market: str, seed: int = 11) 
         gains, losses = r[r > 0].sum(), -r[r <= 0].sum()
         return {"islem": len(r), "isabet_%": round(float((r > 0).mean()) * 100, 1), "ort_net_%": round(float(r.mean()) * 100, 2),
                 "kar_faktoru": round(float(gains / losses), 2) if losses > 0 else None,
-                "ort_gun": round(float(np.mean([t["gun"] for t in ts])), 1)}
+                "ort_gun": round(float(np.mean([t["gun"] for t in ts])), 1), **anomaly(r)}
 
     by_regime = {}
     for t in trades_dev:

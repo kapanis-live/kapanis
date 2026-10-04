@@ -58,3 +58,24 @@ profitable trades (no filter was best); selling half at TP1 halved the result; t
 good from bad breakouts in crypto and only weakly in BIST; a 1 ATR stop was the worst stop. Buying the confirmed close
 instead of the stop-limit fill gave a similar result (about 45 % of stop-limit fills closed back under the resistance
 on the entry day). BIST buy & hold beat every variant. Nothing is PRODUCTION; ABD was not tested.
+
+## Stop distance and noise (`whipsaw.py`, 2026-10-04)
+
+78 coins (dead ones included), closed 15m candles, 24 hours after each entry. Development 2023-01..2024-09, validation
+the year after; the two agree within 2 points.
+
+| Stop under the entry | Low touched it in 24 h | of those, closed back above the entry | +1R before the stop | net R |
+|---|---|---|---|---|
+| 1 ATR(15m) | 89 % | 82 % | 47 % | -0.50 |
+| 2 ATR | 78 % | 71 % | 48 % | -0.27 |
+| 3 ATR | 67 % | 61 % | 47 % | -0.18 |
+| 4 ATR | 56 % | 52 % | 45 % | -0.13 |
+| 6 ATR | 39 % | 39 % | 36 % | -0.08 |
+
+A stop of a few 15m ATR is inside normal noise. No distance makes the 20-candle breakout entry profitable; entries on
+a fixed grid (no setup) give the same picture. Used only as a measurement line on the signal card
+(`signal_life.STOP_NOISE`); nothing is suggested from it.
+
+Regime as an entry filter (same day's `results_v2.json`, `rejime_gore`): the trend rule has 11 trades opened in PANIK
+(profit factor 0.38) out of 1105, too few to decide; the turn-of-month rule is best in PANIK (371 trades, 69 % hit,
+profit factor 3.63). A "no new longs in PANIK" block is not supported and is not wired in.

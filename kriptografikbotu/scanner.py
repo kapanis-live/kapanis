@@ -12,6 +12,7 @@ import time
 import httpx
 
 import alerts_store
+import broker
 import config
 import conversation_store as store
 import market
@@ -67,8 +68,11 @@ async def scan() -> list[dict]:
     last_seen = s.setdefault("tarayici_son", {})
     held = {p["pair"].split("/")[0] for p in positions.open_positions() if p.get("piyasa", "KRIPTO") == "KRIPTO"}
     found = []
+    no_broker = broker.blocked() - held
     async with httpx.AsyncClient() as client:
         for coin in config.WATCHLIST:
+            if coin in no_broker:
+                continue
             if coin in state["planlar"] or coin in held or time.time() - last_seen.get(coin, 0) < COOLDOWN_SECONDS:
                 continue
             symbol = coin + config.QUOTE

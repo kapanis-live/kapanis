@@ -26,6 +26,7 @@ import backtest
 import benchmark
 import bist
 import bist_signals
+import broker
 import charts
 import corporate
 import costs
@@ -236,6 +237,7 @@ BOT_MENU = [
     ("durum", "Veri güncelliği"),
     ("sessizlik", "Bildirim gelmeyecek saatler: /sessizlik hafta içi 12.00-14.30"),
     ("sessiz", "Hiç bildirim gelmesin (açmak için /plan)"),
+    ("midas", "Midas'ta alınamayan coinler (taramaya girmez)"),
     ("ne", "Elindeki bir varlık için plan: /ne ASTOR"),
     ("pozisyon", "Plan için pozisyon işareti: /pozisyon BTC acik"),
     ("sil", "Plan sil: /sil BTC"),
@@ -2637,6 +2639,18 @@ async def sessiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     quiet.set_muted_all(True)
     await update.message.reply_text("🔕 Sessiz mod açık: hiçbir otomatik bildirim gelmeyecek (alarmlar, sinyaller, plan "
                                     "güncellemeleri). Olanlar biriktirilir.\nAçmak için /plan yaz; birikenlerin özeti gelir.")
+
+
+async def midas_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args or []
+    mode = args[0].casefold() if args else ""
+    if mode in ("yok", "var") and len(args) > 1:
+        changed = broker.change(args[1:], block=mode == "yok")
+        head = ((("🚫 Taramadan çıkarıldı: " if mode == "yok" else "✅ Taramaya geri alındı: ") + ", ".join(changed))
+                if changed else "Değişiklik yok.")
+        await update.message.reply_text(head + "\n\n" + broker.text())
+        return
+    await update.message.reply_text(broker.text())
 
 
 async def send_held(bot):
@@ -6665,6 +6679,7 @@ def main():
     app.add_handler(CommandHandler("okul", okul))
     app.add_handler(CommandHandler("sessizlik", sessizlik))
     app.add_handler(CommandHandler("sessiz", sessiz))
+    app.add_handler(CommandHandler("midas", midas_cmd))
     app.add_handler(CommandHandler(["ne", "neyapayim"], ne_yapayim))
     app.add_handler(CommandHandler("risk", risk_cmd))
     app.add_handler(CommandHandler("grafik", grafik))

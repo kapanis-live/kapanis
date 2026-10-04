@@ -244,6 +244,13 @@ def card_lines(g: dict) -> list[str]:
         lo, hi = g["midas_stop"]
         out.append(f"🛡 Midas stop önerisi: {hi:.6g} – {lo:.6g} (iptal − 0,5…1 ATR). Bot iptali kapanışla verir; "
                    "borsa stopu dokununca çalışır, o yüzden biraz aşağıda dursun.")
+        atr = g.get("atr")
+        noise = (signal_life.stop_noise((entry - hi) / atr)
+                 if atr and entry and entry > hi and (g.get("mum") or {}).get("zaman_dilimi") == "15m" else None)
+        if noise:
+            out.append(f"📉 Gürültü ölçümü: {hi:.6g} girişin {(entry - hi) / atr:.1f} ATR altında. Geçmişte (78 coin, 15 dk, "
+                       f"2023-2025) fiyat 24 saat içinde bu uzaklığa %{noise[0]} değdi; değenlerin %{noise[1]}'i sonra "
+                       "girişin üstünde kapandı. Borsa stopu ne kadar yakınsa o kadar sık boşuna çalışır.")
     return out
 
 

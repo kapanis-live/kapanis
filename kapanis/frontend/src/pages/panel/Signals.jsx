@@ -87,6 +87,11 @@ export default function Signals() {
         <div className="kp-page">
           <K.PageHeader controls={false} title="Sinyaller"
             subtitle={`${pendingCount ? `${pendingCount} karar bekliyor` : "Bekleyen karar yok"} · son ${items.length} sinyal`} />
+          <p className="kp-note" style={{ margin: "0 0 1rem" }}>
+            Otomatik AL sinyali 28 Eylül 2026'dan beri kapalı: geçmiş veri testinde kırılım kuralı işlem başına ortalama −0,21R
+            kaybettirdi. Bu yüzden aşağıdaki liste o tarihten eski. Destek/direnç olayları 30 dakikada bir Telegram'a gelir
+            (bilgi amaçlı, <b>/seviye</b>); test edilen kurallar Stratejiler sayfasında.
+          </p>
           {!items.length ? <EmptyState text="Henüz sinyal yok. Alarmlar kapanışla tetiklenince burada görünür." /> : (
             <>
               <K.Segmented ariaLabel="Sinyal filtresi" value={filter} onChange={setFilter}

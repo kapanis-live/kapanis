@@ -208,6 +208,32 @@ class OpportunityOrderTest(unittest.TestCase):
         self.assertIn("+3 BIST (TL) kalemi daha", text)
 
 
+class LevelScanTest(unittest.TestCase):
+    def test_events_come_from_closes_and_carry_the_untested_note(self):
+        import levels_scan
+        bar = lambda o, h, l, c, v=100.0: types.SimpleNamespace(open=o, high=h, low=l, close=c, volume=v, vol_avg20=80.0)
+        zone = lambda lo, hi, n=3: {"alt": lo, "ust": hi, "orta": (lo + hi) / 2, "dokunma": n}
+        zones = {"direncler": [zone(104, 105), zone(110, 111)], "destekler": [zone(95, 96), zone(90, 91)]}
+        up = levels_scan.detect(bar(100, 103, 99, 102), bar(102, 107, 102, 106), zones)
+        self.assertEqual((up["tur"], up["ust"], up["sonraki"], up["hacim"]), ("KIRILIM", 105, 110.5, True))
+        wick = levels_scan.detect(bar(100, 103, 99, 102), bar(102, 107, 102, 104.5), zones)     # high above, close inside
+        self.assertEqual(wick["tur"], "DIRENCTE")
+        down = levels_scan.detect(bar(100, 101, 97, 98), bar(98, 98, 93, 94), zones)
+        self.assertEqual((down["tur"], down["alt"], down["sonraki"]), ("DESTEK_KIRILDI", 95, 90.5))
+        hold = levels_scan.detect(bar(100, 101, 97, 98), bar(98, 99, 95.5, 97), zones)
+        self.assertEqual(hold["tur"], "DESTEKTE")
+        self.assertIsNone(levels_scan.detect(bar(100, 101, 99, 100), bar(100, 101, 99, 100.5), zones))
+        weak = {"direncler": [zone(104, 105, 1)], "destekler": []}                               # one touch: not a level
+        self.assertIsNone(levels_scan.detect(bar(100, 103, 99, 102), bar(102, 107, 102, 106), weak))
+        res = {"olaylar": [{"piyasa": "KRIPTO", "kod": "SOL", "tf": "1s", "mum": 1, "kapanis": 106.0, **up}],
+               "taranan": {"KRIPTO": 60}, "hata": 0}
+        said = levels_scan.text(res)
+        self.assertIn("SOL 106 — 🟢 direnç kırıldı 104–105 (3 dokunma, hacimli)", said)
+        self.assertIn("AL/SAT önerisi değil", said)
+        self.assertIsNone(levels_scan.text({**res, "olaylar": []}))
+        self.assertIn("Yeni seviye olayı yok", levels_scan.text({**res, "olaylar": []}, empty=True))
+
+
 class DeleteButtonTest(unittest.TestCase):
     def test_sil_removes_every_lot_of_one_asset_without_a_sale(self):
         import positions

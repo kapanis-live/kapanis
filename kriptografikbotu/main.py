@@ -39,6 +39,7 @@ import fundamentals
 import exits
 import gate
 import journal
+import levels_scan
 import pf_alarm
 import positions
 import quant_scan
@@ -238,6 +239,7 @@ BOT_MENU = [
     ("sessizlik", "Bildirim gelmeyecek saatler: /sessizlik hafta içi 12.00-14.30"),
     ("sessiz", "Hiç bildirim gelmesin (açmak için /plan)"),
     ("midas", "Midas'ta alınamayan coinler (taramaya girmez)"),
+    ("seviye", "Destek/direnç taraması (30 dk'da bir; kapat/ac)"),
     ("ne", "Elindeki bir varlık için plan: /ne ASTOR"),
     ("pozisyon", "Plan için pozisyon işareti: /pozisyon BTC acik"),
     ("sil", "Plan sil: /sil BTC"),
@@ -4830,6 +4832,37 @@ async def after_sale_job(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(config.ALLOWED_CHAT_ID, m, disable_notification=True)
 
 
+async def levels_job(context: ContextTypes.DEFAULT_TYPE):
+    """Every 30 minutes: new support / resistance events on closed candles (levels_scan.py). Information only."""
+    if not levels_scan.enabled():
+        return
+    try:
+        said = levels_scan.text(await levels_scan.scan())
+    except Exception:
+        log.exception("Level scan failed")
+        return
+    if said:
+        await send_long(context.bot, config.ALLOWED_CHAT_ID, said)
+
+
+@authorized
+async def seviye_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    arg = context.args[0].casefold() if context.args else ""
+    if arg in ("kapat", "kapa", "off"):
+        levels_scan.set_enabled(False)
+        await update.message.reply_text("📍 Seviye taraması kapandı. Açmak için: /seviye ac")
+        return
+    if arg in ("ac", "aç", "on"):
+        levels_scan.set_enabled(True)
+        await update.message.reply_text("📍 Seviye taraması açık: 30 dakikada bir, yalnız yeni olay varsa mesaj gelir.")
+        return
+    status = await update.message.reply_text("⏳ seviyeler taranıyor (kripto, BIST, ABD)...")
+    res = await levels_scan.scan(remember=False)
+    await status.delete()
+    await send_long(context.bot, update.effective_chat.id, levels_scan.text(res, empty=True)
+                    + ("" if levels_scan.enabled() else "\n\nOtomatik tarama kapalı (/seviye ac)."))
+
+
 async def risk_news_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         msgs = await risk_news.check()
@@ -6693,6 +6726,7 @@ def main():
     app.add_handler(CommandHandler("sessizlik", sessizlik))
     app.add_handler(CommandHandler("sessiz", sessiz))
     app.add_handler(CommandHandler("midas", midas_cmd))
+    app.add_handler(CommandHandler("seviye", seviye_cmd))
     app.add_handler(CommandHandler(["ne", "neyapayim"], ne_yapayim))
     app.add_handler(CommandHandler("risk", risk_cmd))
     app.add_handler(CommandHandler("grafik", grafik))
@@ -6766,6 +6800,8 @@ def main():
         app.job_queue.run_daily(universe_job, dtime(9, 30, tzinfo=macro.TR), name="evren")
         app.job_queue.run_daily(after_sale_job, dtime(19, 0, tzinfo=macro.TR), name="satis_sonrasi")
         app.job_queue.run_repeating(risk_news_job, interval=30 * 60, first=120, name="risk_haber")
+        # two minutes after :00 and :30, so the hourly candle is closed and BIST's delayed bar has arrived
+        app.job_queue.run_repeating(levels_job, interval=30 * 60, first=1800 - time.time() % 1800 + 120, name="seviye_tarama")
         app.job_queue.run_repeating(paper_outcomes_job, interval=30 * 60, first=420, name="danisman_paper")
         app.job_queue.run_repeating(takip_job, interval=5 * 60, first=180, name="takip_sor")  # asks every 30 min (/takip aralik)
         app.job_queue.run_repeating(watch_rules_job, interval=30 * 60, first=600, name="takip_kural")

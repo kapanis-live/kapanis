@@ -97,3 +97,19 @@ of the same width at random prices. 15 method x event pairs, development and val
 Volume-profile and reaction-filtered levels give the same picture. The only repeatable difference from random is the
 retest after a breakout (about +2-3 points of hit rate in both periods, with both pivot variants), and it is still
 below zero after costs. Levels stay an information line; nothing is suggested from them.
+
+## Retest after a breakout, filtered and checked on a fresh year (`retest_lab.py`, 2026-10-05)
+
+Three filters fixed in advance (BTC above its 200-hour average, the coin above its own, breakout candle volume above
+1.5 x average), 8 combinations, chosen on development only, then scored on validation and on 2025-09-27 .. 2026-10-05
+(downloaded for this run, never used before). Chosen: TREND + HACIM. Verdict: KALDI at every step.
+
+| Period | Events | Hit | Daily mean net R (95 %) | Random zones |
+|---|---|---|---|---|
+| Development | 3963 | 55.9 % | -0.003 (-0.06 .. +0.05) | -0.109 |
+| Validation | 1780 | 56.8 % | -0.011 (-0.10 .. +0.07) | -0.166 |
+| Fresh year | 1692 | 53.2 % | -0.084 (-0.16 .. -0.01) | -0.174 |
+
+Real levels beat random zones in all 24 combination x period cells, so the retest effect is real. It is too small:
+no combination has a mean above zero in any period, and the unfiltered hit rate fell from 53.5 % to 49.8 % in the
+fresh year. Not a signal.

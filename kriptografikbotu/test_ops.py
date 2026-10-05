@@ -258,6 +258,27 @@ class LevelScanTest(unittest.TestCase):
         self.assertEqual(sig[0]["analysis"]["bot_decision"]["verdict"], "PAS")
 
 
+class ResearchStoreTest(unittest.TestCase):
+    def test_open_interest_rows_are_appended_once(self):
+        import oi_store
+        path = pathlib.Path(tempfile.mkdtemp()) / "BTCUSDT.csv"
+        row = lambda t: {"timestamp": t, "sumOpenInterest": "10.5", "sumOpenInterestValue": "900.1"}
+        self.assertEqual(oi_store.merge(path, [row(2000), row(1000)]), 2)
+        self.assertEqual(oi_store.merge(path, [row(1000), row(2000), row(3000)]), 1)       # only the new hour
+        self.assertEqual(path.read_text().splitlines(), ["1000,10.5,900.1", "2000,10.5,900.1", "3000,10.5,900.1"])
+
+    def test_usage_log_is_parsed_again_only_after_it_changed(self):
+        import costs
+        with unittest.mock.patch.object(config, "USAGE_FILE", pathlib.Path(tempfile.mkdtemp()) / "usage.jsonl"):
+            self.assertEqual(costs._rows(), [])
+            costs.record(10, 20, 30, "test")
+            self.assertEqual(len(costs._rows()), 1)
+            with unittest.mock.patch("builtins.open", side_effect=AssertionError("read again")):
+                self.assertEqual(len(costs._rows()), 1)                                    # unchanged file: no read
+            costs.record(10, 20, 30, "test")
+            self.assertEqual(len(costs._rows()), 2)
+
+
 class DeleteButtonTest(unittest.TestCase):
     def test_sil_removes_every_lot_of_one_asset_without_a_sale(self):
         import positions

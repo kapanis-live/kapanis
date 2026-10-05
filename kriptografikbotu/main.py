@@ -40,6 +40,7 @@ import exits
 import gate
 import journal
 import levels_scan
+import oi_store
 import pf_alarm
 import positions
 import quant_scan
@@ -4854,6 +4855,14 @@ async def levels_job(context: ContextTypes.DEFAULT_TYPE):
                                                 InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")]]))
 
 
+async def oi_store_job(context: ContextTypes.DEFAULT_TYPE):
+    """Every 6 hours: keep the hourly open-interest history (the exchange forgets it after 30 days). Research only."""
+    try:
+        log.info("OI history: %s", await oi_store.collect())
+    except Exception:
+        log.exception("OI history collection failed")
+
+
 @authorized
 async def seviye_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     arg = context.args[0].casefold() if context.args else ""
@@ -6810,7 +6819,8 @@ def main():
         app.job_queue.run_daily(after_sale_job, dtime(19, 0, tzinfo=macro.TR), name="satis_sonrasi")
         app.job_queue.run_repeating(risk_news_job, interval=30 * 60, first=120, name="risk_haber")
         # two minutes after :00 and :30, so the hourly candle is closed and BIST's delayed bar has arrived
-        app.job_queue.run_repeating(levels_job, interval=30 * 60, first=1800 - time.time() % 1800 + 120, name="seviye_tarama")
+        app.job_queue.run_repeating(oi_store_job, interval=6 * 3600, first=300, name="oi_gecmisi")
+        app.job_queue.run_repeating(levels_job,interval=30 * 60, first=1800 - time.time() % 1800 + 120, name="seviye_tarama")
         app.job_queue.run_repeating(paper_outcomes_job, interval=30 * 60, first=420, name="danisman_paper")
         app.job_queue.run_repeating(takip_job, interval=5 * 60, first=180, name="takip_sor")  # asks every 30 min (/takip aralik)
         app.job_queue.run_repeating(watch_rules_job, interval=30 * 60, first=600, name="takip_kural")

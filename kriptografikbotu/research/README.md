@@ -113,3 +113,21 @@ Three filters fixed in advance (BTC above its 200-hour average, the coin above i
 Real levels beat random zones in all 24 combination x period cells, so the retest effect is real. It is too small:
 no combination has a mean above zero in any period, and the unfiltered hit rate fell from 53.5 % to 49.8 % in the
 fresh year. Not a signal.
+
+## Touch count and fair value gaps (`touch_fvg_lab.py`, 2026-10-05)
+
+Two claims from an outside review, on the same 77 coins and three periods (the fresh year was used once before).
+
+"More touches = weaker level": not supported. Hit rate by touches in the zone (2 / 3-4 / 5+), development:
+held at the zone 51.1 / 49.8 / 50.7 %, breakout 49.5 / 49.4 / 49.3 %, stopped under it 49.3 / 50.1 / 49.7 %,
+breakdown 48.3 / 48.0 / 48.8 %. The other two periods are as flat. The touch count carries no information either way.
+
+"A fair value gap pulls the price back": not supported. Within 48 hours the price returns to a bullish 1h gap
+89.5 % of the time and reaches the level the same distance above 89.2 % (88.7 / 87.0 validation, 90.3 / 87.7 fresh).
+
+Buying the return into the gap: hit 53.4 % against 49.7 % for the same geometry under a candle with no gap, but the
+daily mean net R is -0.06 (twin -0.03) in development, -0.06 (-0.03) in validation and -0.12 (-0.11) in the fresh
+year. Below zero everywhere and not better than the twin. Not a signal.
+
+Open-interest rate of change cannot be tested yet: the exchange keeps 30 days of hourly open interest. `oi_store.py`
+now collects it every 6 hours into backups/oi/ (research only, nothing reads it for a decision).

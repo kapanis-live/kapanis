@@ -1,5 +1,6 @@
 """DeepSeek spend tracking: one JSON line per API call in data/usage.jsonl."""
 import json
+import os
 from datetime import datetime, timedelta, timezone
 
 import config
@@ -21,12 +22,21 @@ def record(hit: int, miss: int, out: int, label: str, model: str = "deepseek"):
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+_cache: tuple = (None, [])   # (file size and change time, parsed rows)
+
+
 def _rows() -> list[dict]:
+    """Every logged call. The file is parsed again only after it changed: the panel sync asks every minute."""
+    global _cache
     try:
-        with open(config.USAGE_FILE, encoding="utf-8") as f:
-            return [json.loads(line) for line in f if line.strip()]
+        st = os.stat(config.USAGE_FILE)
     except FileNotFoundError:
         return []
+    key = (st.st_size, st.st_mtime_ns)
+    if _cache[0] != key:
+        with open(config.USAGE_FILE, encoding="utf-8") as f:
+            _cache = (key, [json.loads(line) for line in f if line.strip()])
+    return list(_cache[1])
 
 
 def summary_text() -> str:

@@ -256,6 +256,26 @@ class LevelScanTest(unittest.TestCase):
         self.assertEqual({d["status"] for d in web_sync.build_decisions()}, {"resolved"})         # never waits for Aldım / Pas
         self.assertEqual(web_sync.build_signals()[0]["analysis"]["bot_decision"]["verdict"], "BİLGİ")
         self.assertFalse([d for d in positions.load_decisions() if d["karar"] == "AL"])           # so never "alınabilir"
+        self.assertIn("Geçmiş ölçüm yok", logged[0]["analiz"])                                    # no checklist data on this row
+
+    def test_the_percentage_is_the_measured_one_and_old_buy_labels_are_withdrawn(self):
+        import levels_scan
+        import positions
+        e = {"piyasa": "KRIPTO", "kod": "SOL", "tf": "1s", "mum": 1, "kapanis": 106.0, "atr": 4.0, "atr_mum": 1.0,
+             "tur": "KIRILIM", "alt": 104.0, "ust": 105.0, "dokunma": 3, "hacim": True, "sonraki": 112.0,
+             "sartlar": {"mum": True, "ana_trend": True, "ivme": True, "btc": True}}
+        m = levels_scan.plan(e, 1.5)["olcum"]                       # all seven: the group that did worst in the test
+        self.assertEqual((m["puan"], m["isabet"], m["R"]), (7, 45, -0.26))
+        weak = {**e, "hacim": False, "sartlar": {k: False for k in e["sartlar"]}}
+        self.assertEqual(levels_scan.plan(weak, 1.5)["olcum"]["isabet"], 59)                      # fewer points, better past
+        self.assertIsNone(levels_scan.plan({**e, "sartlar": None}, 1.5)["olcum"])
+        positions._save(config.DECISIONS_FILE, [])
+        self.addCleanup(positions._save, config.DECISIONS_FILE, [])
+        old = positions.log_decision({"pair": "X/USDT", "kaynak": "seviye", "karar": "AL", "kademe_usd": 15.0, "kapi": {"ok": True}})
+        said = levels_scan.record([e])[0]["analiz"]
+        self.assertIn("geçmişte %45 kârla kapandı (ort. -0.26R)", said)
+        self.assertIn("şart sayısı arttıkça geçmiş sonuç kötüleşti", said)
+        self.assertEqual(positions.get_decision(old["id"])["karar"], "BİLGİ")
 
 
 class ResearchStoreTest(unittest.TestCase):

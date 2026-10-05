@@ -80,7 +80,7 @@ def detect(prev, last, zones: dict) -> dict | None:
     return None
 
 
-def _row(mkt: str, code: str, bar, htf, daily, tf: str) -> dict | None:
+def _row(mkt: str, code: str, bar, htf, daily, tf: str, btc_up: bool | None = None) -> dict | None:
     if len(bar) < 30 or htf is None or len(htf) < 20:
         return None
     prev, last = bar.iloc[-2], bar.iloc[-1]
@@ -89,8 +89,14 @@ def _row(mkt: str, code: str, bar, htf, daily, tf: str) -> dict | None:
     if not ev:
         return None
     bar_atr = float(last.atr14) if last.atr14 == last.atr14 else None
-    return {"piyasa": mkt, "kod": code, "tf": tf, "mum": int(last.open_time), "kapanis": float(last.close),
-            "atr": atr if atr and atr == atr else None, "atr_mum": bar_atr, **ev}
+    row = {"piyasa": mkt, "kod": code, "tf": tf, "mum": int(last.open_time), "kapanis": float(last.close),
+           "atr": atr if atr and atr == atr else None, "atr_mum": bar_atr, **ev}
+    if btc_up is not None:   # the checklist of research/score_lab.py, measured only for coins on 1h candles
+        top = htf.iloc[-1]
+        row["sartlar"] = {"mum": bool(last.close - last.low >= 0.7 * max(last.high - last.low, 1e-12)),
+                          "ana_trend": bool(top.sma200 == top.sma200 and top.close > top.sma200),
+                          "ivme": bool(last.close > last.sma20 and last.close > last.sma50), "btc": btc_up}
+    return row
 
 
 async def _crypto(client) -> list:
@@ -101,12 +107,15 @@ async def _crypto(client) -> list:
         log.warning("Level scan: advisor universe failed (%s), using the watch list", e)
         pairs = [(c, config.QUOTE) for c in config.WATCHLIST]
 
+    b = market.add_indicators(await market.fetch_klines(client, "BTC" + config.QUOTE, "1h", limit=120)).iloc[-1]
+    btc_up = bool(b.close > b.sma50)
+
     async def one(coin, quote):
         sym = coin + quote
         h1 = market.add_indicators(await market.fetch_klines(client, sym, "1h", limit=120))
         h4 = market.add_indicators(await market.fetch_klines(client, sym, "4h"))
         d1 = market.add_indicators(await market.fetch_klines(client, sym, "1d"))
-        return _row("KRIPTO", coin, h1, h4, d1, "1s")
+        return _row("KRIPTO", coin, h1, h4, d1, "1s", btc_up)
     return [(c, one(c, q)) for c, q in pairs]
 
 
@@ -168,6 +177,26 @@ EVIDENCE = ("Bilgi amaçlı, AL önerisi değil: seviye kuralları geçmiş test
             "dönüş −0,04R, destekte alım −0,03R). Sonuçlar kural karnesinde canlı tutulur (/karne). Bot işlem yapmaz.")
 
 
+# research/score_lab.py, development period (2023-01..2024-09; the two later years agree within a few points):
+# points out of seven -> (% of setups that closed with a profit, mean net R). Measured on coins, 1h candles, with this
+# module's stop and target. The numbers FALL as the points rise: on an hourly candle "everything looks strong" is late.
+HISTORY = {"KIRILIM": ((2, 59, -0.09), (3, 57, -0.19), (4, 54, -0.26), (5, 53, -0.27), (7, 45, -0.26)),
+           "DESTEKTE": ((2, 54, +0.03), (3, 52, +0.01), (4, 50, -0.15), (5, 46, -0.31), (7, 46, -0.01))}
+CHECKS = ("hacim", "güçlü kapanış", "4s trend", "1s ivme", "BTC", "R/R ≥ 1,5", "geniş stop")
+
+
+def measured(e: dict, rr: float, stop: float) -> dict | None:
+    """{puan, var, isabet, R} for a coin setup: its points on the seven-condition checklist and what setups with
+    those points did in the history test. None where it was not measured (stocks, daily candles)."""
+    c = e.get("sartlar")
+    if not c or e["tur"] not in HISTORY or not e.get("atr_mum"):
+        return None
+    flags = (e["hacim"], c["mum"], c["ana_trend"], c["ivme"], c["btc"], rr >= 1.5, e["kapanis"] - stop >= 1.5 * e["atr_mum"])
+    pts = sum(flags)
+    _, hit, r = next(g for g in HISTORY[e["tur"]] if pts <= g[0])
+    return {"puan": pts, "var": [n for n, f in zip(CHECKS, flags) if f], "isabet": hit, "R": r}
+
+
 def plan(e: dict, min_rr: float) -> dict | None:
     """Stop, target, R/R and the rule-by-rule check of a long setup (KIRILIM, DESTEKTE); None for the other events.
     gecti = every rule below passes. That is a description of the setup, not a suggestion. Pure."""
@@ -194,7 +223,7 @@ def plan(e: dict, min_rr: float) -> dict | None:
                       "detay": f"kapanış bölgenin {stretch:.1f} ATR üstünde, sınır {STRETCH_ATR:g}"})
     failed = [r["kural"] for r in rules if r["durum"] == "kaldi"]
     return {"iptal": round(stop, 8), "hedef": round(target, 8), "rr": round(rr, 2), "kurallar": rules, "kalan": failed,
-            "gecti": not failed}
+            "gecti": not failed, "olcum": measured(e, rr, stop)}
 
 
 def _ids(e: dict) -> tuple[str, str]:
@@ -224,15 +253,22 @@ def record(events: list[dict]) -> list[dict]:
         unit = "TL" if e["piyasa"] == "BIST" else "USD"
         head = (f"📍 {e['kod']} ({'1 saatlik' if e['tf'] == '1s' else 'günlük'} mum): {LABEL[e['tur']]} "
                 f"{_g(e['alt'])}–{_g(e['ust'])} — " + ("kuralların hepsi geçti" if ok else "eksik: " + ", ".join(p["kalan"])))
+        m = p["olcum"]
+        past = ("📊 Geçmiş ölçüm yok: bu tablo yalnız coinlerde, 1 saatlik mumda ölçüldü." if not m else
+                f"📊 Geçmiş ölçüm: 7 şarttan {m['puan']}'i var ({', '.join(m['var']) or 'hiçbiri'}). Bu puandaki kurulumların "
+                f"%{m['isabet']}'i kârla kapandı, ortalama {m['R']:+.2f}R (35.000 olay, 2023-2026). "
+                "Not: şart sayısı arttıkça geçmiş sonuç kötüleşti, iyileşmedi.")
+        if m:
+            head += f" · geçmişte %{m['isabet']} kârla kapandı (ort. {m['R']:+.2f}R)"
         lines = [head, f"Kapanış {_g(e['kapanis'])} {unit} | iptal {_g(p['iptal'])} | hedef {_g(p['hedef'])} | R/R {p['rr']:.2f}", "",
-                 *[f"{'✅' if r['durum'] == 'gecti' else '❌'} {r['kural']}: {r['detay']}" for r in p["kurallar"]], "", EVIDENCE]
+                 *[f"{'✅' if r['durum'] == 'gecti' else '❌'} {r['kural']}: {r['detay']}" for r in p["kurallar"]], "", past, "", EVIDENCE]
         out.append(positions.log_decision({
             "pair": pair, "symbol": symbol, "timeframe": "1h" if e["tf"] == "1s" else "1d", "yon": "ABOVE", "alarm_id": 0,
             "piyasa": e["piyasa"], "kaynak": "seviye", "kapanis": e["kapanis"], "mum_ms": e["mum"], "iptal": p["iptal"],
             "hedef": p["hedef"], "karar": VERDICT,
             "analiz": "\n".join(lines), "uyarilar": [f"{r['kural']}: {r['detay']}" for r in p["kurallar"] if r["durum"] == "kaldi"],
             "kapi": {"ok": ok, "rr": p["rr"], "kurallar": p["kurallar"], "kalan": p["kalan"], "risk_off": True,
-                     "hacim_ok": e["hacim"]}}))
+                     "hacim_ok": e["hacim"], "olcum": m}}))
     prune()
     return out
 
@@ -243,9 +279,13 @@ def prune():
     from datetime import datetime, timedelta
     cut = alerts_store.now_tr() - timedelta(days=KEEP_DAYS)
     items = positions.load_decisions()
+    for d in items:        # records an earlier version logged as AL / PAS: they were never tested buy signals
+        if d.get("kaynak") == "seviye" and d["karar"] != VERDICT and not d.get("aksiyon"):
+            d["karar"] = VERDICT
+            d.pop("kademe_usd", None)
     keep = [d for d in items if not (d.get("kaynak") == "seviye" and not (d.get("kapi") or {}).get("ok") and not d.get("aksiyon")
                                      and datetime.fromisoformat(d["zaman"]) < cut)]
-    if len(keep) != len(items):
+    if keep != positions.load_decisions():
         alerts_store._save(config.DECISIONS_FILE, keep)
 
 

@@ -142,9 +142,8 @@ def build_decisions() -> list[dict]:
             "market": d.get("piyasa", "KRIPTO"), "currency": "TL" if d.get("piyasa") == "BIST" else "USD",
             "entry": d["kapanis"], "stop": d.get("iptal"), "target": d.get("hedef"),
             "rr": _rr(d["kapanis"], d.get("iptal"), d.get("hedef")), "chart_note": note,
-            # a level-scan PAS is shown with its reasons but never waits for an answer
-            "status": "pending" if verdict is None and not _decision_expired(d)
-                      and not (d.get("kaynak") == "seviye" and d["karar"] != "AL") else "resolved",
+            # a level-scan record is information: it never waits for an answer
+            "status": "pending" if verdict is None and not _decision_expired(d) and d.get("kaynak") != "seviye" else "resolved",
             "created_at": d["zaman"], "queued": False,
         })
     return out
@@ -806,7 +805,7 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
     return f"❌ Panel: bilinmeyen komut {t}"
 
 
-SIGNAL_WORDS = {"AL": "alım adayı (karar senin)", "BEKLE": "bekle", "PAS": "pas"}
+SIGNAL_WORDS = {"AL": "alım adayı (karar senin)", "BEKLE": "bekle", "PAS": "pas", "BİLGİ": "bilgi (öneri değil)"}
 
 
 USER_COMMANDS = {"analysis.request", "strategy.scan"}

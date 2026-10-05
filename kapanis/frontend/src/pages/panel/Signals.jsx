@@ -13,6 +13,7 @@ const code = (s) => String(s || "").split("/")[0].replace(/\.(IS|US)$/i, "");
 const num = (id) => String(id || "").replace(/^(sig|dec)_/, "");
 const DECISION = (v) => {
   const s = String(v || "").toUpperCase();
+  if (s.includes("BİLGİ") || s.includes("BILGI")) return "BİLGİ";   // seviye taraması: öneri değil
   if (s.includes("AL")) return "AL";
   if (s.includes("BEKLE")) return "BEKLE";
   if (s.includes("TUT")) return "TUT";
@@ -52,7 +53,7 @@ export default function Signals() {
       const passed = gate.filter((g) => g.status === "gecti").length;
       const verdict = d?.verdict || a.user_action;
       const state = done[num(s.id)] || (d?.status === "pending" ? "bekliyor" : verdict === "Aldım" ? "aldim" : verdict === "Pas" ? "pas"
-        : a.gate && (a.gate.ok === false || a.gate.gecti === false) ? "kapi" : d ? "doldu" : "izleniyor");
+        : a.gate && (a.gate.ok === false || a.gate.gecti === false) ? "kapi" : DECISION(a.bot_decision?.verdict) === "BİLGİ" ? "bilgi" : d ? "doldu" : "izleniyor");
       return {
         id: s.id, symbol: code(s.symbol), name: MARKET_UI[s.market]?.label || s.market, logo: logo(code(s.symbol), s.market),
         decision: DECISION(a.bot_decision?.verdict), time: relDay(s.created_at), score: gate.length ? `${passed}/${gate.length}` : "—",
@@ -88,9 +89,9 @@ export default function Signals() {
           <K.PageHeader controls={false} title="Sinyaller"
             subtitle={`${pendingCount ? `${pendingCount} karar bekliyor` : "Bekleyen karar yok"} · son ${items.length} sinyal`} />
           <p className="kp-note" style={{ margin: "0 0 1rem" }}>
-            Sinyaller 30 dakikada bir destek/direnç taramasından gelir (kripto, BIST, ABD): kod her kurulumu AL ya da PAS diye
-            işaretler, nedenleri kartta yazar. Bu seviye kuralları geçmiş veri testinde kazandırmadı; sonuçları burada canlı
-            tutulur. Test edilen kurallar Stratejiler sayfasında. Karar senin; bot işlem yapmaz.
+            Liste 30 dakikada bir destek/direnç taramasından gelir (kripto, BIST, ABD). Bu kayıtlar <b>bilgi</b>dir, AL önerisi
+            değil: seviye kuralları geçmiş veri testinde kazandırmadı. Kod her kurulumun kurallarını tek tek kontrol eder ve
+            sonucunu izler; bir kural testten geçerse o zaman AL etiketi alır. Test edilen kurallar Stratejiler sayfasında.
           </p>
           {!items.length ? <EmptyState text="Henüz sinyal yok. Alarmlar kapanışla tetiklenince burada görünür." /> : (
             <>

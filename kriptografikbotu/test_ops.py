@@ -233,7 +233,7 @@ class LevelScanTest(unittest.TestCase):
         self.assertIsNone(levels_scan.text({**res, "olaylar": []}))
         self.assertIn("Yeni seviye olayı yok", levels_scan.text({**res, "olaylar": []}, empty=True))
 
-    def test_long_setups_become_al_or_pas_decisions(self):
+    def test_long_setups_are_logged_as_information_never_as_a_buy(self):
         import levels_scan
         import positions
         import web_sync
@@ -241,7 +241,7 @@ class LevelScanTest(unittest.TestCase):
                           "atr_mum": 2.0, "tur": "KIRILIM", "alt": 104.0, "ust": 105.0, "dokunma": 3, "hacim": True,
                           "sonraki": 112.0, **k}
         p = levels_scan.plan(ev(), 1.5)                                   # stop 103, target 112: R/R 2
-        self.assertEqual((p["karar"], p["iptal"], p["hedef"], p["rr"], p["kalan"]), ("AL", 103.0, 112.0, 2.0, []))
+        self.assertEqual((p["gecti"], p["iptal"], p["hedef"], p["rr"], p["kalan"]), (True, 103.0, 112.0, 2.0, []))
         self.assertEqual(levels_scan.plan(ev(hacim=False), 1.5)["kalan"], ["hacim"])
         self.assertEqual(levels_scan.plan(ev(sonraki=107.0), 1.5)["kalan"], ["R/R"])
         self.assertEqual(levels_scan.plan(ev(kapanis=109.0), 1.5)["kalan"], ["R/R", "kovalama"])   # 2 ATR past the zone
@@ -249,13 +249,13 @@ class LevelScanTest(unittest.TestCase):
         positions._save(config.DECISIONS_FILE, [])
         self.addCleanup(positions._save, config.DECISIONS_FILE, [])
         logged = levels_scan.record([ev(kod="ETH", hacim=False), ev(), ev(kod="BTC", tur="DIRENCTE")])
-        self.assertEqual([(d["pair"], d["karar"]) for d in logged], [("SOL/USDT", "AL"), ("ETH/USDT", "PAS")])   # AL first
-        self.assertIn("Kanıt notu", logged[0]["analiz"])
-        self.assertTrue(logged[0]["kapi"]["ok"])
-        status = {d["symbol"]: d["status"] for d in web_sync.build_decisions()}
-        self.assertEqual(status, {"SOL/USDT": "pending", "ETH/USDT": "resolved"})                 # a PAS never waits
-        sig = web_sync.build_signals()
-        self.assertEqual(sig[0]["analysis"]["bot_decision"]["verdict"], "PAS")
+        self.assertEqual([(d["pair"], d["karar"], d["kapi"]["ok"]) for d in logged],
+                         [("SOL/USDT", "BİLGİ", True), ("ETH/USDT", "BİLGİ", False)])            # passed rules first
+        self.assertIn("AL önerisi değil", logged[0]["analiz"])
+        self.assertNotIn("kademe_usd", logged[0])                                                 # no size: nothing to buy
+        self.assertEqual({d["status"] for d in web_sync.build_decisions()}, {"resolved"})         # never waits for Aldım / Pas
+        self.assertEqual(web_sync.build_signals()[0]["analysis"]["bot_decision"]["verdict"], "BİLGİ")
+        self.assertFalse([d for d in positions.load_decisions() if d["karar"] == "AL"])           # so never "alınabilir"
 
 
 class ResearchStoreTest(unittest.TestCase):

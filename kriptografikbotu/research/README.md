@@ -131,3 +131,26 @@ year. Below zero everywhere and not better than the twin. Not a signal.
 
 Open-interest rate of change cannot be tested yet: the exchange keeps 30 days of hourly open interest. `oi_store.py`
 now collects it every 6 hours into backups/oi/ (research only, nothing reads it for a decision).
+
+## Confluence score (`score_lab.py`, 2026-10-05)
+
+A seven-point checklist proposed as a "confidence rate" (volume, strong close, 4h trend, 1h momentum, BTC above its
+average, R/R >= 1.5, stop >= 1.5 ATR), computed by code on about 35,000 long level events per the three periods, with
+the level scan's own stop and target, 96 hours, net of costs. Verdict: ISE_YARAMAZ, and the score points the wrong way.
+
+| Points | Development | Validation | Fresh year |
+|---|---|---|---|
+| 0-2 | +0.005 R | +0.045 R | -0.057 R |
+| 3 | -0.081 | -0.092 | -0.143 |
+| 4 | -0.206 | -0.207 | -0.243 |
+| 5 | -0.279 | -0.278 | -0.278 |
+| 6-7 | -0.234 | -0.236 | -0.280 |
+
+(daily mean net R, breakouts and holds together). More conditions met = worse result, in all three periods. By
+condition, present / absent in development: 1h momentum -0.31 / 0.00, BTC above its average -0.26 / -0.01, strong
+close -0.21 / -0.08, wide stop -0.18 / -0.10; volume, 4h trend and R/R make almost no difference. On 1h candles,
+buying a level event when everything already looks strong is buying late. No group is reliably above zero, so this
+is not turned upside down into a rule either.
+
+Consequence in the bot (same day): level-scan records carry the verdict BİLGİ, never AL, with no Aldım / Pas and
+no size.

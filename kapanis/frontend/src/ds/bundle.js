@@ -585,7 +585,7 @@
   }
 
   /* ---------- decision + gate ---------- */
-  var DEC = { AL: 'up', TUT: 'info', BEKLE: 'warn', PAS: 'flat' };
+  var DEC = { AL: 'up', TUT: 'info', BEKLE: 'warn', PAS: 'flat', 'BİLGİ': 'info' };
   function DecisionBadge(p) {
     var d = DEC[p.decision] ? p.decision : 'PAS';
     return h('span', { className: cx('kp-dec', 'kp-dec--' + DEC[d], p.size === 'lg' && 'kp-dec--lg'), title: 'Sinyal: ' + d },
@@ -819,7 +819,7 @@
   }
 
   /* ---------- signals ---------- */
-  var SSTATE = { bekliyor: 'Karar bekliyor', aldim: 'Aldım', pas: 'Pas geçildi', doldu: 'Süresi doldu', izleniyor: 'İzleniyor', kapi: 'Kapı kaldı' };
+  var SSTATE = { bekliyor: 'Karar bekliyor', aldim: 'Aldım', pas: 'Pas geçildi', doldu: 'Süresi doldu', izleniyor: 'İzleniyor', kapi: 'Kapı kaldı', bilgi: 'Kurallar geçti' };
   function SignalList(p) {
     return h('ul', { className: 'kp-slist', role: 'listbox', 'aria-label': 'Sinyaller' }, (p.items || []).map(function (it) {
       var on = it.id === p.value;

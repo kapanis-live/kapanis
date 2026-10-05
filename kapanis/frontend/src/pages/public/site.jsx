@@ -133,7 +133,7 @@ export function Features() {
         h(K.FeatureCard, { icon: "macro", title: "Makro", items: ["Risk rejimi ve piyasa göstergeleri", "TCMB, TÜİK, ABD veri takvimi", "Korku-açgözlülük endeksi"] }),
         h(K.FeatureCard, { icon: "send", title: "Telegram", items: ["Analiz sonucu telefona", "Kendi alarmların: fiyat ya da RSI kapanışı", "/bagla KOD ile tek adımda bağlama"] }),
         h(K.FeatureCard, { icon: "key", title: "Kendi anahtarın", items: ["DeepSeek ya da NVIDIA anahtarı", "Günlük analiz hakkın artar", "Şifreli saklanır, istediğinde silinir"] }),
-        h(K.FeatureCard, { icon: "account", title: "Okunaklı arayüz", items: ["A− / A+ ile yazı boyutu", "Koyu ve açık tema", "Renk yalnız anlam için"] })))),
+        h(K.FeatureCard, { icon: "account", title: "Okunaklı arayüz", items: ["Tarayıcı yakınlaştırmasıyla uyumlu", "Koyu ve açık tema", "Renk yalnız anlam için"] })))),
     h("section", { key: "t", className: "kp-sec" }, h("div", { className: "kp-wrap" },
       SecHead("Karşılaştırma", "Piyasaya göre ne değişir", null),
       h(K.DataTable, { rows, rowKey: "id", columns: [

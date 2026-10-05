@@ -206,7 +206,7 @@
       h('div', null,
         h('h1', { className: 'kp-pagehead__title' }, p.title),
         p.subtitle ? h('p', { className: 'kp-pagehead__sub' }, p.subtitle) : null),
-      h('div', { className: 'kp-pagehead__actions' }, p.actions, p.controls === false ? null : [h(FontScale, { key: 'f' }), h(ThemeToggle, { key: 't' })]));
+      h('div', { className: 'kp-pagehead__actions' }, p.actions, p.controls === false ? null : [h(ThemeToggle, { key: 't' })]));
   }
 
   function Card(p) {
@@ -563,7 +563,7 @@
             h(Icon, { name: n[3] }), h('span', { className: 'kp-navlink__label' }, n[1]), b ? h('span', { className: 'kp-navcount' }, b) : null);
         })),
         h('div', { className: 'kp-side__foot' }, p.status || null)),
-      h('header', { className: 'kp-topbar' }, h(BrandMark, { size: 'sm' }), h('div', { className: 'kp-topbar__end' }, p.topbar || h(FontScale, null))),
+      h('header', { className: 'kp-topbar' }, h(BrandMark, { size: 'sm' }), h('div', { className: 'kp-topbar__end' }, p.topbar || null)),
       h('main', { className: 'kp-main' }, h('div', { className: 'kp-main__inner' }, p.children, h(Disclaimer, null))),
       h('nav', { className: 'kp-bottomnav', 'aria-label': 'Ana menü' }, items.map(function (n) {
         return h('a', { key: n[0], href: '#' + n[0], className: cx('kp-tab', act === n[0] && 'is-active'), 'aria-current': act === n[0] ? 'page' : undefined, onClick: go(n[0]) },

@@ -1,6 +1,6 @@
 import { useFlash } from "@/lib/smooth";
 // Kapanış tasarım sistemi bileşenleri (Claude Design "Kapanış" sistemi: tokens + bundle.css karşılıkları).
-// Bütün ölçüler rem: A− / A+ bütün arayüzü birlikte büyütür.
+// Bütün ölçüler rem: tarayıcı yakınlaştırması bütün arayüzü birlikte büyütür.
 import { cn } from "@/lib/utils";
 import { formatPct } from "@/lib/format";
 import { px } from "@/lib/portfolio";

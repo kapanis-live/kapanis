@@ -88,7 +88,9 @@ def _row(mkt: str, code: str, bar, htf, daily, tf: str) -> dict | None:
     ev = detect(prev, last, market.sr_zones(htf, daily, float(prev.close), atr, top=3))
     if not ev:
         return None
-    return {"piyasa": mkt, "kod": code, "tf": tf, "mum": int(last.open_time), "kapanis": float(last.close), **ev}
+    bar_atr = float(last.atr14) if last.atr14 == last.atr14 else None
+    return {"piyasa": mkt, "kod": code, "tf": tf, "mum": int(last.open_time), "kapanis": float(last.close),
+            "atr": atr if atr and atr == atr else None, "atr_mum": bar_atr, **ev}
 
 
 async def _crypto(client) -> list:
@@ -154,6 +156,104 @@ async def scan(remember: bool = True) -> dict:
     if remember:
         alerts_store._save(STATE, seen)
     return {"olaylar": events, "taranan": counts, "hata": failed}
+
+
+# ---------------- signals: the long setups among the events, judged by code ----------------
+SIGNALS_PER_SCAN = 6
+STRETCH_ATR = 1.5      # a close further than this many candle ATRs past the zone is chasing
+STOP_PAD_ATR = 0.25    # the stop sits this far (zone timeframe ATR) under the zone
+KEEP_DAYS = 7          # unanswered PAS records older than this are dropped from the decision log
+EVIDENCE = ("Kanıt notu: seviye kuralları geçmiş testte kazandırmadı (kırılım −0,13R, kırılım sonrası dönüş −0,04R, "
+            "destekte alım −0,03R; research/README.md). Sonuçlar burada canlı tutulur (/karne). Karar senin; bot işlem yapmaz.")
+
+
+def plan(e: dict, min_rr: float) -> dict | None:
+    """Stop, target, R/R and the AL / PAS verdict for a long setup (KIRILIM, DESTEKTE); None for the other events.
+    AL = every rule below passes. Pure."""
+    if e["tur"] not in ("KIRILIM", "DESTEKTE") or not e.get("atr"):
+        return None
+    close, atr = e["kapanis"], e["atr"]
+    stop = e["alt"] - STOP_PAD_ATR * atr
+    target = e["sonraki"] if e["sonraki"] and e["sonraki"] > close else close + 2 * atr
+    if not close > stop:
+        return None
+    rr = (target - close) / (close - stop)
+    stretch = (close - e["ust"]) / e["atr_mum"] if e.get("atr_mum") else None
+    rules = [
+        {"kural": "kapanış teyidi", "durum": "gecti",
+         "detay": ("kapanış bölgenin üstünde" if e["tur"] == "KIRILIM" else "fitil bölgeye değdi, kapanış bölgenin içinde/üstünde")
+                  + f" ({e['alt']:.6g}–{e['ust']:.6g}, {e['dokunma']} dokunma)"},
+        {"kural": "hacim", "durum": "gecti" if e["hacim"] else "kaldi",
+         "detay": "mum hacmi 20 mum ortalamasının " + ("üstünde" if e["hacim"] else "altında")},
+        {"kural": "R/R", "durum": "gecti" if rr >= min_rr else "kaldi",
+         "detay": f"R/R {rr:.2f}, eşik {min_rr:g} (hedef " + ("sıradaki seviye" if e["sonraki"] and e["sonraki"] > close else "2 ATR") + ")"},
+    ]
+    if e["tur"] == "KIRILIM" and stretch is not None:
+        rules.append({"kural": "kovalama", "durum": "gecti" if stretch <= STRETCH_ATR else "kaldi",
+                      "detay": f"kapanış bölgenin {stretch:.1f} ATR üstünde, sınır {STRETCH_ATR:g}"})
+    failed = [r["kural"] for r in rules if r["durum"] == "kaldi"]
+    return {"iptal": round(stop, 8), "hedef": round(target, 8), "rr": round(rr, 2), "kurallar": rules, "kalan": failed,
+            "karar": "PAS" if failed else "AL"}
+
+
+def _ids(e: dict) -> tuple[str, str]:
+    if e["piyasa"] == "BIST":
+        return bist.yahoo_symbol(e["kod"]), bist.yahoo_symbol(e["kod"])
+    if e["piyasa"] == "ABD":
+        return us.key(e["kod"]), us.key(e["kod"])
+    return f"{e['kod']}/{config.QUOTE}", e["kod"] + config.QUOTE
+
+
+def record(events: list[dict]) -> list[dict]:
+    """Write the scan's long setups to the decision log (the site's Signals page, with Aldım / Pas). AL first, then
+    the strongest PAS; at most SIGNALS_PER_SCAN. Returns the logged decisions."""
+    import bist_signals
+    import positions
+    cand = []
+    for e in events:
+        min_rr = {"BIST": config.BIST_MIN_RR, "ABD": config.US_MIN_RR}.get(e["piyasa"], config.MIN_RR_RISK_OFF)
+        p = plan(e, min_rr)
+        if p:
+            cand.append((e, p))
+    cand.sort(key=lambda x: (x[1]["karar"] != "AL", -x[0]["dokunma"], -x[1]["rr"]))
+    out = []
+    for e, p in cand[:SIGNALS_PER_SCAN]:
+        pair, symbol = _ids(e)
+        ok = p["karar"] == "AL"
+        unit = "TL" if e["piyasa"] == "BIST" else "USD"
+        size: dict = {}
+        if ok and e["piyasa"] == "KRIPTO":
+            usd, notes = positions.tranche_usd(pair, True, e["hacim"])      # the reduced tranche: the rule has no proof
+            size = {"kademe_usd": float(usd), "kademe_notlari": notes}
+        elif ok and e["piyasa"] == "BIST":
+            tl, notes = bist.tranche_tl(True, e["hacim"], bist_signals.open_bist_tl())
+            lot = bist.lots_for(tl, e["kapanis"])
+            size = {"kademe_usd": float(lot * e["kapanis"]), "lot": lot, "kademe_notlari": notes}
+        head = (f"{'🟢 AL adayı' if ok else '⚪ PAS'} — {e['kod']} ({'1 saatlik' if e['tf'] == '1s' else 'günlük'} mum): "
+                f"{LABEL[e['tur']]} {_g(e['alt'])}–{_g(e['ust'])}")
+        lines = [head, f"Kapanış {_g(e['kapanis'])} {unit} | iptal {_g(p['iptal'])} | hedef {_g(p['hedef'])} | R/R {p['rr']:.2f}", "",
+                 *[f"{'✅' if r['durum'] == 'gecti' else '❌'} {r['kural']}: {r['detay']}" for r in p["kurallar"]], "", EVIDENCE]
+        out.append(positions.log_decision({
+            "pair": pair, "symbol": symbol, "timeframe": "1h" if e["tf"] == "1s" else "1d", "yon": "ABOVE", "alarm_id": 0,
+            "piyasa": e["piyasa"], "kaynak": "seviye", "kapanis": e["kapanis"], "mum_ms": e["mum"], "iptal": p["iptal"],
+            "hedef": p["hedef"], "karar": p["karar"], **{k: v for k, v in size.items() if k != "kademe_notlari"},
+            "analiz": "\n".join(lines), "uyarilar": [f"{r['kural']}: {r['detay']}" for r in p["kurallar"] if r["durum"] == "kaldi"],
+            "kapi": {"ok": ok, "rr": p["rr"], "kurallar": p["kurallar"], "kalan": p["kalan"], "risk_off": True,
+                     "hacim_ok": e["hacim"], **size}}))
+    prune()
+    return out
+
+
+def prune():
+    """Drop old unanswered PAS records of this scan; AL records and anything the user acted on stay for the track record."""
+    import positions
+    from datetime import datetime, timedelta
+    cut = alerts_store.now_tr() - timedelta(days=KEEP_DAYS)
+    items = positions.load_decisions()
+    keep = [d for d in items if not (d.get("kaynak") == "seviye" and d["karar"] != "AL" and not d.get("aksiyon")
+                                     and datetime.fromisoformat(d["zaman"]) < cut)]
+    if len(keep) != len(items):
+        alerts_store._save(config.DECISIONS_FILE, keep)
 
 
 def _g(x) -> str:

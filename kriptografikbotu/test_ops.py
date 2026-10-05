@@ -233,6 +233,30 @@ class LevelScanTest(unittest.TestCase):
         self.assertIsNone(levels_scan.text({**res, "olaylar": []}))
         self.assertIn("Yeni seviye olayı yok", levels_scan.text({**res, "olaylar": []}, empty=True))
 
+    def test_long_setups_become_al_or_pas_decisions(self):
+        import levels_scan
+        import positions
+        import web_sync
+        ev = lambda **k: {"piyasa": "KRIPTO", "kod": "SOL", "tf": "1s", "mum": 1_790_000_000_000, "kapanis": 106.0, "atr": 4.0,
+                          "atr_mum": 2.0, "tur": "KIRILIM", "alt": 104.0, "ust": 105.0, "dokunma": 3, "hacim": True,
+                          "sonraki": 112.0, **k}
+        p = levels_scan.plan(ev(), 1.5)                                   # stop 103, target 112: R/R 2
+        self.assertEqual((p["karar"], p["iptal"], p["hedef"], p["rr"], p["kalan"]), ("AL", 103.0, 112.0, 2.0, []))
+        self.assertEqual(levels_scan.plan(ev(hacim=False), 1.5)["kalan"], ["hacim"])
+        self.assertEqual(levels_scan.plan(ev(sonraki=107.0), 1.5)["kalan"], ["R/R"])
+        self.assertEqual(levels_scan.plan(ev(kapanis=109.0), 1.5)["kalan"], ["R/R", "kovalama"])   # 2 ATR past the zone
+        self.assertIsNone(levels_scan.plan(ev(tur="DESTEK_KIRILDI"), 1.5))
+        positions._save(config.DECISIONS_FILE, [])
+        self.addCleanup(positions._save, config.DECISIONS_FILE, [])
+        logged = levels_scan.record([ev(kod="ETH", hacim=False), ev(), ev(kod="BTC", tur="DIRENCTE")])
+        self.assertEqual([(d["pair"], d["karar"]) for d in logged], [("SOL/USDT", "AL"), ("ETH/USDT", "PAS")])   # AL first
+        self.assertIn("Kanıt notu", logged[0]["analiz"])
+        self.assertTrue(logged[0]["kapi"]["ok"])
+        status = {d["symbol"]: d["status"] for d in web_sync.build_decisions()}
+        self.assertEqual(status, {"SOL/USDT": "pending", "ETH/USDT": "resolved"})                 # a PAS never waits
+        sig = web_sync.build_signals()
+        self.assertEqual(sig[0]["analysis"]["bot_decision"]["verdict"], "PAS")
+
 
 class DeleteButtonTest(unittest.TestCase):
     def test_sil_removes_every_lot_of_one_asset_without_a_sale(self):

@@ -5,12 +5,12 @@ import { K } from "@/ds";
 import { Disclaimer } from "@/components/Disclaimer";
 import { useAuth } from "@/context/AuthContext";
 import { useData, usePendingCommands } from "@/lib/useData";
-import { useTheme, FONT_SIZES } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid, Bell, Activity, Wallet, FileBarChart, Globe2, Receipt, LineChart, FlaskConical,
-  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target, ClipboardCheck, UserRound, Briefcase, Users as UsersIcon, HeartPulse,
+  Settings as SettingsIcon, LogOut, Menu, X, PieChart, Eye, ShieldCheck, Sun, Moon, Zap, Clock, CandlestickChart, Target, ClipboardCheck, UserRound, Briefcase, Users as UsersIcon, HeartPulse, ChevronDown,
 } from "lucide-react";
 
 const NAV = [
@@ -156,12 +156,28 @@ function StatusStrip() {
   );
 }
 
+// Sağ üstte isme basınca açılan menü. owner: yalnız sistem sahibine görünür.
+const USER_MENU = [
+  { to: "/app/hesap", label: "Hesap & Telegram", icon: UserRound },
+  { to: "/app/alarmlarim", label: "Alarmlarım", icon: Bell },
+  { to: "/app/ayarlar", label: "Bot ayarları", icon: SettingsIcon, owner: true },
+];
+
 function TopActions({ onLogout }) {
-  const { theme, toggle, size, setSize } = useTheme();
+  const { theme, toggle } = useTheme();
   const { user, owner } = useAuth();
   const overview = useData("overview", "/overview", { refetchInterval: 30_000, enabled: owner });
   const pend = usePendingCommands();
   const decisions = overview.data?.pending_decisions || 0;
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = (e) => { if (e.key === "Escape" || (e.type === "pointerdown" && !menuRef.current?.contains(e.target))) setMenu(false); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", close); };
+  }, [menu]);
   return (
     <div className="flex shrink-0 items-center gap-2">
       {pend.pending.length > 0 && (
@@ -174,23 +190,40 @@ function TopActions({ onLogout }) {
           <Zap className="h-3.5 w-3.5" /> {decisions}<span className="hidden sm:inline"> bekleyen karar</span>
         </Link>
       )}
-      <div className="hidden items-center rounded-[10px] border border-hairline bg-ink p-[3px] sm:inline-flex" title="Yazı boyutu">
-        <button onClick={() => setSize(size - 1)} disabled={size === 0} aria-label="Yazıyı küçült" data-testid="font-smaller"
-          className="h-9 w-10 rounded-[7px] text-[0.9375rem] font-bold text-t-2 transition-colors duration-150 hover:bg-raised hover:text-t-1 disabled:opacity-40">A−</button>
-        <span className="num min-w-[3.25rem] text-center text-sm text-t-3">{FONT_SIZES[size]}px</span>
-        <button onClick={() => setSize(size + 1)} disabled={size === FONT_SIZES.length - 1} aria-label="Yazıyı büyüt" data-testid="font-bigger"
-          className="h-9 w-10 rounded-[7px] text-lg font-bold text-t-2 transition-colors duration-150 hover:bg-raised hover:text-t-1 disabled:opacity-40">A+</button>
-      </div>
       <button onClick={toggle} aria-label="Temayı değiştir" data-testid="theme-toggle"
         className="rounded-lg p-2 text-t-2 transition-colors duration-150 hover:bg-raised hover:text-t-1">
         {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>
-      <button onClick={onLogout} data-testid="logout-btn" title={user?.email}
-        className="inline-flex items-center gap-2 rounded-lg border border-hairline bg-surface px-2.5 py-1.5 text-xs font-semibold text-t-1 transition-colors duration-150 hover:bg-raised">
-        <span className="grid h-5 w-5 place-items-center rounded-full bg-brand/20 text-[10px] text-brand">{(user?.name || "A")[0].toUpperCase()}</span>
-        <span className="hidden sm:inline">{user?.name || "Admin"}</span>
-        <LogOut className="h-3.5 w-3.5 text-t-3" />
-      </button>
+      <div className="relative" ref={menuRef}>
+        <button onClick={() => setMenu((v) => !v)} data-testid="user-menu-btn" title={user?.email} aria-haspopup="menu" aria-expanded={menu}
+          className="inline-flex items-center gap-2 rounded-lg border border-hairline bg-surface px-2.5 py-1.5 text-xs font-semibold text-t-1 transition-colors duration-150 hover:bg-raised">
+          <span className="grid h-5 w-5 place-items-center rounded-full bg-brand/20 text-[10px] text-brand">{(user?.name || "A")[0].toUpperCase()}</span>
+          <span className="hidden sm:inline">{user?.name || "Admin"}</span>
+          <ChevronDown className="h-3.5 w-3.5 text-t-3" />
+        </button>
+        {menu && (
+          <div role="menu" data-testid="user-menu"
+            className="absolute right-0 top-full z-40 mt-2 w-60 rounded-xl border border-hairline bg-surface p-1.5 shadow-xl">
+            <div className="border-b border-hairline px-3 pb-2 pt-1.5">
+              <p className="truncate text-sm font-semibold text-t-1">{user?.name || "Admin"}</p>
+              {user?.email && <p className="truncate text-xs text-t-3">{user.email}</p>}
+            </div>
+            {USER_MENU.filter((i) => owner || !i.owner).map((i) => {
+              const Icon = i.icon;
+              return (
+                <Link key={i.to} to={i.to} role="menuitem" onClick={() => setMenu(false)}
+                  className="mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-t-1 hover:bg-raised">
+                  <Icon className="h-4 w-4 text-t-3" /> {i.label}
+                </Link>
+              );
+            })}
+            <button role="menuitem" onClick={onLogout} data-testid="logout-btn"
+              className="mt-1 flex w-full items-center gap-2.5 rounded-lg border-t border-hairline px-3 py-2 text-left text-sm text-down hover:bg-raised">
+              <LogOut className="h-4 w-4" /> Çıkış yap
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

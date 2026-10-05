@@ -30,20 +30,11 @@ const SIZE_KEY = "kapanis-font-v2";
 export const FONT_SIZES = [15, 16, 17, 18, 20];
 const DEFAULT_SIZE = 1;
 
-function readSize() {
-  try {
-    const i = Number(localStorage.getItem(SIZE_KEY));
-    return Number.isInteger(i) && i >= 0 && i < FONT_SIZES.length && localStorage.getItem(SIZE_KEY) !== null ? i : DEFAULT_SIZE;
-  } catch {
-    return DEFAULT_SIZE;
-  }
-}
-
 const ThemeContext = createContext({ theme: "dark", toggle: () => {}, colors: CHART.dark, size: DEFAULT_SIZE, setSize: () => {} });
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(readTheme);
-  const [size, setSize] = useState(readSize);
+  const [size, setSize] = useState(DEFAULT_SIZE);   // A−/A+ kaldırıldı: tarayıcı yakınlaştırması aynı işi görür
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light");
     document.documentElement.setAttribute("data-theme", theme); // tasarım sistemi değişkenleri

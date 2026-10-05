@@ -142,7 +142,9 @@ def build_decisions() -> list[dict]:
             "market": d.get("piyasa", "KRIPTO"), "currency": "TL" if d.get("piyasa") == "BIST" else "USD",
             "entry": d["kapanis"], "stop": d.get("iptal"), "target": d.get("hedef"),
             "rr": _rr(d["kapanis"], d.get("iptal"), d.get("hedef")), "chart_note": note,
-            "status": "pending" if verdict is None and not _decision_expired(d) else "resolved",
+            # a level-scan PAS is shown with its reasons but never waits for an answer
+            "status": "pending" if verdict is None and not _decision_expired(d)
+                      and not (d.get("kaynak") == "seviye" and d["karar"] != "AL") else "resolved",
             "created_at": d["zaman"], "queued": False,
         })
     return out

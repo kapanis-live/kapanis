@@ -4837,12 +4837,21 @@ async def levels_job(context: ContextTypes.DEFAULT_TYPE):
     if not levels_scan.enabled():
         return
     try:
-        said = levels_scan.text(await levels_scan.scan())
+        res = await levels_scan.scan()
+        said = levels_scan.text(res)
+        signals = levels_scan.record(res["olaylar"])   # the long setups go to the Signals page as AL / PAS
     except Exception:
         log.exception("Level scan failed")
         return
     if said:
         await send_long(context.bot, config.ALLOWED_CHAT_ID, said)
+    for d in signals:
+        if d["karar"] != "AL":
+            continue
+        await context.bot.send_message(
+            config.ALLOWED_CHAT_ID, d["analiz"], disable_notification=silent(),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Aldım", callback_data=f"al|{d['id']}"),
+                                                InlineKeyboardButton("⏭ Pas", callback_data=f"pas|{d['id']}")]]))
 
 
 @authorized

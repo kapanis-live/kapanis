@@ -79,3 +79,21 @@ a fixed grid (no setup) give the same picture. Used only as a measurement line o
 Regime as an entry filter (same day's `results_v2.json`, `rejime_gore`): the trend rule has 11 trades opened in PANIK
 (profit factor 0.38) out of 1105, too few to decide; the turn-of-month rule is best in PANIK (371 trades, 69 % hit,
 profit factor 3.63). A "no new longs in PANIK" block is not supported and is not wired in.
+
+## Better-drawn levels (`levels_lab.py`, 2026-10-05)
+
+Three ways to draw support / resistance (the bot's pivot clusters, volume-profile nodes, only pivots followed by a
+2 ATR reaction), five events on a 1h close, 77 coins, a 1 ATR(4h) race over 48 hours, 0.1 % per side, against zones
+of the same width at random prices. 15 method x event pairs, development and validation: none passes.
+
+| Event (pivot levels) | Hit, real / random | Daily mean net R, real / random |
+|---|---|---|
+| Held at support | 50 % / 52 % | -0.03 / +0.01 |
+| Breakout | 49 % / 50 % | -0.13 / -0.14 |
+| Retest after a breakout | 53.5 % / 50-52 % | -0.04 / -0.09 |
+| Stopped at resistance (down) | 50 % / 49 % | -0.05 / -0.03 |
+| Breakdown (down) | 49 % / 48 % | -0.15 / -0.19 |
+
+Volume-profile and reaction-filtered levels give the same picture. The only repeatable difference from random is the
+retest after a breakout (about +2-3 points of hit rate in both periods, with both pivot variants), and it is still
+below zero after costs. Levels stay an information line; nothing is suggested from them.

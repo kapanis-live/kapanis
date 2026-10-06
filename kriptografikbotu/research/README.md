@@ -154,3 +154,11 @@ is not turned upside down into a rule either.
 
 Consequence in the bot (same day): level-scan records carry the verdict BİLGİ, never AL, with no Aldım / Pas and
 no size.
+
+## Turn of the month on US stocks (`engine.py`, market ABD, 2026-10-07)
+
+Today's S&P 100 (98 names with enough history, Yahoo daily, 10 years; no delisted names), 0.1 % per side assumed.
+Turn of the month: REJECTED. Development 0.5 % a year against 0.3 % for random timing, ahead on only 53 % of the
+stocks (60 % needed); locked last year 3.6 % against 0.8 %, 60 % of the stocks. Buy & hold made 12.6 % a year.
+Ahead of random in 6 of 9 years, behind in 2022, 2024 and 2025. Trend following (Donchian 20/10 + SMA200):
+REJECTED, behind random timing in all 9 years. Run: `engine.run_all({...}, markets=("ABD",))`.

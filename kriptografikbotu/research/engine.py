@@ -17,6 +17,7 @@ RESEARCH if only the development period passes; REJECTED otherwise. Yearly folds
 import asyncio
 import pathlib
 import random
+import sys
 import time
 
 import httpx
@@ -26,8 +27,8 @@ import pandas as pd
 HERE = pathlib.Path(__file__).resolve().parent
 CACHE = HERE / "kl"
 CACHE.mkdir(exist_ok=True)
-COST = {"KRIPTO": 0.001, "BIST": 0.002}
-DPY = {"KRIPTO": 365, "BIST": 250}
+COST = {"KRIPTO": 0.001, "BIST": 0.002, "ABD": 0.001}   # ABD: an assumption (commission + spread on large caps)
+DPY = {"KRIPTO": 365, "BIST": 250, "ABD": 252}
 HOLDOUT_DAYS = 365
 RANDOM_DRAWS = 20
 WARMUP = 210
@@ -286,6 +287,18 @@ async def load(market: str) -> tuple[list[pd.DataFrame], pd.DataFrame]:
                 except Exception:
                     pass
             bench = next(f for f in frames if f.c.iloc[0] > 1000)  # BTC is the first coin
+        elif market == "ABD":   # today's S&P 100 (us.SP100): no delisted names, a known bias like BIST's
+            sys.path.insert(0, str(HERE.parent))
+            import us
+            frames = []
+            for sym in us.SP100:
+                try:
+                    df = await yahoo_daily(client, sym.replace(".", "-"))
+                    if len(df) > WARMUP + 120:
+                        frames.append(indicators(df))
+                except Exception:
+                    pass
+            bench = indicators(await yahoo_daily(client, "SPY"))
         else:
             frames = [indicators(await yahoo_daily(client, f"{s}.IS")) for s in BIST]
             bench = indicators(await yahoo_daily(client, "XU100.IS"))

@@ -110,6 +110,8 @@ function TrendCard() {
 
 const VERDICT = { PRODUCTION: ["✅ Kanıtlandı", "kp-num-up"], RESEARCH: ["🔬 Araştırma", ""], REJECTED: ["✗ Elendi", "kp-num-down"] };
 
+const MARKET_NAME = { KRIPTO: "kripto", BIST: "BIST", ABD: "ABD" };
+
 // Strateji Laboratuvarı: denediğimiz her kural, aynı standartla, sonucuyla birlikte (elenenler dahil)
 function LabCard() {
   const q = useData("strategy-lab", "/strategies/lab");
@@ -120,7 +122,7 @@ function LabCard() {
     <K.Card title="Strateji Laboratuvarı">
       <p className="m-0 text-t-2">Bir kural ancak aynı sınavdan geçerse öneri olur. Şimdiye kadar denediklerimiz:</p>
       <K.DataTable rows={rows} rowKey="_k" columns={[
-        { key: "strateji", label: "Strateji", render: (r) => <span><b>{r.strateji}</b> <span className="text-t-3">· {r.piyasa === "KRIPTO" ? "kripto" : "BIST"}</span></span> },
+        { key: "strateji", label: "Strateji", render: (r) => <span><b>{r.strateji}</b> <span className="text-t-3">· {MARKET_NAME[r.piyasa] || r.piyasa}</span></span> },
         { key: "karar", label: "Sonuç", render: (r) => <span className={VERDICT[r.karar]?.[1]}>{VERDICT[r.karar]?.[0] || r.karar}</span> },
         { key: "dev", label: "Geliştirme: kural / rastgele", num: true, render: (r) => <span>{pctCell(r.gelistirme["kural_yillik_%"])} / {pctCell(r.gelistirme["rastgele_%"])}</span> },
         { key: "hold", label: "Kilitli 12 ay: kural / rastgele", num: true, mobile: false, render: (r) => <span>{pctCell(r.kilitli["kural_yillik_%"])} / {pctCell(r.kilitli["rastgele_%"])}</span> },
@@ -152,9 +154,9 @@ function TurnOfMonthCard() {
     <K.Card title="✅ Testten geçen kural: Ay dönümü">
       <p className="m-0 text-t-2">Ayın <b>son 2</b> ve yeni ayın <b>ilk 3</b> işlem gününde elde tut, diğer günlerde nakitte bekle. Maaş, fon girişleri ve ay sonu
         dengelemesi bu günlerde alımı artırır; akademide on yıllardır bilinen bir etki. Geçmiş testte kripto ve BIST'te, hiç bakılmadan saklanan son 12 ay dahil,
-        aynı sürede rastgele piyasada kalmayı geçti.</p>
+        aynı sürede rastgele piyasada kalmayı geçti. ABD hisselerinde (S&P 100) aynı sınavı geçemedi; orada öneri değildir.</p>
       {!!rows.length && <K.DataTable rows={rows.map((r, i) => ({ ...r, _k: i }))} rowKey="_k" columns={[
-        { key: "piyasa", label: "Piyasa", render: (r) => (r.piyasa === "KRIPTO" ? "Kripto" : "BIST") },
+        { key: "piyasa", label: "Piyasa", render: (r) => (MARKET_NAME[r.piyasa] || r.piyasa) + (r.karar === "PRODUCTION" ? "" : " (geçmedi)") },
         { key: "dev", label: "Geliştirme: kural / rastgele", num: true, render: (r) => <span>{pctCell(r.gelistirme["kural_yillik_%"])} / {pctCell(r.gelistirme["rastgele_%"])}</span> },
         { key: "hold", label: "Kilitli 12 ay: kural / rastgele", num: true, render: (r) => <span>{pctCell(r.kilitli["kural_yillik_%"])} / {pctCell(r.kilitli["rastgele_%"])}</span> },
         { key: "gecen", label: "Rastgeleyi geçen varlık", num: true, mobile: false, render: (r) => `%${r.kilitli["rastgeleyi_gecen_varlik_%"]}` },

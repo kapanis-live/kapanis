@@ -162,3 +162,19 @@ Turn of the month: REJECTED. Development 0.5 % a year against 0.3 % for random t
 stocks (60 % needed); locked last year 3.6 % against 0.8 %, 60 % of the stocks. Buy & hold made 12.6 % a year.
 Ahead of random in 6 of 9 years, behind in 2022, 2024 and 2025. Trend following (Donchian 20/10 + SMA200):
 REJECTED, behind random timing in all 9 years. Run: `engine.run_all({...}, markets=("ABD",))`.
+
+## All nine daily rules and earnings drift on US stocks (2026-10-07)
+
+Today's S&P 100 (98 names, 10 years, 0.1 % per side assumed, no delisted names). All nine daily rules: REJECTED.
+Buy & hold made 12.6 % a year in development; no rule came near it, and only the turn of the month was ahead of
+random timing at all (0.5 vs 0.3 % a year, 53 % of the stocks; locked year 3.6 vs 0.8 %).
+
+Earnings drift (`pead_lab.py`): release dates from SEC EDGAR (8-K item 2.02, 4.2 a year per company), the reaction
+day's return minus SPY as the surprise. Rule fixed in advance: reaction >= +2 % -> hold 40 trading days. REJECTED.
+808 trades, 57 % up, +1.88 % net on average. The mirror (reaction <= -2 %): 722 trades, 55 % up, +2.08 %. Forty
+days of buy & hold are worth about +1.9 %. A good reaction is followed by nothing more than the market's own drift,
+and a bad one by the same. Limits: large caps only (the literature finds the drift mostly in small ones); the
+reaction is a proxy for the analyst surprise, which is not available for free beyond four quarters.
+
+Note for anyone reading SEC times: `acceptanceDateTime` in the submissions API runs ahead of New York by twice New
+York's UTC offset (`pead_lab.ny_time`).

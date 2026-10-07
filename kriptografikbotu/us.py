@@ -7,6 +7,7 @@ Tiingo free tier: 1000 requests/day and 50 distinct symbols/hour. Every Tiingo c
 near the limit, and for bulk scans (the S&P 100 ranking), Yahoo is used instead.
 """
 import asyncio
+import functools
 import logging
 import time
 from datetime import date, datetime, timedelta
@@ -32,9 +33,55 @@ CACHE_SECONDS = {"1h": 300, "1d": 900, "1wk": 3600, "1mo": 6 * 3600}
 _cache: dict[tuple, tuple[float, pd.DataFrame]] = {}
 
 # NYSE 2026: closed days and 13:00 half days (nyse.com holiday calendar).
-CLOSED_2026 = {"2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25", "2026-06-19", "2026-07-03",
-               "2026-09-07", "2026-11-26", "2026-12-25"}
-HALF_2026 = {"2026-11-27", "2026-12-24"}
+# --- NYSE / Nasdaq calendar, computed for any year (no yearly table to forget) -------------------------------
+# Full-day closures follow the exchange's standing rules: a holiday on Saturday is observed on Friday, on Sunday on
+# Monday; New Year's Day on a Saturday is not observed. 13:00 closes: the day after Thanksgiving, Christmas Eve and
+# 3 July when they are trading days. One-off closures (a state funeral, a storm) are not predictable: add them here.
+EXTRA_CLOSED: set[str] = set()
+PRE_OPEN, OPEN, CLOSE, HALF_CLOSE, POST_CLOSE = (4, 0), (9, 30), (16, 0), (13, 0), (20, 0)
+
+
+def _nth(year: int, month: int, weekday: int, n: int) -> date:
+    """The n-th given weekday of a month; n = -1 is the last one."""
+    if n > 0:
+        d = date(year, month, 1)
+        return d + timedelta(days=(weekday - d.weekday()) % 7 + 7 * (n - 1))
+    d = date(year + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
+    return d - timedelta(days=(d.weekday() - weekday) % 7)
+
+
+def _easter(year: int) -> date:
+    a, b, c = year % 19, year // 100, year % 100
+    d, e = b // 4, b % 4
+    g = (8 * b + 13) // 25
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    m = (a + 11 * h) // 319
+    r = (2 * e + 2 * i - h - k + m + 32) % 7
+    month = (h - m + r + 90) // 25
+    return date(year, month, (h - m + r + month + 19) % 32)
+
+
+def _observed(d: date) -> date | None:
+    if d.weekday() == 5:
+        return None if (d.month, d.day) == (1, 1) else d - timedelta(days=1)
+    return d + timedelta(days=1) if d.weekday() == 6 else d
+
+
+@functools.lru_cache(maxsize=16)
+def holidays(year: int) -> frozenset[str]:
+    fixed = [date(year, 1, 1), date(year, 7, 4), date(year, 12, 25)] + ([date(year, 6, 19)] if year >= 2022 else [])
+    days = [_observed(d) for d in fixed] + [
+        _nth(year, 1, 0, 3), _nth(year, 2, 0, 3), _easter(year) - timedelta(days=2), _nth(year, 5, 0, -1),
+        _nth(year, 9, 0, 1), _nth(year, 11, 3, 4)]
+    return frozenset(d.isoformat() for d in days if d)
+
+
+def half_day(d: date) -> bool:
+    if not trading_day(d):
+        return False
+    return d == _nth(d.year, 11, 3, 4) + timedelta(days=1) or (d.month, d.day) in ((12, 24), (7, 3))
+
 
 INDEXES = {"SPY": "S&P 500 (SPY)", "QQQ": "Nasdaq-100 (QQQ)"}
 SECTOR_ETF = {"Technology": "XLK", "Financial Services": "XLF", "Healthcare": "XLV", "Consumer Cyclical": "XLY",
@@ -60,21 +107,54 @@ def now_ny() -> datetime:
 
 def trading_day(d: date | None = None) -> bool:
     d = d or now_ny().date()
-    return d.weekday() < 5 and d.isoformat() not in CLOSED_2026
+    return d.weekday() < 5 and d.isoformat() not in holidays(d.year) and d.isoformat() not in EXTRA_CLOSED
+
+
+def close_time(d: date) -> tuple[int, int]:
+    return HALF_CLOSE if half_day(d) else CLOSE
+
+
+def phase(when: datetime | None = None) -> str:
+    """REGULAR_OPEN, PREMARKET (04:00-09:30), AFTER_HOURS (close-20:00) or CLOSED, in New York time."""
+    w = (when or now_ny()).astimezone(NY)
+    if not trading_day(w.date()):
+        return "CLOSED"
+    t = (w.hour, w.minute)
+    if OPEN <= t < close_time(w.date()):
+        return "REGULAR_OPEN"
+    return "PREMARKET" if PRE_OPEN <= t < OPEN else "AFTER_HOURS" if close_time(w.date()) <= t < POST_CLOSE else "CLOSED"
 
 
 def session_open(when: datetime | None = None) -> bool:
+    return phase(when) == "REGULAR_OPEN"
+
+
+def next_session(when: datetime | None = None) -> date:
+    """Today while its regular session has not ended, else the next trading day."""
     w = (when or now_ny()).astimezone(NY)
-    close = (13, 0) if w.date().isoformat() in HALF_2026 else (16, 0)
-    return trading_day(w.date()) and (9, 30) <= (w.hour, w.minute) < close
+    d = w.date()
+    if not (trading_day(d) and (w.hour, w.minute) < close_time(d)):
+        d += timedelta(days=1)
+        while not trading_day(d):
+            d += timedelta(days=1)
+    return d
 
 
-def session_text() -> str:
-    w = now_ny()
-    tr = datetime.now(ZoneInfo("Europe/Istanbul"))
-    offset = round((tr.utcoffset() - w.utcoffset()).total_seconds() / 3600)
-    return (f"ABD seansı {'AÇIK' if session_open() else 'kapalı'} · New York {w.strftime('%H:%M')} · "
-            f"Türkiye saatiyle {9 + offset}:30–{16 + offset}:00")
+PHASE_TR = {"REGULAR_OPEN": "AÇIK", "PREMARKET": "seans öncesi (premarket)", "AFTER_HOURS": "seans sonrası (after-hours)",
+            "CLOSED": "kapalı"}
+
+
+def session_text(when: datetime | None = None) -> str:
+    """State now, and the next regular session in Turkey time (computed from both zones, so both DST shifts and
+    13:00 closes come out right)."""
+    w = (when or now_ny()).astimezone(NY)
+    tr = ZoneInfo("Europe/Istanbul")
+    d = next_session(w)
+    opens = datetime(d.year, d.month, d.day, *OPEN, tzinfo=NY).astimezone(tr)
+    closes = datetime(d.year, d.month, d.day, *close_time(d), tzinfo=NY).astimezone(tr)
+    day = "bugün" if d == w.date() else f"{opens.day:02d}.{opens.month:02d}"
+    return (f"ABD seansı {PHASE_TR[phase(w)]} · New York {w.strftime('%H:%M')} · sıradaki seans {day} "
+            f"{opens.strftime('%H:%M')}–{closes.strftime('%H:%M')} (Türkiye)" + (" · yarım gün" if half_day(d) else ""))
 
 
 # --- Tiingo budget ---------------------------------------------------------------------------------------

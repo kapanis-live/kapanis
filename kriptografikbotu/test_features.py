@@ -586,6 +586,25 @@ class USEngineTest(unittest.TestCase):
         self.assertFalse(us.trading_day(date(2026, 11, 26)))  # Thanksgiving
         self.assertTrue(us.trading_day(date(2026, 11, 27)))   # half day, still open
 
+    def test_us_calendar_is_computed_for_any_year(self):
+        import us
+        self.assertEqual(sorted(us.holidays(2026)), ["2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25",
+                                                     "2026-06-19", "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25"])
+        self.assertIn("2027-12-24", us.holidays(2027))            # Christmas on a Saturday: observed on Friday
+        self.assertIn("2027-07-05", us.holidays(2027))            # 4 July on a Sunday: observed on Monday
+        self.assertNotIn("2021-12-31", us.holidays(2021))         # New Year's Day on a Saturday is not observed
+        self.assertNotIn("2022-01-01", us.holidays(2022))
+        self.assertTrue(us.half_day(date(2025, 7, 3)) and us.half_day(date(2026, 12, 24)))
+        self.assertFalse(us.half_day(date(2027, 12, 24)))         # closed that day, so not a half day
+        ny = lambda s: datetime.fromisoformat(s).replace(tzinfo=us.NY)
+        self.assertEqual([us.phase(ny(t)) for t in ("2026-10-07T03:59", "2026-10-07T08:00", "2026-10-07T09:30", "2026-10-07T16:00",
+                                                    "2026-10-07T20:00", "2026-11-27T13:00", "2026-11-26T10:00", "2026-10-10T10:00")],
+                         ["CLOSED", "PREMARKET", "REGULAR_OPEN", "AFTER_HOURS", "CLOSED", "AFTER_HOURS", "CLOSED", "CLOSED"])
+        # Turkey has no DST, New York has: the same session is 16:30 in October and 17:30 after the US clocks go back
+        self.assertIn("bugün 16:30–23:00 (Türkiye)", us.session_text(ny("2026-10-07T10:00")))
+        self.assertIn("bugün 17:30–00:00 (Türkiye)", us.session_text(ny("2026-11-03T10:00")))
+        self.assertIn("27.11 17:30–21:00 (Türkiye) · yarım gün", us.session_text(ny("2026-11-25T17:00")))   # skips Thanksgiving
+
 
 class WatchlistTest(unittest.TestCase):
     def setUp(self):

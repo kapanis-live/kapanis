@@ -135,7 +135,8 @@ async def _us(client) -> list:
     async def one(code):
         d1 = market.add_indicators(await us.fetch(client, code, "1d", bulk=True))
         return _row("ABD", code, d1, d1, None, "1g")
-    return [(c, one(c)) for c in watchlist.load().get("ABD", [])]
+    codes = dict.fromkeys(list(us.SP100) + watchlist.load().get("ABD", []))   # the S&P 100 plus the user's own list
+    return [(c, one(c)) for c in codes]
 
 
 async def scan(remember: bool = True) -> dict:

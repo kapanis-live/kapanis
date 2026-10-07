@@ -1,10 +1,36 @@
 # Kapanış — Proje Yapısı (plan için)
 
-Son güncelleme: 27 Eylül 2026 (hesaplar, bulut). Bu dosya projenin bütün parçalarını tek yerde gösterir. Modüllerin ayrıntılı anlatımı: `PROJE.md`.
+Son güncelleme: 8 Ekim 2026 (seviye taraması, ABD karar desteği, bildirim anahtarları, uygulama bildirimi). Bu dosya projenin bütün parçalarını tek yerde gösterir. Modüllerin ayrıntılı anlatımı: `PROJE.md`.
 
 ---
 
-## 0. Son eklenen dosyalar (28 Eylül 2026)
+## 0. Son eklenen dosyalar (8 Ekim 2026)
+
+Bot (`kriptografikbotu`):
+- `levels_scan.py` — 30 dakikalık destek/direnç taraması, olay tespiti, kural kontrolü, "BİLGİ" kayıtları, geçmiş ölçüm tablosu
+- `broker.py` — Midas'ta alınamayan coin listesi (`/midas`)
+- `notify_prefs.py` — piyasa bazlı bildirim anahtarları; gönderim kapısı `main.RetryBot` buradan sorar
+- `us_card.py` — ABD hisse kartı (karar desteği) ve denetim kaydı
+- `us_events.py` — SEC 8-K (madde 2.02) bilanço açıklama zamanları, son tepki, sıradaki tarih tahmini
+- `us_portfolio.py` — ABD portföyü: sektör, tema, korelasyon, beta, senaryolar
+- `us.py` — ek: her yıl için hesaplanan NYSE takvimi ve seans evreleri
+- `oi_store.py` — açık pozisyon geçmişi toplayıcı (yalnız araştırma)
+- `costs.py` — kullanım logu yalnız değişince yeniden okunur
+- `test_notify.py`, `test_ops.py`, `test_features.py` — yeni testler
+- `research/` — `whipsaw.py` (stop mesafesi), `levels_lab.py` (seviye yöntemleri), `retest_lab.py` (retest + taze yıl), `touch_fvg_lab.py` (dokunma sayısı, FVG), `score_lab.py` (7 şartlı puan), `pead_lab.py` (bilanço sürüklenmesi), `engine.py` (ABD evreni, boşluklu ticker ayrımı, anomali bayrağı)
+
+Panel (`kapanis`):
+- `backend/push.py` — uygulama bildirimleri (Web Push: abonelik, şifreleme, VAPID); `backend/tests/test_push.py`
+- `backend/server.py` — sayfa kabuğu `no-cache`; `us.portfolio` panel işlemi
+- `backend/lab_results.json` — ABD satırları eklendi
+- `frontend/src/pages/panel/UsCard.jsx` — ABD hisse kartı sayfası
+- `frontend/src/components/UsBook.jsx` — Portföy sağlığındaki ABD bölümü
+- `frontend/src/components/PushToggle.jsx` — bu cihazda uygulama bildirimi
+- `frontend/src/components/PanelLayout.jsx`, `App.css` — isim menüsü, cam alt çubuk, sayfa geçişleri
+- `frontend/public/sw.js`, `offline.html` — bildirim gösterimi, çevrimdışı ekranı, kendini güncelleme
+- `android/twa-manifest.json` — Android paketi ayarı (1.1.0)
+
+## 0b. Önceki eklenenler (28 Eylül 2026)
 
 Bot (`kriptografikbotu`):
 - `quiet.py` — sessizlik saatleri, sessiz mod, bekleyen bildirimler ve özet

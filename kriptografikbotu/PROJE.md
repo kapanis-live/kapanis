@@ -11,7 +11,47 @@ GitHub: `kapanis-live/kapanis` (private, iki klasör birlikte). Bulut kurulumu: 
 
 Arayüz dili Türkçe. Kod yorumları İngilizce.
 
-## Güncel durum (28 Eylül 2026)
+## Güncel durum (8 Ekim 2026)
+
+Bu bölüm 28 Eylül'den sonra eklenenleri özetler. Alttaki "28 Eylül 2026" bölümü hâlâ geçerlidir; çeliştiği yerde bu bölüm doğrudur.
+
+**Ürünün yönü:** karar desteği. Bot işlem yapmaz, AL/SAT demez. Öneri olarak yalnız geçmiş veri testinden geçen kural gösterilir; test edilmemiş ya da testten kalan her şey "bilgi" etiketiyle gelir. Bütün test sonuçları: `research/README.md`.
+
+**Test özeti (hepsi maliyet düşülerek, rastgele girişle ve al-tut ile kıyaslanarak):**
+- Geçen tek kural: **ay dönümü** (ayın son 2 + ilk 3 işlem günü), kripto ve BIST'te. ABD'de (S&P 100) geçmedi.
+- Trend takibi: araştırmada (kilitli yılda rastgeleyi geçemedi). Diğer 7 günlük kural: reddedildi. ABD'de 9 kuralın 9'u reddedildi; al-tut açık ara önde.
+- Gün içi 6 aday (kırılım-retest, likidite süpürme, VWAP geri alışı...): reddedildi.
+- Destek/direnç: 3 çizim yöntemi (pivot, hacim profili, tepki filtreli) × 5 olay, rastgele seviyelerle kıyas: hiçbiri sıfırın üstünde değil. Kırılım sonrası retest rastgeleden tutarlı biçimde iyi ama maliyet sonrası yine eksi; taze yılda da kaldı.
+- "Çok dokunulan seviye zayıftır", "FVG mıknatıstır", 7 şartlı "güven puanı": veride desteklenmedi. Güven puanı ters çalıştı (çok şart = daha kötü sonuç).
+- Stop mesafesi: 15 dk ATR'ye göre 1 ATR'lik stop 24 saatte %89 değiyor, değenlerin %82'si girişin üstüne dönüyor. Hiçbir mesafe kırılım girişini kârlı yapmadı.
+- Bilanço sonrası sürüklenme (ABD, SEC tarihleriyle): iyi tepkiden sonra piyasanın üstünde getiri yok.
+- Açık pozisyon (OI) değişim hızı: test edilemedi (borsa 30 gün veri tutuyor); `oi_store.py` veriyi biriktiriyor.
+
+**Yeni özellikler (bot):**
+- `/seviye` — 30 dakikada bir destek/direnç taraması (60 coin, BIST evreni, S&P 100). Kapanan mumda: direnç kırıldı, destek kırıldı, destekte tutundu, dirence takıldı. Telegram'a özet, siteye "BİLGİ" kaydı. Coin kayıtlarında 7 şartlı puanın geçmişte ne yaptığı yazar. ABD kayıtlarında bilanço riski kuralı var.
+- `/midas`, `/midas yok STX`, `/midas var STX` — Midas'ta alınamayan coinler taramalara girmez.
+- `/bildirimler`, `/kripto ac|kapat`, `/bist ac|kapat`, `/abd ac|kapat` — piyasa bazlı otomatik bildirim anahtarları. Varsayılan: kripto kapalı, BIST ve ABD açık. Kapalı piyasadan otomatik mesaj gelmez; komutlar çalışır, alarmlar silinmez, bastırılan mesaj sonradan gönderilmez.
+- `/abd kart NVDA` — ABD hisse kartı: trend, SPY/QQQ/sektöre göre güç, bilanço tarihi ve riski, son bilanço tepkisi (bağlam), analist tahmin revizyonu, temel puan, kaba değerleme etiketi, her sayının kaynağı ve tarihi. Her kart denetim kaydına yazılır.
+- `/abd portfoy` — ABD portföyü: sektör ve tema dağılımı, korelasyon, beta, dört senaryo (SPY −%10, QQQ −%10, 10Y faiz +0,50, VIX 30). Cetvel, tahmin değil.
+- ABD takvimi her yıl için hesaplanır (tatiller, 13:00 kapanışları, premarket / seans / after-hours, Türkiye saati iki saat diliminden).
+- `/portfoy` paralel hesaplanır; "Sat" düğmesi yerine "Sil" (satış sayılmaz, K/Z'ye girmez).
+- Uygulama bildirimi: botun Telegram'a attığı her otomatik mesaj, bildirimi açık cihazlara da gider (Web Push).
+
+**Yeni özellikler (site):**
+- Sinyaller sayfası: 30 dakikalık seviye kayıtları "BİLGİ" rozetiyle; AL etiketi ve Aldım/Pas düğmesi yok.
+- Stratejiler: laboratuvar tablosunda ABD satırları; ay dönümü kartında "ABD'de geçmedi".
+- ABD hisse kartı sayfası (`/app/abd`); Portföy sağlığında ABD hisselerinin ortak riski (yalnız sahibe).
+- Ayarlar: üç piyasa bildirim anahtarı. Hesap: bu cihazda uygulama bildirimi aç/kapat ve test düğmesi.
+- Sağ üstte isme basınca menü (hesap, alarmlar, bot ayarları, çıkış). A−/A+ yazı boyutu düğmesi kaldırıldı.
+- Mobil: cam görünümlü yüzen alt çubuk, kayan vurgu, yönlü sayfa geçişi; çevrimdışı ekranı; uygulama yeni sürümde kendini yeniler.
+
+**Android:** Trusted Web Activity paketi (`live.kapanis.twa`, sürüm 1.1.0). Play Store'da değil; APK doğrudan kurulur. İmza anahtarı depoda değildir.
+
+**Depo:** GitHub `kapanis-live/kapanis` (organizasyon, gizli).
+
+**Bilinen açıklar:** karışık içerikli bildirimler (sabah brifi, haftalık özet, şirket takvimi, takip kuralları) piyasa anahtarına bağlı değil. ABD portföy bölümü yalnız sahip için. Uygulama bildirimi gerçek telefonda henüz doğrulanmadı. Analist tahmin geçmişi ve hisse saatlik verisi ücretsiz kaynaklarla sınırlı.
+
+## Önceki durum (28 Eylül 2026)
 
 **Yayın:** kapanis.live canlı (Google Cloud VM, Docker: web + worker + Caddy). Giriş Clerk production (Google, e-posta + şifre, e-posta kodu). Veri MongoDB Atlas. Güncelleme: kod GitHub'a (`kapanis-live/kapanis`), sonra VM'de Google Cloud SSH penceresinden `bash ~/guncelle.sh`. Site görünümü değiştiyse önce `build-new.tgz` "Upload file" ile yüklenir.
 

@@ -274,6 +274,8 @@ async def _retry_send(send, *args, **kwargs):
 # True while the bot handles something the owner just did (command, message, button): those replies always
 # arrive. Background jobs run outside it, so their messages follow /sessiz and /sessizlik.
 USER_TURN: contextvars.ContextVar[bool] = contextvars.ContextVar("user_turn", default=False)
+# True while any chat's update is being answered: such replies are not mirrored to the app as notifications
+IN_UPDATE: contextvars.ContextVar[bool] = contextvars.ContextVar("in_update", default=False)
 
 
 class HeldMessage:
@@ -293,6 +295,7 @@ def _held(chat_id) -> bool:
 async def mark_user_turn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Runs first for every update (group -1)."""
     USER_TURN.set(bool(update.effective_chat) and update.effective_chat.id == config.ALLOWED_CHAT_ID)
+    IN_UPDATE.set(True)
 
 
 class RetryBot(ExtBot):
@@ -305,7 +308,10 @@ class RetryBot(ExtBot):
         if _held(chat_id):
             quiet.hold(kwargs.get("text", args[1] if len(args) > 1 else ""))
             return HeldMessage()
-        return await _retry_send(super().send_message, *args, **kwargs)
+        sent = await _retry_send(super().send_message, *args, **kwargs)
+        if not IN_UPDATE.get() and config.WEB_URL:        # a proactive message: the app gets the same notification
+            _spawn(web_sync.app_push(chat_id, kwargs.get("text", args[1] if len(args) > 1 else "")))
+        return sent
 
     async def send_photo(self, *args, **kwargs):
         chat_id = kwargs.get("chat_id", args[0] if args else None)

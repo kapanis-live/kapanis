@@ -514,6 +514,7 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
         await d.commands.delete_many({"user_id": uid})
         await d.telegram_links.delete_many({"user_id": uid})
         await d.user_alerts.delete_many({"user_id": uid})
+        await d.push_subscriptions.delete_many({"user_id": uid})
         await d.user_alert_events.delete_many({"user_id": uid})
         await d.users.delete_one({"_id": ObjectId(uid)})
         return {"ok": True}

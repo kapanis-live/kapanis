@@ -605,6 +605,21 @@ async def alarm_events() -> list[dict]:
     return r.json()
 
 
+async def app_push(chat_id, text: str):
+    """Mirror a message the bot just sent to Telegram into the account's app notifications (kapanis/backend/push.py).
+    Best effort: an account with no subscribed device, or a web service that is down, changes nothing."""
+    lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
+    if not lines or not config.WEB_URL or lines[0].startswith("⏳"):     # "working on it" notes are not news
+        return
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(f"{config.WEB_URL}/api/bot/push", headers=_headers(), json={
+                "chat_id": chat_id, "sahip": chat_id == config.ALLOWED_CHAT_ID, "baslik": lines[0][:80],
+                "metin": " ".join(lines[1:])[:300] or lines[0][:300], "url": "/app"})
+    except Exception as e:
+        log.info("App push not delivered: %s", str(e)[:100])
+
+
 async def alarm_event_sent(event_id: str):
     async with httpx.AsyncClient(timeout=15) as client:
         (await client.post(f"{config.WEB_URL}/api/bot/alarm-events/{event_id}/sent", headers=_headers())).raise_for_status()

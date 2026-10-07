@@ -295,6 +295,12 @@ export function PanelLayout({ children }) {
   const prefetch = usePrefetch();
   const mainRef = useRef(null);
   usePullToRefresh(mainRef);
+  const tabs = owner ? MOBILE_NAV : USER_MOBILE_NAV;
+  const tabIndex = tabs.findIndex((n) => (n.end ? loc.pathname === n.to : loc.pathname === n.to || loc.pathname.startsWith(n.to + "/")));
+  const lastTab = useRef(tabIndex);
+  const enter = tabIndex < 0 || lastTab.current < 0 || tabIndex === lastTab.current ? "kp-page-enter"
+    : tabIndex > lastTab.current ? "kp-page-from-right" : "kp-page-from-left";
+  useEffect(() => { lastTab.current = tabIndex; }, [tabIndex]);
 
   const handleLogout = async () => {
     await logout();
@@ -338,19 +344,21 @@ export function PanelLayout({ children }) {
           Defansif mod açık · risk hedefi %{myPortfolio.data.risk_target_pct} · Planı gör →
         </Link>}
 
-        <main ref={mainRef} key={loc.pathname} className="kp-main kp-page-enter mx-auto max-w-[1400px] px-4 pb-24 pt-7 md:px-7 lg:px-10 lg:pb-10">
+        <main ref={mainRef} key={loc.pathname} className={cn("kp-main mx-auto max-w-[1400px] px-4 pb-28 pt-7 md:px-7 lg:px-10 lg:pb-10", enter)}>
           {children}
           <Disclaimer />
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-center justify-around border-t border-hairline bg-surface/95 backdrop-blur lg:hidden">
-        {(owner ? MOBILE_NAV : USER_MOBILE_NAV).map((n) => {
+      {/* cam görünümlü, kenarlardan ayrık alt çubuk; seçili sekmenin arkasındaki vurgu sekmeler arasında kayar */}
+      <nav className="kp-tabbar lg:hidden" aria-label="Ana sekmeler" data-testid="tabbar" style={{ "--tabs": tabs.length, "--tab": Math.max(tabIndex, 0) }}>
+        <span className="kp-tabbar__pill" aria-hidden="true" style={{ opacity: tabIndex < 0 ? 0 : 1 }} />
+        {tabs.map((n) => {
           const Icon = n.icon;
           return (
             <NavLink key={n.to} to={n.to} end={n.end} onTouchStart={() => prefetch(n.to)} onClick={haptic}
-              className={({ isActive }) => cn("flex flex-col items-center gap-1 px-3 py-1 text-[11px] transition-transform duration-100 active:scale-95", isActive ? "text-brand" : "text-t-2")}>
-              <Icon className="h-4 w-4" />{n.label}
+              className={({ isActive }) => cn("kp-tabbar__item", isActive && "is-active")}>
+              <Icon className="h-5 w-5" /><span>{n.label}</span>
             </NavLink>
           );
         })}

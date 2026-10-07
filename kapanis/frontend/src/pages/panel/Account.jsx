@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useData } from "@/lib/useData";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { relDay } from "@/lib/dsmap";
+import PushToggle from "@/components/PushToggle";
 
 // Hesap & Telegram (Claude Design "Kullanıcı paneli · Hesap"). Görünüm tasarım sisteminin sınıflarıyla,
 // davranış gerçek API ile: Telegram kodu, API anahtarları, veri indirme, hesap silme.
@@ -214,6 +215,7 @@ export default function Account() {
             </dl>
           </K.Card>
           <TelegramCard />
+          <PushToggle />
           {!owner && <KeysCard quota={quota.data} />}
         </div>
         <div className="kp-col">

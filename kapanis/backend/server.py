@@ -24,6 +24,7 @@ import chart_data
 import identity
 import limits
 import insights
+import push
 import risk_budget
 import user_alerts
 import user_api
@@ -744,6 +745,7 @@ app.include_router(user_api.build_router(lambda: db, get_current_user, require_b
 app.include_router(user_alerts.build_router(lambda: db, get_current_user, require_bot_key))
 app.include_router(insights.build_router(lambda: db, get_current_user))
 app.include_router(risk_budget.build_router(lambda: db, get_current_user))
+app.include_router(push.build_router(lambda: db, get_current_user, require_bot_key, identity.is_owner))
 app.include_router(advisor_api.build_router(get_current_user, require_owner))
 app.include_router(advisor_v2_api.build_router(lambda: db, get_current_user))   # admin only; checked inside
 
@@ -810,6 +812,7 @@ async def startup():
     await db.strategies.create_index([("user_id", 1), ("name_key", 1)], unique=True)
     await user_api.ensure_indexes(db)
     await user_alerts.ensure_indexes(db)
+    await push.ensure_indexes(db)
     await db.advisor_consensus_runs.create_index([("generated_at", -1)])   # Kripto Danışman V2 audit log
     await db.advisor_positions.create_index("symbol", unique=True)
     await db.advisor_plans.create_index("symbol", unique=True)

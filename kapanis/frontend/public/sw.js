@@ -1,6 +1,6 @@
 // Kapanış service worker: uygulama kabuğu, çevrimdışı ekranı ve uygulama bildirimleri.
 // API cevapları asla önbelleğe alınmaz (veri hep canlı).
-const CACHE = "kapanis-shell-v3";
+const CACHE = "kapanis-shell-v4";
 const OFFLINE = "/offline.html";
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", OFFLINE, "/manifest.json", "/icon-192.png"])).then(() => self.skipWaiting()));

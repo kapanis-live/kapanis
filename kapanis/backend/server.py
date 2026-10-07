@@ -764,12 +764,17 @@ if FRONTEND_BUILD.is_dir():
     LOGO_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/logos", StaticFiles(directory=LOGO_DIR), name="logos")
 
+    # The page shell names the hashed script and style files, so it must never be served from a stale copy.
+    # Without this header browsers guess a lifetime from Last-Modified and the installed app stays on the old build.
+    NO_CACHE = {"Cache-Control": "no-cache"}
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def spa(full_path: str):
         candidate = (FRONTEND_BUILD / full_path).resolve()
         if full_path and candidate.is_file() and FRONTEND_BUILD.resolve() in candidate.parents:
-            return FileResponse(candidate)
-        return FileResponse(FRONTEND_BUILD / "index.html")  # client-side routes like /app/makro
+            # sw.js, manifest, offline page: always revalidated, or a phone keeps an old app after a deploy
+            return FileResponse(candidate, headers=NO_CACHE)
+        return FileResponse(FRONTEND_BUILD / "index.html", headers=NO_CACHE)  # client-side routes like /app/makro
 
 app.add_middleware(
     CORSMiddleware,

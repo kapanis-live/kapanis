@@ -22,7 +22,16 @@
         <div id="root"></div>
         <script>
             if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
-                window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js").catch(function () {}); });
+                // Yeni sürüm: uygulama öne her geldiğinde kontrol edilir; yeni servis çalışanı devreye girince sayfa bir kez yenilenir
+                var hadWorker = !!navigator.serviceWorker.controller, reloaded = false;
+                navigator.serviceWorker.addEventListener("controllerchange", function () {
+                    if (hadWorker && !reloaded) { reloaded = true; location.reload(); }
+                });
+                window.addEventListener("load", function () {
+                    navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then(function (reg) {
+                        document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") reg.update().catch(function () {}); });
+                    }).catch(function () {});
+                });
             }
         </script>
     </body>

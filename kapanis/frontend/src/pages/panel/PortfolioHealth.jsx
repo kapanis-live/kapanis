@@ -5,6 +5,8 @@ import api, { formatApiErrorDetail } from "@/lib/api";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData } from "@/lib/useData";
 import { px } from "@/lib/portfolio";
+import { useAuth } from "@/context/AuthContext";
+import UsBook from "@/components/UsBook";
 
 const pct = (v) => (v == null ? "—" : `${v >= 0 ? "+" : "−"}%${U.fmtNum(Math.abs(v), 1)}`);
 const tone = (v) => (v == null ? "" : v >= 0 ? "kp-num-up" : "kp-num-down");
@@ -80,6 +82,7 @@ function StressCard() {
 // Portföy sağlığı: ağırlık, tepeden düşüş, test edilmiş trend kuralı, birlikte hareket edenler
 export default function PortfolioHealth() {
   const q = useData("health", "/portfolio/health", { refetchInterval: 300_000 });
+  const { owner } = useAuth();
   const d = q.data;
   const rows = d?.pozisyonlar || [];
   return <div className="kp-page">
@@ -87,6 +90,7 @@ export default function PortfolioHealth() {
     <div className="mb-4"><RegimeStrip /></div>
     <div className="mb-4"><SizeCalc /></div>
     <div className="mb-4"><StressCard /></div>
+    {owner && <div className="mb-4"><UsBook /></div>}
     {q.isLoading ? <div className="kp-skel h-40" aria-busy="true" /> : !rows.length ? (
       <K.Card title="Açık pozisyon yok"><p className="kp-note m-0">Portföyüm'e pozisyon ekleyince burada sağlık özeti çıkar.</p></K.Card>
     ) : <>

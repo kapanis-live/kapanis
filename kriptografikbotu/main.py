@@ -66,6 +66,7 @@ import conversation_store as store
 import llm
 import macro
 import model_score
+import notify_prefs
 import news
 import opportunities
 import market
@@ -243,6 +244,7 @@ BOT_MENU = [
     ("sessiz", "Hiç bildirim gelmesin (açmak için /plan)"),
     ("midas", "Midas'ta alınamayan coinler (taramaya girmez)"),
     ("seviye", "Destek/direnç taraması (30 dk'da bir; kapat/ac)"),
+    ("bildirimler", "Piyasa bildirimleri: /kripto /bist /abd ac|kapat"),
     ("ne", "Elindeki bir varlık için plan: /ne ASTOR"),
     ("pozisyon", "Plan için pozisyon işareti: /pozisyon BTC acik"),
     ("sil", "Plan sil: /sil BTC"),
@@ -298,6 +300,8 @@ class RetryBot(ExtBot):
 
     async def send_message(self, *args, **kwargs):
         chat_id = kwargs.get("chat_id", args[0] if args else None)
+        if notify_prefs.blocked(chat_id, kwargs.get("text", args[1] if len(args) > 1 else None), USER_TURN.get()):
+            return HeldMessage()          # that market's notifications are off for this chat: dropped, not queued
         if _held(chat_id):
             quiet.hold(kwargs.get("text", args[1] if len(args) > 1 else ""))
             return HeldMessage()
@@ -305,6 +309,8 @@ class RetryBot(ExtBot):
 
     async def send_photo(self, *args, **kwargs):
         chat_id = kwargs.get("chat_id", args[0] if args else None)
+        if notify_prefs.blocked(chat_id, kwargs.get("caption"), USER_TURN.get()):
+            return HeldMessage()
         if _held(chat_id):
             quiet.hold(kwargs.get("caption") or "", "foto")
             return HeldMessage()
@@ -397,6 +403,8 @@ async def run_analysis(bot, chat_id: int | None, user_text: str, coins: list[str
 
     `buttons(reply, plan_coins)` returns the inline keyboard for the reply, or None.
     """
+    if chat_id and notify_prefs.blocked(chat_id, None, USER_TURN.get()):
+        return None        # a scheduled analysis for a market whose notifications are off: no paid model call for nothing
     async with analysis_lock:
         # chat_id None: the answer only goes to the panel (a site user without a Telegram link)
         status = await bot.send_message(chat_id, "⏳ veri çekiliyor, analiz ediliyor...", disable_notification=True) if chat_id else None
@@ -2673,7 +2681,7 @@ async def user_alarm_job(context: ContextTypes.DEFAULT_TYPE):
             if not chat:
                 continue
             if ev.get("kod"):
-                text = ev["metin"] + "\nGerçek emir gönderilmedi; karar senin."
+                text = notify_prefs.tag(ev["metin"] + "\nGerçek emir gönderilmedi; karar senin.", ev.get("piyasa"))
                 buttons = [InlineKeyboardButton("📊 Grafiği aç", url=link),
                            InlineKeyboardButton("⏰ Alarmlarım", url=f"{config.PUBLIC_URL}/app/alarmlarim")]
             else:  # weekly summary
@@ -3166,6 +3174,10 @@ async def bist_backtest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @authorized
 async def bist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    said = notify_prefs.command(update.effective_chat.id, "BIST", context.args)
+    if said:                                  # /bist ac | kapat; every other /bist form is untouched
+        await update.message.reply_text(said)
+        return
     arg = context.args[0].lower() if context.args else ""
     chat = update.effective_chat.id
     if arg in ("butce", "bütçe"):
@@ -4638,6 +4650,7 @@ async def dca_job(context: ContextTypes.DEFAULT_TYPE):
     today = alerts_store.now_tr().date()
     month = today.strftime("%Y-%m")
     for p in dca.plans():
+        notify_prefs.enter(p.get("piyasa"))      # gold / FX plans have no market switch and always pass
         try:
             async with httpx.AsyncClient() as client:
                 if p["piyasa"] == "BIST":
@@ -4841,7 +4854,8 @@ async def levels_job(context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         res = await levels_scan.scan()
-        said = levels_scan.text(res)
+        on = [e for e in res["olaylar"] if notify_prefs.notifications_enabled(config.ALLOWED_CHAT_ID, e["piyasa"])]
+        said = levels_scan.text({**res, "olaylar": on})    # the digest lists only the markets that are switched on
         levels_scan.record(res["olaylar"])   # the long setups go to the Signals page as information, never as AL
     except Exception:
         log.exception("Level scan failed")
@@ -5808,6 +5822,12 @@ def register_panel_actions(bot):
 
     async def settings_set(p):
         """Owner's parameters from the panel's "Düzenle" form (panel_settings.SPEC + quiet windows)."""
+        if isinstance(p.get("bildirim"), dict):     # the three market switches: the same store as /kripto ac|kapat
+            try:
+                notify_prefs.set_enabled(config.ALLOWED_CHAT_ID, p["bildirim"].get("piyasa"), bool(p["bildirim"].get("acik")))
+            except ValueError as e:
+                return f"❌ Panel ayarı: {e}"
+            return "⚙️ Panelden bildirim tercihi:\n" + notify_prefs.text(config.ALLOWED_CHAT_ID)
         if isinstance(p.get("degerler"), dict):
             vals = dict(p["degerler"])
             quiet_text = vals.pop("sessizlik", None)
@@ -5848,9 +5868,11 @@ def register_panel_actions(bot):
         """/temel from the panel: BIST (İş Yatırım) or US (SEC + Yahoo) fundamentals, no AI."""
         tick = bist.ticker(str(p.get("kod", ""))).removesuffix(".US")
         mkt = p.get("piyasa") or ("BIST" if tick in universe.bist_names() else await _detect_market(tick))
+        card_doc = None
         try:
             if mkt == "ABD":
                 c, f = await us_card.card(tick)                     # the card first, the full fundamentals under it
+                card_doc = c
                 text = us_card.text(c) + "\n\n— AYRINTI —\n" + us_fund.text(f)
                 label = f["puan"].get("durum")
                 flags = (f.get("uyarilar") or [])[:6]
@@ -5871,8 +5893,20 @@ def register_panel_actions(bot):
                                                "zaman": alerts_store.now_tr().isoformat(), "fiyat": f.get("fiyat"),
                                                "skor": f["puan"]["skor"], "etiket": label, "parcalar": f["puan"]["parcalar"],
                                                "not": f["puan"].get("not"), "uyarilar": flags, "olumlular": good,
-                                               "metin": text, "kaynak": f.get("kaynak")}])
+                                               "metin": text, "kaynak": f.get("kaynak"), "kart": card_doc}])
         return f"📚 Panelden temel analiz {tick}: skor {f['puan']['skor']}/100, {label} (ayrıntı panelde)"
+
+    async def us_portfolio_req(p):
+        """The panel's Portföy Sağlığı asks for the US book: themes, co-movement, beta, scenarios (us_portfolio.py)."""
+        now = alerts_store.now_tr().isoformat()
+        try:
+            r = await us_portfolio.report()
+        except Exception as e:
+            await web_sync.push_docs("sonuclar", [{"id": "abd_portfoy", "tur": "abd_portfoy", "zaman": now, "hata": str(e)[:150]}])
+            return f"❌ Panel ABD portföyü: {str(e)[:150]}"
+        await web_sync.push_docs("sonuclar", [{"id": "abd_portfoy", "tur": "abd_portfoy", "zaman": now, "bos": r is None,
+                                               **(r or {})}])
+        return "🇺🇸 Panelden ABD portföy analizi hazır (ayrıntı panelde)" if r else "ℹ️ Panel: açık ABD pozisyonu yok"
 
     def as_owner():
         """A stand-in for the owner's Telegram message: what the command would reply becomes the panel result."""
@@ -6043,7 +6077,7 @@ def register_panel_actions(bot):
         "lesson.request": lesson,
         "check.request": check_req, "ind.create": ind_create_, "ind.delete": ind_delete_, "compare.request": compare_req,
         "dividend.refresh": dividend_refresh,
-        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req,
+        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req, "us.portfolio": us_portfolio_req,
     })
 
 
@@ -6272,8 +6306,24 @@ async def fundamentals_ai(update, context, tick: str):
 # --- US stocks: /abd, fundamentals, ranking, plan follow-up after the New York close -----------------------
 
 @authorized
+async def bildirimler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(notify_prefs.text(update.effective_chat.id))
+
+
+@authorized
+async def kripto_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/kripto ac | kapat: the crypto notification switch (commands like /danis BTC work either way)."""
+    said = notify_prefs.command(update.effective_chat.id, "KRIPTO", context.args)
+    await update.message.reply_text(said or notify_prefs.text(update.effective_chat.id))
+
+
+@authorized
 async def abd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
+    said = notify_prefs.command(update.effective_chat.id, "ABD", args)
+    if said:                                  # /abd ac | kapat; every other /abd form is untouched
+        await update.message.reply_text(said)
+        return
     sub = args[0].lower() if args else ""
     if sub == "butce":
         try:
@@ -6659,6 +6709,7 @@ async def position_job(context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton("🗑 Hiç almadım, kaydı sil", callback_data=f"psil|{p['id']}")])
         r = positions.pnl(p, close)
         text += f"\nK/Z: {r['pnl_usd']:+.2f} {p.get('para', 'USD')}" + (f", {r['R']:+.2f}R" if r["R"] is not None else "")
+        text = notify_prefs.tag(text, p.get("piyasa", "KRIPTO"))
         await context.bot.send_message(config.ALLOWED_CHAT_ID, text, reply_markup=InlineKeyboardMarkup(kb),
                                        disable_notification=silent())
 
@@ -6772,6 +6823,8 @@ def main():
     app.add_handler(CommandHandler("sessiz", sessiz))
     app.add_handler(CommandHandler("midas", midas_cmd))
     app.add_handler(CommandHandler("seviye", seviye_cmd))
+    app.add_handler(CommandHandler("bildirimler", bildirimler_cmd))
+    app.add_handler(CommandHandler("kripto", kripto_cmd))
     app.add_handler(CommandHandler(["ne", "neyapayim"], ne_yapayim))
     app.add_handler(CommandHandler("risk", risk_cmd))
     app.add_handler(CommandHandler("grafik", grafik))
@@ -6814,7 +6867,7 @@ def main():
     if config.ALLOWED_CHAT_ID:
         now = time.time()
         first = config.CHECK_INTERVAL - now % config.CHECK_INTERVAL + config.CHECK_DELAY
-        app.job_queue.run_repeating(watch_job, interval=config.CHECK_INTERVAL, first=first)
+        app.job_queue.run_repeating(notify_prefs.scoped("KRIPTO")(watch_job), interval=config.CHECK_INTERVAL, first=first)
         app.job_queue.run_repeating(position_job, interval=config.CHECK_INTERVAL, first=first + 10)
         log.info("Watcher starts in %.0f s", first)
         schedule_brief(app)
@@ -6823,35 +6876,35 @@ def main():
         app.job_queue.run_repeating(held_digest_job, interval=60, first=30, name="bekleyen_bildirim")
         app.job_queue.run_repeating(signal_life_job, interval=300, first=90, name="sinyal_omru")
         # BIST: 1h bars close at :30 (+~16 min data delay) -> check every 15 min; daily scan after the final close.
-        app.job_queue.run_repeating(bist_hourly_job, interval=15 * 60, first=first + 40)
-        app.job_queue.run_daily(bist_daily_job, dtime(18, 35, tzinfo=macro.TR), name="bist_daily")
+        app.job_queue.run_repeating(notify_prefs.scoped("BIST")(bist_hourly_job), interval=15 * 60, first=first + 40)
+        app.job_queue.run_daily(notify_prefs.scoped("BIST")(bist_daily_job), dtime(18, 35, tzinfo=macro.TR), name="bist_daily")
         # Exit/top analysis: crypto on each 4h close, BIST after the final daily close.
         four_h = 4 * 3600
-        app.job_queue.run_repeating(exit_job, interval=four_h, first=four_h - time.time() % four_h + 60,
+        app.job_queue.run_repeating(notify_prefs.scoped("KRIPTO")(exit_job), interval=four_h, first=four_h - time.time() % four_h + 60,
                                     data="KRIPTO", name="exit_crypto")
-        app.job_queue.run_daily(exit_job, dtime(18, 40, tzinfo=macro.TR), data="BIST", name="exit_bist")
+        app.job_queue.run_daily(notify_prefs.scoped("BIST")(exit_job), dtime(18, 40, tzinfo=macro.TR), data="BIST", name="exit_bist")
         # Splits/dividends before the session (and once at startup), accumulation reminders, weekly summary.
-        app.job_queue.run_daily(corporate_job, dtime(9, 45, tzinfo=macro.TR), name="corporate")
-        app.job_queue.run_once(corporate_job, when=60, name="corporate_start")
+        app.job_queue.run_daily(notify_prefs.scoped("BIST")(corporate_job), dtime(9, 45, tzinfo=macro.TR), name="corporate")
+        app.job_queue.run_once(notify_prefs.scoped("BIST")(corporate_job), when=60, name="corporate_start")
         app.job_queue.run_daily(dca_job, dtime(*config.DCA_REMIND_HOUR, tzinfo=macro.TR), name="birikim")
         app.job_queue.run_daily(weekly_job, dtime(20, 0, tzinfo=macro.TR), days=(0,), name="haftalik")  # 0 = Sunday
-        app.job_queue.run_daily(eod_job, dtime(18, 45, tzinfo=macro.TR), name="bist_gunsonu")
+        app.job_queue.run_daily(notify_prefs.scoped("BIST")(eod_job), dtime(18, 45, tzinfo=macro.TR), name="bist_gunsonu")
         app.job_queue.run_once(universe_job, when=30, name="evren_ilk")
         # US: after the New York close (16:20 ET, DST handled by the time zone) and a Saturday ranking
-        app.job_queue.run_daily(us_daily_job, dtime(16, 20, tzinfo=us.NY), name="abd_gunluk")
-        app.job_queue.run_daily(us_weekly_job, dtime(10, 0, tzinfo=macro.TR), days=(6,), name="abd_guc")  # 6 = Saturday
-        app.job_queue.run_daily(strength_job, dtime(19, 0, tzinfo=macro.TR), days=(5,), name="bist_guc")  # 5 = Friday
+        app.job_queue.run_daily(notify_prefs.scoped("ABD")(us_daily_job), dtime(16, 20, tzinfo=us.NY), name="abd_gunluk")
+        app.job_queue.run_daily(notify_prefs.scoped("ABD")(us_weekly_job), dtime(10, 0, tzinfo=macro.TR), days=(6,), name="abd_guc")  # 6 = Saturday
+        app.job_queue.run_daily(notify_prefs.scoped("BIST")(strength_job), dtime(19, 0, tzinfo=macro.TR), days=(5,), name="bist_guc")  # 5 = Friday
         app.job_queue.run_repeating(pf_alarm_job, interval=15 * 60, first=first + 50, name="portfoy_alarm")
         app.job_queue.run_daily(universe_job, dtime(9, 30, tzinfo=macro.TR), name="evren")
         app.job_queue.run_daily(after_sale_job, dtime(19, 0, tzinfo=macro.TR), name="satis_sonrasi")
-        app.job_queue.run_repeating(risk_news_job, interval=30 * 60, first=120, name="risk_haber")
+        app.job_queue.run_repeating(notify_prefs.scoped("KRIPTO")(risk_news_job), interval=30 * 60, first=120, name="risk_haber")
         # two minutes after :00 and :30, so the hourly candle is closed and BIST's delayed bar has arrived
         app.job_queue.run_repeating(oi_store_job, interval=6 * 3600, first=300, name="oi_gecmisi")
         app.job_queue.run_repeating(levels_job,interval=30 * 60, first=1800 - time.time() % 1800 + 120, name="seviye_tarama")
         app.job_queue.run_repeating(paper_outcomes_job, interval=30 * 60, first=420, name="danisman_paper")
         app.job_queue.run_repeating(takip_job, interval=5 * 60, first=180, name="takip_sor")  # asks every 30 min (/takip aralik)
         app.job_queue.run_repeating(watch_rules_job, interval=30 * 60, first=600, name="takip_kural")
-        app.job_queue.run_repeating(kap_job, interval=15 * 60, first=240, name="kap")
+        app.job_queue.run_repeating(notify_prefs.scoped("BIST")(kap_job), interval=15 * 60, first=240, name="kap")
         app.job_queue.run_repeating(ind_alarm_job, interval=15 * 60, first=300, name="gosterge_alarm")
         app.job_queue.run_daily(calendar_job, dtime(8, 45, tzinfo=macro.TR), name="sirket_takvimi")
         app.job_queue.run_daily(calendar_job, dtime(20, 0, tzinfo=macro.TR), name="sirket_takvimi_aksam")

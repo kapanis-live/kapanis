@@ -461,7 +461,7 @@ ACTION_TYPES = {"analysis.request", "plan.add", "plan.remove", "firsat.run", "ta
                 "compare.request", "dividend.refresh", "backtest.run", "settings.set", "fundamentals.request",
                 "holding.add", "holding.edit", "holding.delete", "holding.bulk", "holding.sell",
                 "cash.set", "dca.add", "dca.delete", "palarm.add", "palarm.delete", "watch.add", "watch.remove",
-                "discipline.set"}
+                "discipline.set", "us.portfolio"}
 
 
 class ActionBody(BaseModel):

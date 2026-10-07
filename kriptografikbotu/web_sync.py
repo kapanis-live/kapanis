@@ -28,6 +28,7 @@ import freshness
 import gate
 import macro
 import market
+import notify_prefs
 import positions
 
 log = logging.getLogger(__name__)
@@ -473,6 +474,9 @@ def build_settings() -> dict:
         "default_rr_min": 1.0,
         "timezone": "Europe/Istanbul",
         "notifications": {"telegram": True, "email": False},
+        # per-market proactive notifications (notify_prefs): the site shows and changes the same values as Telegram
+        "bildirimler": [{"piyasa": m, "etiket": notify_prefs.LABELS[m], "acik": on}
+                        for m, on in notify_prefs.prefs(config.ALLOWED_CHAT_ID).items()],
         "duzenlenebilir": editable_params(),
         "params": [
             {"label": "Kısa vadeli bütçe", "value": f"~{s.get('kisa_butce_usd') or 100:g} USD"},

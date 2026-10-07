@@ -62,6 +62,42 @@ function ParamsPanel({ d }) {
   );
 }
 
+// Piyasa bazlı otomatik bildirimler: Telegram'daki /kripto, /bist, /abd ac|kapat ile aynı kayıt
+function NotificationsPanel({ d }) {
+  const rows = d.bildirimler || [];
+  const [busy, setBusy] = useState(null);
+  const [local, setLocal] = useState({});
+  if (!rows.length) return null;
+  const flip = async (r, on) => {
+    setBusy(r.piyasa);
+    if (await sendAction("settings.set", { bildirim: { piyasa: r.piyasa, acik: on } }, `${r.etiket} bildirimleri ${on ? "açılıyor" : "kapatılıyor"}.`)) {
+      setLocal((x) => ({ ...x, [r.piyasa]: on }));
+    }
+    setBusy(null);
+  };
+  return (
+    <Panel title="Bildirimler" testid="settings-notifications">
+      <div className="flex flex-col gap-3">
+        {rows.map((r) => {
+          const on = local[r.piyasa] ?? r.acik;
+          return (
+            <div key={r.piyasa} className="flex items-center justify-between gap-3">
+              <span className="text-sm text-t-1">{r.etiket} bildirimleri</span>
+              <button type="button" role="switch" aria-checked={on} aria-label={`${r.etiket} bildirimleri`} disabled={busy === r.piyasa}
+                onClick={() => flip(r, !on)} data-testid={`notify-${r.piyasa}`}
+                className={`inline-flex h-7 w-[3.25rem] shrink-0 items-center rounded-full border px-0.5 transition-colors duration-150 disabled:opacity-50 ${on ? "justify-end border-up/50 bg-up/20" : "justify-start border-hairline bg-raised"}`}>
+                <span className={`grid h-[1.375rem] w-[1.375rem] place-items-center rounded-full text-[9px] font-bold ${on ? "bg-up text-ink" : "bg-t-3 text-ink"}`}>{on ? "AÇ" : "KP"}</span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-3 text-xs text-t-3">Kapalı piyasadan otomatik mesaj gelmez (alarm, sinyal, seviye özeti, çıkış uyarısı). Yazdığın komutlar
+        yine cevaplanır, kayıtlı alarmlar silinmez; kapalıyken oluşan bildirimler sonradan gönderilmez. Telegram: /bildirimler</p>
+    </Panel>
+  );
+}
+
 export default function Settings() {
   const q = useData("settings", "/settings");
   const { user } = useAuth();
@@ -72,6 +108,8 @@ export default function Settings() {
         {(d) => (
           <div className="grid gap-6 lg:grid-cols-2">
             <ParamsPanel d={d} />
+
+            <NotificationsPanel d={d} />
 
             <Panel title="Hesap" testid="settings-account">
               <Row label="E-posta" value={user?.email || "—"} />

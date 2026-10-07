@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 import httpx
 
 import alerts_store
+import notify_prefs
 import bist
 import bist_signals
 import config
@@ -280,8 +281,8 @@ async def check_ind_alerts() -> list[str]:
             if hit:
                 a["tetikler"] = (a.get("tetikler") or [])[-19:] + [alerts_store.now_tr().isoformat()]
                 code_hint = f"/kontrol {a['kod']}"
-                msgs.append(f"📈 GÖSTERGE ALARMI {ind_label(a)}\n{detail}.\n"
-                            f"Bu bir AL sinyali değildir. Kapıdan geçirmek için: {code_hint}")
+                msgs.append(notify_prefs.tag(f"📈 GÖSTERGE ALARMI {ind_label(a)}\n{detail}.\n"
+                                             f"Bu bir AL sinyali değildir. Kapıdan geçirmek için: {code_hint}", a["piyasa"]))
     _save(IND_ALERTS, items)
     return msgs
 

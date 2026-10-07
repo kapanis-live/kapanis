@@ -33,6 +33,7 @@ import config  # noqa: E402
 import engine  # noqa: E402
 import regime  # noqa: E402
 import us  # noqa: E402
+import us_events  # noqa: E402
 
 SEC_CACHE = HERE / "kl" / "sec_8k"
 VARIANTS = {"PEAD +%2 / 40 gun (on kayitli kural)": (0.02, 40, 1), "PEAD +%5 / 40 gun": (0.05, 40, 1),
@@ -40,38 +41,11 @@ VARIANTS = {"PEAD +%2 / 40 gun (on kayitli kural)": (0.02, 40, 1), "PEAD +%5 / 4
 
 
 async def releases(client, sym: str) -> list[str]:
-    """Acceptance times of the company's earnings 8-Ks as the API gives them (see ny_time), oldest first."""
-    f = SEC_CACHE / f"{sym}.json"
-    if f.exists():
-        return json.loads(f.read_text())
-    cik = us.cik(sym)
-    if not cik:
-        return []
-    head = {"User-Agent": config.SEC_USER_AGENT}
-    r = await client.get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json", headers=head, timeout=30)
-    r.raise_for_status()
-    doc = r.json()["filings"]
-    parts = [doc["recent"]]
-    for extra in doc.get("files", []):
-        if extra.get("filingTo", "9999") >= "2015-01-01":
-            await asyncio.sleep(0.15)                      # SEC fair-access limit: 10 requests a second
-            e = await client.get("https://data.sec.gov/submissions/" + extra["name"], headers=head, timeout=30)
-            e.raise_for_status()
-            parts.append(e.json())
-    out = sorted({t[:19] for p in parts for form, items, t in zip(p["form"], p["items"], p["acceptanceDateTime"])
-                  if form == "8-K" and "2.02" in (items or "")})
-    f.write_text(json.dumps(out))
-    await asyncio.sleep(0.15)
-    return out
+    """The company's earnings release times (us_events.releases), cached for good in the research folder."""
+    return await us_events.releases(client, sym, cache=SEC_CACHE, since="2015-01-01", ttl=float("inf"))
 
 
-def ny_time(t: str) -> datetime:
-    """The submissions API's acceptanceDateTime is not UTC and not New York time: it runs ahead of New York by twice
-    New York's UTC offset (Apple's 16:30 release reads 00:30 in summer and 02:30 in winter; JPMorgan's 06:30 reads
-    14:30 / 16:30). Undo that."""
-    shown = datetime.fromisoformat(t)
-    summer = shown - timedelta(hours=8)
-    return summer if summer.replace(tzinfo=us.NY).utcoffset() == timedelta(hours=-4) else shown - timedelta(hours=10)
+ny_time = us_events.ny_time
 
 
 def reaction_rows(df: pd.DataFrame, times: list[str]) -> list[int]:

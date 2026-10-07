@@ -52,7 +52,9 @@ import shadow
 import strength
 import universe
 import us
+import us_card
 import us_fund
+import us_portfolio
 import us_signals
 import watchlist
 import features
@@ -206,7 +208,7 @@ BOT_MENU = [
     ("bist", "🇹🇷 BIST: endeks, bütçe, makro, alarm, haber"),
     ("guc", "🇹🇷 Haftalık güç sıralaması + sektör rotasyonu"),
     ("temel", "🇹🇷🇺🇸 Temel analiz: /temel THYAO · /temel AAPL"),
-    ("abd", "🇺🇸 ABD: piyasa, /abd AAPL analiz, /abd guc"),
+    ("abd", "🇺🇸 ABD: piyasa, /abd kart AAPL, /abd portfoy, /abd guc"),
     ("gunsonu", "🇹🇷 BIST gün sonu raporu"),
     ("temettu", "🇹🇷 Temettü ve bedelsiz: /temettu THYAO"),
     # portföy araçları
@@ -5848,8 +5850,8 @@ def register_panel_actions(bot):
         mkt = p.get("piyasa") or ("BIST" if tick in universe.bist_names() else await _detect_market(tick))
         try:
             if mkt == "ABD":
-                f = await us_fund.report(tick)
-                text = us_fund.text(f)
+                c, f = await us_card.card(tick)                     # the card first, the full fundamentals under it
+                text = us_card.text(c) + "\n\n— AYRINTI —\n" + us_fund.text(f)
                 label = f["puan"].get("durum")
                 flags = (f.get("uyarilar") or [])[:6]
                 good = (f.get("olumlular") or [])[:6]
@@ -6292,6 +6294,12 @@ async def abd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sub == "temel" and len(args) > 1:
         await us_fundamentals_cmd(update, context, args[1].upper())
         return
+    if sub == "kart" and len(args) > 1:
+        await us_card_cmd(update, context, args[1].upper())
+        return
+    if sub in ("portfoy", "portföy"):
+        await us_portfolio_cmd(update, context)
+        return
     if sub:
         await us_analysis(update, context, sub.upper())
         return
@@ -6310,7 +6318,8 @@ async def abd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     budget = us_signals.budget_usd()
     lines += ["", f"Bütçe: {budget:,.0f} USD · açık {us_signals.open_us_usd():,.0f} USD" if budget else "Bütçe girilmedi: /abd butce 1000",
               f"Veri: {'Tiingo (bugün ' + str(usage.get('istek', 0)) + '/900 istek)' if config.TIINGO_API_KEY else 'Yahoo (Tiingo anahtarı .env: TIINGO_API_KEY)'} + SEC EDGAR",
-              "", "/abd AAPL — analiz · /temel AAPL — temel · /abd guc — S&P 100 güç sıralaması · /abd butce 1000"]
+              "", "/abd kart AAPL — karar destek kartı · /abd portfoy — tema, korelasyon, senaryo · /abd AAPL — yapay zekâ analizi · "
+                  "/temel AAPL — temel · /abd guc — S&P 100 güç sıralaması · /abd butce 1000"]
     await update.message.reply_text("\n".join(lines))
 
 
@@ -6324,6 +6333,31 @@ async def us_analysis(update, context, t: str):
     await status.delete()
     await run_analysis(context.bot, update.effective_chat.id, f"[ABD] {t} analiz et.", [], data=data,
                        footer="ABD planı kaydedilirse New York kapanışından sonra günlük kapanışla izlenir.")
+
+
+async def us_card_cmd(update, context, t: str):
+    """/abd kart NVDA: the decision-support card (no AI call, no suggestion)."""
+    status = await update.message.reply_text(f"⏳ {t}: SEC, analist tahminleri, fiyat ve bilanço takvimi...")
+    try:
+        c, _ = await us_card.card(t)
+    except Exception as e:
+        await status.edit_text(f"❌ {t}: {str(e)[:150]}")
+        return
+    await status.delete()
+    await send_long(context.bot, update.effective_chat.id, us_card.text(c))
+
+
+async def us_portfolio_cmd(update, context):
+    """/abd portfoy: sector / theme exposure, co-movement, beta and what-if scenarios of the open US positions."""
+    status = await update.message.reply_text("⏳ ABD portföyü: 1 yıllık fiyatlar, sektörler, SPY / QQQ / faiz / VIX...")
+    try:
+        r = await us_portfolio.report()
+    except Exception as e:
+        await status.edit_text(f"❌ ABD portföyü hesaplanamadı: {str(e)[:150]}")
+        return
+    await status.delete()
+    await send_long(context.bot, update.effective_chat.id,
+                    us_portfolio.text(r) if r else "Açık ABD pozisyonu yok. Eklemek için: /portfoy ekle NVDA 2 230")
 
 
 async def us_fundamentals_cmd(update, context, t: str):

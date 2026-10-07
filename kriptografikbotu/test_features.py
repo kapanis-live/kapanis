@@ -586,6 +586,74 @@ class USEngineTest(unittest.TestCase):
         self.assertFalse(us.trading_day(date(2026, 11, 26)))  # Thanksgiving
         self.assertTrue(us.trading_day(date(2026, 11, 27)))   # half day, still open
 
+    def test_us_card_labels_sources_and_earnings_context(self):
+        import pandas as pd
+        import us
+        import us_card
+        import us_events
+        self.assertEqual(str(us_events.ny_time("2025-08-01T00:30:25")), "2025-07-31 16:30:25")      # summer: 8 hours ahead
+        self.assertEqual(str(us_events.ny_time("2026-01-13T16:41:09")), "2026-01-13 06:41:09")      # winter: 10 hours ahead
+        ms = lambda day: int(datetime.fromisoformat(day + "T09:30").replace(tzinfo=us.NY).timestamp() * 1000)
+        days = ["2025-07-30", "2025-07-31", "2025-08-01", "2025-08-04"]
+        d = pd.DataFrame({"open_time": [ms(x) for x in days], "close": [100.0, 100.0, 106.0, 108.12]})
+        spy = pd.DataFrame({"open_time": [ms(x) for x in days], "close": [500.0, 500.0, 505.0, 505.0]})
+        r = us_events.last_reaction(d, spy, ["2025-08-01T00:30:25"])     # released after the close of 31 July
+        self.assertEqual((r["tepki_gunu"], r["tepki_yuzde"], r["spy_gore_yuzde"], r["o_gunden_beri_yuzde"], r["seans_once"]),
+                         ("2025-08-01", 6.0, 5.0, 2.0, 1))
+        self.assertEqual(us_events.last_reaction(d, spy, ["2025-07-31T14:30:00"])["tepki_gunu"], "2025-07-31")   # before the open
+        today = date(2026, 10, 7)
+        self.assertEqual(us_card.earnings("2026-10-09", None, today)["risk"], "YÜKSEK")
+        self.assertEqual(us_card.earnings("2026-10-19", None, today)["risk"], "ORTA")
+        self.assertEqual(us_card.earnings("2026-11-17", "2026-11-20", today)["kaynak"], "şirket takvimi (Yahoo)")
+        est = us_card.earnings(None, "2026-11-20", today)
+        self.assertEqual((est["risk"], est["kaynak"][:6]), ("DÜŞÜK", "tahmin"))
+        self.assertEqual(us_card.earnings(None, None, today)["risk"], "BİLİNMİYOR")
+        rev = lambda **k: us_card.revisions({"tahminler": {"+1y": k}})["etiket"]
+        self.assertEqual([rev(revizyon_30g_yuzde=2.5, yukari_30g=46, asagi_30g=0), rev(revizyon_30g_yuzde=-3.0), rev(revizyon_30g_yuzde=0.2, yukari_30g=3, asagi_30g=3), rev()],
+                         ["YUKARI", "AŞAĞI", "YATAY", "BİLİNMİYOR"])
+        val = lambda **k: us_card.valuation(k)["etiket"]
+        self.assertEqual([val(ileri_fk=48.0, peg=1.2), val(ileri_fk=12.0, peg=0.9), val(ileri_fk=22.0, peg=1.8), val()],
+                         ["PAHALI", "UCUZ", "MAKUL", "BİLİNMİYOR"])
+        f = {"hisse": "NVDA", "fiyat": 237.13, "son_ceyrek": "2026-07-26", "ileri_fk": 48.0, "peg": 1.2, "fcf_verimi_yuzde": 2.2,
+             "puan": {"skor": 95, "durum": "BİRİKTİRME BÖLGESİ"},
+             "analist": {"sektor": "Technology", "endustri": "Semiconductors", "sonraki_bilanco": "2026-10-09",
+                         "tahminler": {"+1y": {"revizyon_30g_yuzde": -2.0}}, "surprizler": [{"ceyrek": "2Q2026", "surpriz_yuzde": 6.2}]},
+             "teknik": {"trend": {"günlük": "yükseliş", "haftalık": "karışık/yatay"}, "hizalama": "fiyat > 50G > 200G (güçlü)",
+                        "zirveye_uzaklik_yuzde": -1.0, "rs_spy": {"6a": 16.5}, "rs_qqq_6a": 5.6, "rs_sektor_6a": -34.9, "sektor_etf": "SOXX"}}
+        now = datetime(2026, 10, 7, 19, 0, tzinfo=us_card.alerts_store.TR)
+        c = us_card.build(f, r, None, "2026-10-06", None, now)
+        self.assertEqual((c["guc"]["spy"], c["guc"]["qqq"], c["guc"]["sektor"], c["bilanco"]["risk"]), ("GÜÇLÜ", "NÖTR", "ZAYIF", "YÜKSEK"))
+        self.assertEqual(len(c["kaynaklar"]), 4)
+        said = us_card.text(c)
+        self.assertIn("Bilanço 2 gün sonra", said)
+        self.assertIn("SEC EDGAR (8-K madde 2.02, resmi) — 2025-07-31 16:30 New York", said)
+        self.assertIn("AL/SAT önerisi değildir", said)
+        self.assertNotIn("🟢", said)
+
+    def test_us_portfolio_sees_one_theme_behind_several_names(self):
+        import numpy as np
+        import pandas as pd
+        import us_portfolio
+        idx = pd.date_range("2025-10-01", periods=260, freq="B")
+        rng = np.random.default_rng(3)
+        mkt, own = rng.normal(0, 0.01, 260), lambda: rng.normal(0, 0.004, 260)
+        price = lambda r: pd.Series(100 * np.cumprod(1 + r), index=idx)
+        closes = {"NVDA": price(2 * mkt + own()), "AMD": price(2 * mkt + own()), "COST": price(0.5 * mkt + own())}
+        factors = {"SPY": price(mkt), "QQQ": price(1.3 * mkt), "^TNX": pd.Series(4.5 + np.cumsum(-10 * mkt), index=idx),
+                   "^VIX": pd.Series(18 * np.exp(np.cumsum(-5 * mkt + rng.normal(0, 0.001, 260))), index=idx).clip(9, 80)}
+        r = us_portfolio.analyze({"NVDA": 5000.0, "AMD": 3000.0, "COST": 2000.0}, closes,
+                                 {"NVDA": "Technology", "AMD": "Technology", "COST": "Consumer Defensive"}, factors)
+        self.assertEqual(r["sektor_yuzde"]["Technology"], 80.0)
+        self.assertEqual(r["tema"]["Yarı iletken"], {"agirlik_yuzde": 80.0, "hisseler": ["AMD", "NVDA"]})
+        self.assertEqual(r["korelasyon"]["en_bagli"][0]["cift"], "AMD–NVDA")
+        self.assertAlmostEqual(r["beta"]["SPY"], 1.7, delta=0.1)                     # 0.8 x 2 + 0.2 x 0.5
+        spy = r["senaryolar"][0]
+        self.assertAlmostEqual(spy["portfoy_yuzde"], -17.0, delta=1.0)
+        self.assertAlmostEqual(spy["tutar_usd"], -1700.0, delta=100.0)
+        self.assertLess(r["senaryolar"][2]["portfoy_yuzde"], 0)                      # yields up: these fell with them
+        self.assertTrue(any("Yarı iletken" in n for n in r["dikkat"]) and any("NVDA portföyün %50" in n for n in r["dikkat"]))
+        self.assertIn("Öneri içermez", us_portfolio.text({**r, "kaynaklar": [], "uretildi": "x"}))
+
     def test_us_calendar_is_computed_for_any_year(self):
         import us
         self.assertEqual(sorted(us.holidays(2026)), ["2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25",

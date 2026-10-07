@@ -178,3 +178,11 @@ reaction is a proxy for the analyst surprise, which is not available for free be
 
 Note for anyone reading SEC times: `acceptanceDateTime` in the submissions API runs ahead of New York by twice New
 York's UTC offset (`pead_lab.ny_time`).
+
+## US module is decision support (2026-10-07)
+
+Since no US timing rule passed, the US side describes and warns instead of signalling: `us_card.py` (one card per
+stock with the source and date of every number, logged to backups/audit/abd_kart.jsonl), `us_events.py` (earnings
+release times from SEC 8-K item 2.02; the last report's reaction is shown as context with the note that the drift
+test failed), `us_portfolio.py` (sector / theme exposure, co-movement, beta, four single-factor scenarios). The
+level scan adds an earnings-risk rule to US records. None of these outputs is AL or SAT.

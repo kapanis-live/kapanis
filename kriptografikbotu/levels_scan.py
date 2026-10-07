@@ -15,6 +15,7 @@ Only zones with at least MIN_TOUCHES pivots count.
 """
 import asyncio
 import logging
+from datetime import date
 
 import httpx
 
@@ -134,7 +135,15 @@ async def _bist(client) -> list:
 async def _us(client) -> list:
     async def one(code):
         d1 = market.add_indicators(await us.fetch(client, code, "1d", bulk=True))
-        return _row("ABD", code, d1, d1, None, "1g")
+        row = _row("ABD", code, d1, d1, None, "1g")
+        if row:      # only for stocks with an event: when is the next earnings report (Yahoo calendar, cached 6 hours)
+            try:
+                import us_fund
+                nxt = (await us_fund.yahoo_summary(client, us.ticker(code))).get("sonraki_bilanco")
+                row["bilanco_gun"] = (date.fromisoformat(nxt) - us.now_ny().date()).days if nxt else None
+            except Exception as e:
+                log.info("Level scan: earnings date for %s failed: %s", code, str(e)[:80])
+        return row
     codes = dict.fromkeys(list(us.SP100) + watchlist.load().get("ABD", []))   # the S&P 100 plus the user's own list
     return [(c, one(c)) for c in codes]
 
@@ -222,6 +231,13 @@ def plan(e: dict, min_rr: float) -> dict | None:
     if e["tur"] == "KIRILIM" and stretch is not None:
         rules.append({"kural": "kovalama", "durum": "gecti" if stretch <= STRETCH_ATR else "kaldi",
                       "detay": f"kapanış bölgenin {stretch:.1f} ATR üstünde, sınır {STRETCH_ATR:g}"})
+    if e["piyasa"] == "ABD":     # a gap on the report can jump over any stop: inside the block window the rule fails
+        days = e.get("bilanco_gun")
+        known = days is not None and days >= 0          # unknown or stale date = not verified = the rule fails
+        near = known and days <= config.US_EARNINGS_BLOCK_DAYS
+        rules.append({"kural": "bilanço riski", "durum": "gecti" if known and not near else "kaldi",
+                      "detay": "sonraki bilanço tarihi doğrulanamadı: şirketin takviminden teyit et" if not known else
+                               f"bilanço {days} gün sonra" + (" — açılış boşluğu riski, yeni giriş bekle" if near else "")})
     failed = [r["kural"] for r in rules if r["durum"] == "kaldi"]
     return {"iptal": round(stop, 8), "hedef": round(target, 8), "rr": round(rr, 2), "kurallar": rules, "kalan": failed,
             "gecti": not failed, "olcum": measured(e, rr, stop)}

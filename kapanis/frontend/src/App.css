@@ -37,6 +37,8 @@
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .kp-tabbar, .light .kp-tabbar { background: rgb(var(--c-raised) / 0.97); }
 }
+/* yalnız telefon ve tablet: geniş ekranda kenar menüsü var (display:grid, Tailwind'in lg:hidden sınıfını eziyordu) */
+@media (min-width: 1024px) { .kp-tabbar { display: none; } }
 /* seçili sekmenin arkasındaki vurgu: yalnız transform ile kayar, yarıda kesilirse kaldığı yerden döner */
 .kp-tabbar__pill { position: absolute; top: 6px; bottom: 6px; left: 6px; width: calc((100% - 12px) / var(--tabs)); border-radius: 9999px;
   background: rgba(255, 255, 255, 0.10); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);

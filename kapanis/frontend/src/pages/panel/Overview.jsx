@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { K, U } from "@/ds";
 import { useData, LIVE } from "@/lib/useData";
 import { DataView } from "@/components/DataView";
@@ -112,7 +112,8 @@ export default function Overview() {
                       symbol: i.kod, title: i.portfoyde ? "Portföyünde" : "Takip listende",
                       detail: i.tur === "bilanco" ? "Bilanço günü fiyat sert oynayabilir." : undefined,
                     }))} />
-                    <p className="kp-note">Tarihler Yahoo'dan; kesin tarih için KAP / şirket. Bir gün önce Telegram'dan hatırlatırım.</p>
+                    <p className="kp-note">Tarihler Yahoo'dan; kesin tarih için KAP / şirket. Bir gün önce Telegram'dan hatırlatırım.{" "}
+                      <Link to="/app/takvim" className="kp-link">Tüm takvim →</Link></p>
                   </K.Card>
                 )}
                 <K.Card title="KAP bildirimleri">

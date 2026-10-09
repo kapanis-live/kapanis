@@ -52,6 +52,7 @@ const NAV = [
       { to: "/app/makro", label: "Makro", icon: Globe2 },
       { to: "/app/vadeli", label: "Vadeli", icon: LineChart },
       { to: "/app/abd", label: "ABD hisse kartı", icon: ClipboardCheck },
+      { to: "/app/takvim", label: "Şirket takvimi", icon: Clock },
     ],
   },
   {

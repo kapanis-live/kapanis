@@ -299,6 +299,38 @@ class ResearchStoreTest(unittest.TestCase):
             self.assertEqual(len(costs._rows()), 2)
 
 
+class WatchCardsTest(unittest.TestCase):
+    def test_strength_earnings_and_score_columns(self):
+        import datetime as dt
+        import pandas as pd
+        import watch_cards as wc
+        import watchlist
+        self.assertEqual([wc.strength(x) for x in (12.0, 10.0, 3.0, -10.0, None)], ["GÜÇLÜ", "GÜÇLÜ", "NÖTR", "ZAYIF", None])
+        self.assertEqual([wc.earnings_risk(x) for x in (0, 5, 6, 14, 15, -1, None)], ["YÜKSEK", "YÜKSEK", "ORTA", "ORTA", "DÜŞÜK", None, None])
+        closes = pd.Series([100.0] * 61 + [120.0] * 126)                      # 126 bars ago it was 100: +20 %
+        self.assertAlmostEqual(wc.six_month_return(closes), 20.0)
+        self.assertIsNone(wc.six_month_return(closes.tail(100)))
+        d = pd.DataFrame({"open_time": [i * 86_400_000 for i in range(len(closes))], "close": closes, "high": closes + 1,
+                          "low": closes - 1, "open": closes, "volume": 1000.0})
+        row = watchlist._row("X", 120.0, 119.0, watchlist.market.add_indicators(d), bench_6m=5.0)
+        self.assertEqual((row["getiri_6a"], row["guc_6a"], row["guc"]), (20.0, 15.0, "GÜÇLÜ"))
+        self.assertIsNone(watchlist._row("X", 120.0, 119.0, watchlist.market.add_indicators(d))["guc"])   # no benchmark: no label
+        today = dt.date(2026, 10, 9)
+        cal = [wc.calendar_item(i, today) for i in (
+            {"kod": "JPM", "piyasa": "ABD", "tur": "bilanco", "etiket": "Bilanço", "tarih": "2026-10-13", "portfoyde": True},
+            {"kod": "JPM", "piyasa": "ABD", "tur": "temettu_odeme", "etiket": "Temettü ödeme", "tarih": "2026-10-31", "portfoyde": True},
+            {"kod": "JPM", "piyasa": "ABD", "tur": "bilanco", "etiket": "Bilanço", "tarih": "2027-01-13", "portfoyde": True})]
+        self.assertEqual([(i["gun"], i["risk"]) for i in cal], [(4, "YÜKSEK"), (22, None), (96, "DÜŞÜK")])   # a dividend has no gap label
+        rows = {"ABD": [{"kod": "JPM"}, {"kod": "NVDA"}, {"kod": "BAD", "hata": "x"}], "KRIPTO": [{"kod": "BTC"}]}
+        wc.enrich(rows, cal, {"ABD:JPM": {"skor": 64, "etiket": "İYİ"}}, today)
+        self.assertEqual({k: rows["ABD"][0][k] for k in ("bilanco_tarih", "bilanco_gun", "bilanco_risk", "puan", "puan_etiket")},
+                         {"bilanco_tarih": "2026-10-13", "bilanco_gun": 4, "bilanco_risk": "YÜKSEK", "puan": 64, "puan_etiket": "İYİ"})   # the next report
+        self.assertEqual((rows["ABD"][1]["bilanco_gun"], rows["ABD"][1]["puan"], rows["KRIPTO"][0]["puan"]), (None, None, None))
+        self.assertNotIn("puan", rows["ABD"][2])
+        said = watchlist.text("ABD", [{**row, "kod": "JPM", "gun_yuzde": 0.2, "hafta_yuzde": 0.2, **rows["ABD"][0]}])
+        self.assertIn("güç GÜÇLÜ · bilanço 4g ⚠️ · puan 64", said)
+
+
 class DeleteButtonTest(unittest.TestCase):
     def test_sil_removes_every_lot_of_one_asset_without_a_sale(self):
         import positions

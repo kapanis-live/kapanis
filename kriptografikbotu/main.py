@@ -56,6 +56,7 @@ import us_card
 import us_fund
 import us_portfolio
 import us_signals
+import watch_cards
 import watchlist
 import features
 import tools
@@ -5320,6 +5321,8 @@ async def lesson_job(context: ContextTypes.DEFAULT_TYPE):
 async def calendar_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         await features.refresh_calendar(watchlist.load())
+        # once a day, in the background: fundamental scores for the watch-list columns (slow, never blocks reminders)
+        _spawn(watch_cards.refresh_scores(features._calendar_codes(watchlist.load()), alerts_store.now_tr().date().isoformat()))
         text = features.calendar_reminders()
         if text:
             await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
@@ -5489,7 +5492,8 @@ async def olaylar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     lines = ["📅 ŞİRKET OLAYLARI (45 gün · Yahoo, kesin tarih için KAP)"]
     for i in items[:40]:
-        lines.append(f"{i['tarih'][8:10]}.{i['tarih'][5:7]} {'💼 ' if i['portfoyde'] else ''}{i['kod']} ({i['piyasa']}) · {i['etiket']}")
+        lines.append(f"{i['tarih'][8:10]}.{i['tarih'][5:7]} {'💼 ' if i['portfoyde'] else ''}{i['kod']} ({i['piyasa']}) · {i['etiket']}"
+                     f" · {i['gun']} gün" + (f" · boşluk riski {i['risk']}" if i.get("risk") in ("YÜKSEK", "ORTA") else ""))
     await send_lines(context.bot, update.effective_chat.id, "\n".join(lines))
 
 

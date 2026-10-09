@@ -28,6 +28,7 @@ import journal
 import market
 import positions
 import us
+import watch_cards
 
 log = logging.getLogger(__name__)
 D = config.DATA_DIR
@@ -310,9 +311,11 @@ async def refresh_calendar(watch: dict) -> dict:
 
 
 def calendar_for_panel(days: int = 45) -> list[dict]:
+    """Upcoming company events, each with the days left; an earnings report also carries its gap-risk label."""
     cal = _load(CALENDAR, {"kalemler": []})
-    until = (alerts_store.now_tr().date() + timedelta(days=days)).isoformat()
-    return [i for i in cal.get("kalemler", []) if _today() <= i["tarih"] <= until][:60]
+    today = alerts_store.now_tr().date()
+    until = (today + timedelta(days=days)).isoformat()
+    return [watch_cards.calendar_item(i, today) for i in cal.get("kalemler", []) if _today() <= i["tarih"] <= until][:120]
 
 
 def calendar_reminders() -> str | None:

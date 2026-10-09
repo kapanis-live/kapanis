@@ -16,6 +16,7 @@ import bist
 import config
 import market
 import us
+import watch_cards
 
 log = logging.getLogger(__name__)
 
@@ -79,8 +80,9 @@ def _nan(x) -> bool:
     return x is None or x != x
 
 
-def _row(code: str, price: float, prev: float | None, d) -> dict:
-    """Quick status from daily bars (d with market.add_indicators). Pure."""
+def _row(code: str, price: float, prev: float | None, d, bench_6m: float | None = None) -> dict:
+    """Quick status from daily bars (d with market.add_indicators). bench_6m: the benchmark's 6-month return (%),
+    for the strength column. Pure."""
     last = d.iloc[-1]
     atr = float(last.atr14) if not _nan(last.atr14) else price * 0.03
     zones = market.sr_zones(d, None, price, atr, top=1)
@@ -97,6 +99,8 @@ def _row(code: str, price: float, prev: float | None, d) -> dict:
     week = float(d.close.iloc[-6]) if len(d) > 6 else None
     vol_avg = float(last.vol_avg20) if "vol_avg20" in d and not _nan(last.vol_avg20) else None
     vol_x = round(float(last.volume) / vol_avg, 2) if vol_avg else None  # last closed day vs its 20-day average
+    own_6m = watch_cards.six_month_return(d.close)
+    rel = round(own_6m - bench_6m, 1) if own_6m is not None and bench_6m is not None else None
     return {"kod": code, "fiyat": price, "gun_yuzde": round((price / prev - 1) * 100, 2) if prev else None,
             "kapanis_fiyat": closed_price, "kapanis_destek": closed_sup["orta"] if closed_sup else None,
             "kapanis_destek_yuzde": closed_sup["uzaklik_yuzde"] if closed_sup else None,
@@ -104,7 +108,8 @@ def _row(code: str, price: float, prev: float | None, d) -> dict:
             "rsi": round(float(last.rsi14)) if not _nan(last.rsi14) else None,
             "destek": sup["orta"] if sup else None, "destek_yuzde": sup["uzaklik_yuzde"] if sup else None,
             "direnc": res["orta"] if res else None, "direnc_yuzde": res["uzaklik_yuzde"] if res else None,
-            "hacim_kat": vol_x}
+            "hacim_kat": vol_x, "getiri_6a": None if own_6m is None else round(own_6m, 1),
+            "guc_6a": rel, "guc": watch_cards.strength(rel)}
 
 
 async def rows(mkt: str, codes: list[str]) -> list[dict]:
@@ -119,6 +124,17 @@ async def rows(mkt: str, codes: list[str]) -> list[dict]:
                                  params={"symbols": json.dumps(syms, separators=(",", ":"))}, timeout=20)
             r.raise_for_status()
             tick24 = {x["symbol"]: x for x in r.json()}
+        try:    # the benchmark each row is measured against: BTC, BIST 100, S&P 500
+            if mkt == "KRIPTO":
+                bd = await market.fetch_klines(client, "BTC" + config.QUOTE, "1d", limit=250)
+            elif mkt == "BIST":
+                bd = await bist.fetch(client, bist.INDEX, "1d")
+            else:
+                bd = await us.fetch(client, "SPY", "1d", bulk=True)
+            bench = watch_cards.six_month_return(bd.close)
+        except Exception as e:
+            log.warning("Watchlist benchmark %s failed: %s", mkt, e)
+            bench = None
 
         async def one(code):
             async with sem:
@@ -127,11 +143,12 @@ async def rows(mkt: str, codes: list[str]) -> list[dict]:
                         t = tick24[code + config.QUOTE]
                         d = market.add_indicators(await market.fetch_klines(client, code + config.QUOTE, "1d", limit=250))
                         price = float(t["lastPrice"])
-                        out[code] = _row(code, price, price / (1 + float(t["priceChangePercent"]) / 100), d)
+                        out[code] = _row(code, price, price / (1 + float(t["priceChangePercent"]) / 100), d,
+                                         None if code == "BTC" else bench)      # BTC is the benchmark itself
                     elif mkt == "BIST":
                         q = await bist.day_quote(client, code)
                         d = market.add_indicators(await bist.fetch(client, code, "1d"))
-                        out[code] = _row(code, q["fiyat"], q["onceki_kapanis"], d)
+                        out[code] = _row(code, q["fiyat"], q["onceki_kapanis"], d, bench)
                     else:
                         d = market.add_indicators(await us.fetch(client, code, "1d", bulk=True))
                         price = float(d.close.iloc[-1])
@@ -140,7 +157,7 @@ async def rows(mkt: str, codes: list[str]) -> list[dict]:
                         if live:
                             price = float(live)
                         prev = float(d.close.iloc[-2]) if abs(price / float(d.close.iloc[-1]) - 1) < 1e-5 else float(d.close.iloc[-1])
-                        out[code] = _row(code, price, prev, d)
+                        out[code] = _row(code, price, prev, d, bench)
                 except Exception as e:
                     out[code] = {"kod": code, "hata": str(e)[:60]}
         await asyncio.gather(*(one(c) for c in codes))
@@ -168,6 +185,10 @@ def text(mkt: str, rs: list[dict]) -> str:
         lines.append(f"{icon} {r['kod']} {_p(r['fiyat'])}{unit} " + (f"%{g:+.2f}" if g is not None else "%—")
                      + (f" · hafta %{wk:+.1f}" if wk is not None else "") + f" · {r['trend']}"
                      + (f" · RSI {r['rsi']}" if r["rsi"] is not None else "")
+                     + (f" · güç {r['guc']}" if r.get("guc") in ("GÜÇLÜ", "ZAYIF") else "")
+                     + (f" · bilanço {r['bilanco_gun']}g" + (" ⚠️" if r.get("bilanco_risk") == "YÜKSEK" else "")
+                        if r.get("bilanco_gun") is not None and r["bilanco_gun"] <= 14 else "")
+                     + (f" · puan {r['puan']}" if r.get("puan") is not None else "")
                      + (f" · destek {_p(r['destek'])} ({r['destek_yuzde']:+.1f}%)" if r.get("destek") else "")
                      + (f" · direnç {_p(r['direnc'])} ({r['direnc_yuzde']:+.1f}%)" if r.get("direnc") else ""))
     lines.append(f"\n{ups}/{len(rs)} yükselişte. Gün: " + ("24 saatlik değişim" if mkt == "KRIPTO" else
@@ -179,17 +200,20 @@ async def panel_rows() -> dict:
     """All lists for the web panel, cached for 30 minutes so the panel never hammers the data sources."""
     try:
         cached = json.loads(CACHE.read_text(encoding="utf-8"))
-        if cached.get("surum") == 2 and time.time() - cached["zaman"] < PANEL_TTL:
+        if cached.get("surum") == 3 and time.time() - cached["zaman"] < PANEL_TTL:
             return cached
     except (FileNotFoundError, json.JSONDecodeError, KeyError):
         pass
     lists = load()
-    out = {"zaman": time.time(), "surum": 2, "piyasalar": {}}
+    out = {"zaman": time.time(), "surum": 3, "piyasalar": {}}
     for mkt, codes in lists.items():
         try:
             out["piyasalar"][mkt] = await rows(mkt, codes)
         except Exception as e:
             log.warning("Watchlist panel rows %s failed: %s", mkt, e)
             out["piyasalar"][mkt] = []
+    import features     # earnings days and fundamental scores come from what the bot already keeps: no extra requests
+    watch_cards.enrich(out["piyasalar"], features.calendar_for_panel(120), watch_cards.load_scores().get("puanlar") or {},
+                       alerts_store.now_tr().date())
     CACHE.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
     return out

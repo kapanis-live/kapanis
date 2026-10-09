@@ -72,6 +72,7 @@ const SORTS = [
   ["liste", "Liste sırası"], ["gun_up", "Günlük: en çok yükselen"], ["gun_down", "Günlük: en çok düşen"],
   ["hafta_up", "Haftalık: en çok yükselen"], ["hafta_down", "Haftalık: en çok düşen"],
   ["rsi_down", "RSI: yüksekten düşüğe"], ["rsi_up", "RSI: düşükten yükseğe"], ["destek", "Desteğe en yakın"],
+  ["guc_down", "Endekse göre en güçlü"], ["bilanco_up", "Bilançosu en yakın"], ["puan_down", "Temel puan: yüksekten düşüğe"],
 ];
 // [değer, yön]: -1 büyükten küçüğe, 1 küçükten büyüğe. Değeri olmayanlar sona.
 const SORT_KEYS = {
@@ -79,6 +80,8 @@ const SORT_KEYS = {
   hafta_up: [(r) => r.hafta_yuzde, -1], hafta_down: [(r) => r.hafta_yuzde, 1],
   rsi_down: [(r) => r.rsi, -1], rsi_up: [(r) => r.rsi, 1],
   destek: [(r) => r.destek_yuzde, -1], // destek_yuzde negatif: sıfıra en yakın = desteğe en yakın
+  guc_down: [(r) => r.guc_6a, -1], bilanco_up: [(r) => (r.bilanco_gun != null && r.bilanco_gun >= 0 ? r.bilanco_gun : null), 1],
+  puan_down: [(r) => r.puan, -1],
 };
 const FILTERS = {
   guclu: { label: "↗ Güçlü trend", test: (r) => r.trend?.startsWith("↗") },
@@ -86,6 +89,8 @@ const FILTERS = {
   isinmis: { label: "Isınmış (RSI > 70)", test: (r) => r.rsi != null && r.rsi > 70 },
   satilmis: { label: "Çok satılmış (RSI < 30)", test: (r) => r.rsi != null && r.rsi < 30 },
   yakin: { label: "Desteğe %2'den yakın", test: (r) => r.destek_yuzde != null && r.destek_yuzde >= -2 },
+  goreli: { label: "Endeksten güçlü", test: (r) => r.guc === "GÜÇLÜ" },
+  bilanco: { label: "Bilanço 14 gün içinde", test: (r) => r.bilanco_gun != null && r.bilanco_gun >= 0 && r.bilanco_gun <= 14 },
   elimde: { label: "Portföyümde", test: (r, held) => held.has(r.kod) },
 };
 
@@ -98,6 +103,25 @@ function sortRows(rows, sort) {
     if (y == null) return -1;
     return dir * (x - y);
   });
+}
+
+// Endekse göre güç (6 ay, puan farkı), bilançoya kalan gün ve temel puan: açıklama, öneri değil
+const BENCH = { KRIPTO: "BTC", BIST: "BIST 100", ABD: "S&P 500" };
+const GUC_CLASS = { "GÜÇLÜ": "text-up", ZAYIF: "text-down" };
+function Strength({ r }) {
+  if (r.guc == null) return <span className="text-t-3">—</span>;
+  return <span className="whitespace-nowrap"><b className={GUC_CLASS[r.guc] || "text-t-2"}>{r.guc}</b>{" "}
+    <span className="num text-sm text-t-3">{r.guc_6a >= 0 ? "+" : "−"}{U.fmtNum(Math.abs(r.guc_6a), 1)}</span></span>;
+}
+function Earnings({ r }) {
+  if (r.bilanco_gun == null || r.bilanco_gun < 0) return <span className="text-t-3">—</span>;
+  const cls = r.bilanco_risk === "YÜKSEK" ? "bg-down/15 text-down" : r.bilanco_risk === "ORTA" ? "is-warn" : "is-flat";
+  return <span className={cn("kp-alarm__status whitespace-nowrap", cls)} title={`Bilanço ${r.bilanco_tarih} · boşluk riski ${r.bilanco_risk}`}>
+    {r.bilanco_gun === 0 ? "bugün" : `${r.bilanco_gun} gün`}</span>;
+}
+function Score({ r }) {
+  if (r.puan == null) return <span className="text-t-3">—</span>;
+  return <span className="num whitespace-nowrap font-bold text-t-1" title={r.puan_etiket || ""}>{r.puan}<span className="text-sm font-normal text-t-3">/100</span></span>;
 }
 
 function HeldTag() {
@@ -178,6 +202,9 @@ export default function Watchlist() {
                 {tab === "KRIPTO" ? "günlük = 24 saatlik değişim" : "günlük = son seans"}{tab === "BIST" ? " · veri ~15 dk gecikmeli" : ""} ·{" "}
                 <span className="text-t-3">güncelleme {formatTime(new Date(tl.zaman * 1000).toISOString())}, 30 dakikada bir</span>
               </p>
+              <p className="m-0 text-sm text-t-3">Güç: 6 aylık getirinin {BENCH[tab]} getirisinden farkı (puan); 10 puan üstü GÜÇLÜ, altı ZAYIF.
+                {tab !== "KRIPTO" && " Bilanço: sıradaki bilançoya kalan gün (5 gün ve altı kırmızı). Temel puan: bilanço verisinden 100 üzerinden, günde bir kez. "}
+                Açıklamadır, öneri değildir.</p>
 
               {!rows.length ? <EmptyState text="Bu filtrelere uyan kod yok." /> : (
                 <>
@@ -185,7 +212,7 @@ export default function Watchlist() {
                     <table className="w-full border-collapse text-[1.0625rem]">
                       <thead>
                         <tr>
-                          {["", "Kod", "Fiyat", "Günlük", "Haftalık", "Trend", "RSI", "Destek → Direnç"].map((h, i) => (
+                          {["", "Kod", "Fiyat", "Günlük", "Haftalık", "Trend", `Güç (${BENCH[tab]})`, ...(tab === "KRIPTO" ? [] : ["Bilanço", "Temel puan"]), "RSI", "Destek → Direnç"].map((h, i) => (
                             <th key={h + i} className={cn("h-12 whitespace-nowrap border-b border-hairline px-3 text-left text-sm font-semibold text-t-3", [2, 3, 4].includes(i) && "text-right", i === 0 && "w-12")}>{h}</th>
                           ))}
                         </tr>
@@ -195,7 +222,7 @@ export default function Watchlist() {
                           <tr key={r.kod} className="border-b border-hairline last:border-0">
                             <td className="h-16 pl-4 pr-2" />
                             <td className="px-4 font-bold">{r.kod}</td>
-                            <td colSpan={6} className="px-4 text-t-3">veri alınamadı</td>
+                            <td colSpan={tab === "KRIPTO" ? 7 : 9} className="px-4 text-t-3">veri alınamadı</td>
                           </tr>
                         ) : (
                           <tr key={r.kod} tabIndex={0} onClick={() => open(r.kod)} onKeyDown={(e) => e.key === "Enter" && open(r.kod)}
@@ -216,6 +243,9 @@ export default function Watchlist() {
                             <td className="px-3 text-right"><ChangeBadge value={r.gun_yuzde} /></td>
                             <td className="px-3 text-right"><ChangeBadge value={r.hafta_yuzde} decimals={1} /></td>
                             <td className="whitespace-nowrap px-3"><Trend label={r.trend} /></td>
+                            <td className="px-3"><Strength r={r} /></td>
+                            {tab !== "KRIPTO" && <td className="px-3"><Earnings r={r} /></td>}
+                            {tab !== "KRIPTO" && <td className="px-3"><Score r={r} /></td>}
                             <td className="px-3"><RsiMeter value={r.rsi} /></td>
                             <td className="px-3"><RangeBar support={r.destek} supportPct={r.destek_yuzde} resistance={r.direnc} resistancePct={r.direnc_yuzde} price={r.fiyat} /></td>
                           </tr>
@@ -246,6 +276,9 @@ export default function Watchlist() {
                             <ChangeBadge value={r.gun_yuzde} label="Gün" />
                             <ChangeBadge value={r.hafta_yuzde} decimals={1} label="Hafta" />
                             <Trend label={r.trend} />
+                            {r.guc && <span className="text-[0.9375rem] text-t-2">güç <Strength r={r} /></span>}
+                            {tab !== "KRIPTO" && r.bilanco_gun != null && r.bilanco_gun >= 0 && <span className="text-[0.9375rem] text-t-2">bilanço <Earnings r={r} /></span>}
+                            {tab !== "KRIPTO" && r.puan != null && <span className="text-[0.9375rem] text-t-2">puan <Score r={r} /></span>}
                             <RsiMeter value={r.rsi} />
                             <span className="num text-[0.9375rem] text-t-2">
                               {r.destek != null ? `${px(r.destek)} (${formatPct(r.destek_yuzde, { decimals: 1 })})` : "—"} <span className="text-t-3">→</span>{" "}

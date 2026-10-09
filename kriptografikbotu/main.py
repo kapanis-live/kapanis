@@ -4175,23 +4175,27 @@ async def portfolio_summary(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await update.message.reply_text("💼 Portföyün boş. Hadi ekleyelim, adım adım soracağım.")
         await wizard_start(update.message, context)
         return
-    status = await update.message.reply_text("⏳ portföy hesaplanıyor...")
+    code = lang.get(update.effective_chat.id)
+    T = lambda tr, en: en if code == "en" else tr          # frame and labels; numbers are the same in both languages
+    saving = T("🏦 birikim", "🏦 savings")
+    day = lambda label: label if code != "en" else {"24s": "24h", "Günlük": "Day", "Bugün": "Today"}.get(label, label.replace("Son seans", "Last session"))
+    status = await update.message.reply_text(T("⏳ portföy hesaplanıyor...", "⏳ calculating the portfolio..."))
     pf = await collect_portfolio(only)
     blocks = {"BIST": [], "KRIPTO": [], "ABD": [], assets.MARKET: []}
     for g in pf["gruplar"]:
         mkt, cur = g["piyasa"], g["para"]
         avg = g["maliyet"] / g["adet"]
-        icon = {"TUT": "🟢 TUT", "KISMİ SAT": "🟠 KISMİ SAT", "SAT": "🔴 SAT"}.get(g["karar"], "—")
+        icon = {"TUT": T("🟢 TUT", "🟢 HOLD"), "KISMİ SAT": T("🟠 KISMİ SAT", "🟠 PARTIAL SELL"), "SAT": T("🔴 SAT", "🔴 SELL")}.get(g["karar"], "—")
         if any(p.get("birikim") for p in g["poz"]) and not g["karar"]:
-            icon = "🏦 birikim"
-        qty = (f"{_qty(g['adet'])} adet" if mkt == "BIST" else f"{g['adet']:g} {assets.ASSETS[g['symbol']]['birim']}"
-               if mkt == assets.MARKET else f"{_qty(g['adet'])} hisse" if mkt == "ABD" else f"{_qty(g['adet'])} adet")
+            icon = saving
+        qty = (f"{_qty(g['adet'])} {T('adet', 'units')}" if mkt == "BIST" else f"{g['adet']:g} {assets.ASSETS[g['symbol']]['birim']}"
+               if mkt == assets.MARKET else f"{_qty(g['adet'])} {T('hisse', 'shares')}" if mkt == "ABD" else f"{_qty(g['adet'])} {T('adet', 'units')}")
         if mkt == assets.MARKET:
-            icon = "🏦 birikim"
+            icon = saving
         real = _real_text(g["reel"], cur)
-        lines = [f"{_icon(mkt)} {risk.name(g)} — {qty} · ort. maliyet {_px(avg)} → {_px(g['fiyat'])}",
-                 f"   Değer {_money(g['deger'], cur)} · {g['gun_etiket']} {_pct_badge(g['gun_yuzde'])} ({g['gun_tutar']:+,.2f})",
-                 f"   Toplam {_pct_badge((g['deger'] / g['maliyet'] - 1) * 100)} ({g['deger'] - g['maliyet']:+,.2f} {cur}) · {icon}"
+        lines = [f"{_icon(mkt)} {risk.name(g)} — {qty} · {T('ort. maliyet', 'avg. cost')} {_px(avg)} → {_px(g['fiyat'])}",
+                 f"   {T('Değer', 'Value')} {_money(g['deger'], cur)} · {day(g['gun_etiket'])} {_pct_badge(g['gun_yuzde'])} ({g['gun_tutar']:+,.2f})",
+                 f"   {T('Toplam', 'Total')} {_pct_badge((g['deger'] / g['maliyet'] - 1) * 100)} ({g['deger'] - g['maliyet']:+,.2f} {cur}) · {icon}"
                  + (f" · #{', #'.join(map(str, g['ids']))}" if len(g["ids"]) > 1 else f" · #{g['ids'][0]}")]
         if real:
             lines.append(f"   {real}")
@@ -4203,31 +4207,35 @@ async def portfolio_summary(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         head = err.split(":")[0]
         blocks["KRIPTO" if "/" in head else assets.MARKET if head in assets.ASSETS else "ABD" if head.endswith(".US") else "BIST"].append(err)
     await status.delete()
-    lines = ["💼 PORTFÖY"]
-    for mkt, title in (("BIST", "🇹🇷 BIST"), ("KRIPTO", "🪙 Kripto"), ("ABD", "🇺🇸 ABD"), (assets.MARKET, "🥇 Altın/Döviz")):
+    lines = [T("💼 PORTFÖY", "💼 PORTFOLIO")]
+    for mkt, title in (("BIST", "🇹🇷 BIST"), ("KRIPTO", T("🪙 Kripto", "🪙 Crypto")), ("ABD", T("🇺🇸 ABD", "🇺🇸 US")), (assets.MARKET, T("🥇 Altın/Döviz", "🥇 Gold/FX"))):
         if not blocks[mkt]:
             continue
         lines += ["", title, *blocks[mkt]]
         t = pf["toplam"].get(mkt)
         if t and t["maliyet"]:
             start = t["deger"] - t["gun"]
-            lines.append(f"   ── Toplam {_money(t['deger'], t['para'])} · "
-                         f"{'24s' if mkt == 'KRIPTO' else 'son seans' if alerts_store.now_tr().weekday() >= 5 else 'bugün'} {_pct_badge(t['gun'] / start * 100 if start else None)} ({t['gun']:+,.2f}) · "
-                         f"toplam {_pct_badge((t['deger'] / t['maliyet'] - 1) * 100)} ({t['deger'] - t['maliyet']:+,.2f} {t['para']})"
-                         + (f" · temettü +{t['temettu']:,.2f} TL" if t["temettu"] else ""))
+            lines.append(f"   ── {T('Toplam', 'Total')} {_money(t['deger'], t['para'])} · "
+                         f"{T('24s', '24h') if mkt == 'KRIPTO' else T('son seans', 'last session') if alerts_store.now_tr().weekday() >= 5 else T('bugün', 'today')} {_pct_badge(t['gun'] / start * 100 if start else None)} ({t['gun']:+,.2f}) · "
+                         f"{T('toplam', 'total')} {_pct_badge((t['deger'] / t['maliyet'] - 1) * 100)} ({t['deger'] - t['maliyet']:+,.2f} {t['para']})"
+                         + (f" · {T('temettü', 'dividends')} +{t['temettu']:,.2f} TL" if t["temettu"] else ""))
             real = _real_text(t["reel"], t["para"])
             if real:
                 lines.append(f"   ── {real}")
     conc = pf["yogunlasma"]
     if conc["uyarilar"]:
-        lines += ["", *[f"⚖️ {w}" for w in conc["uyarilar"]], "Ayrıntı: /risk"]
+        lines += ["", *[f"⚖️ {w}" for w in conc["uyarilar"]], T("Ayrıntı: /risk", "Details: /risk")]
     unknown = [i for g in pf["gruplar"] for i in g.get("tarih_yok", [])]
     if unknown:
-        lines += ["", f"📅 Alış tarihi girilmemiş: #{', #'.join(map(str, unknown[:8]))}. Dolar/enflasyon bazlı getiri ve "
-                      f"/kiyas için tarih ekle: /duzelt {unknown[0]} tarih=2025-03-01"]
-    lines += ["", "BIST ~15 dk gecikmeli · kripto 24 saatlik değişim · yorum: /portfoy analiz"]
+        lines += ["", T(f"📅 Alış tarihi girilmemiş: #{', #'.join(map(str, unknown[:8]))}. Dolar/enflasyon bazlı getiri ve "
+                        f"/kiyas için tarih ekle: /duzelt {unknown[0]} tarih=2025-03-01",
+                        f"📅 No buy date for: #{', #'.join(map(str, unknown[:8]))}. Add a date for the dollar / inflation based return and "
+                        f"/kiyas: /duzelt {unknown[0]} tarih=2025-03-01")]
+    lines += ["", T("BIST ~15 dk gecikmeli · kripto 24 saatlik değişim · yorum: /portfoy analiz",
+                    "BIST delayed ~15 min · crypto is the 24-hour change · commentary: /portfoy analiz")]
     if not pf["tufe"]:
-        lines.append("Enflasyon sütunu için .env'ye EVDS_API_KEY ekle (ücretsiz: evds3.tcmb.gov.tr).")
+        lines.append(T("Enflasyon sütunu için .env'ye EVDS_API_KEY ekle (ücretsiz: evds3.tcmb.gov.tr).",
+                       "For the inflation column add EVDS_API_KEY to .env (free: evds3.tcmb.gov.tr)."))
     await send_long(context.bot, update.effective_chat.id, "\n".join(lines), reply_markup=PORTFOLIO_BUTTONS)
 
 

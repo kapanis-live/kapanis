@@ -265,5 +265,36 @@ class EnglishTextTest(unittest.TestCase):
         self.assertIn("S&P 500 %10 düşerse: portföy %-14", us_portfolio.text(r))
 
 
+class PortfolioTextTest(unittest.IsolatedAsyncioTestCase):
+    """/portfoy: the frame and the labels follow the chat's language; the numbers are the same."""
+    PF = {"gruplar": [{"piyasa": "ABD", "para": "USD", "symbol": "NVDA.US", "kod": "NVDA", "adet": 2, "maliyet": 400.0, "deger": 440.0, "fiyat": 220.0,
+                       "gun_etiket": "Son seans (08.10)", "gun_yuzde": 1.0, "gun_tutar": 4.4, "karar": "TUT", "poz": [{}], "ids": [7], "reel": {},
+                       "temettu": 0.0, "temettu_bilgi": None}],
+          "hatalar": [], "toplam": {"ABD": {"deger": 440.0, "maliyet": 400.0, "gun": 4.4, "para": "USD", "temettu": 0, "reel": {}}},
+          "yogunlasma": {"uyarilar": []}, "tufe": True}
+
+    async def summary(self, code):
+        sent = []
+
+        async def fake_long(bot, chat_id, text, **kwargs):
+            sent.append(text)
+        status = types.SimpleNamespace(delete=AsyncMock())
+        update = types.SimpleNamespace(effective_chat=types.SimpleNamespace(id=OWNER), message=types.SimpleNamespace(reply_text=AsyncMock(return_value=status)))
+        with unittest.mock.patch.object(main.positions, "open_positions", return_value=[{"piyasa": "ABD"}]),                 unittest.mock.patch.object(main, "collect_portfolio", AsyncMock(return_value=self.PF)),                 unittest.mock.patch.object(main, "send_long", fake_long),                 unittest.mock.patch.object(main.lang, "get", return_value=code),                 unittest.mock.patch.object(main.risk, "name", return_value="NVDA"):
+            await main.portfolio_summary(update, types.SimpleNamespace(bot=None))
+        return sent[0]
+
+    async def test_english_and_turkish(self):
+        en, tr = await self.summary("en"), await self.summary("tr")
+        self.assertIn("💼 PORTFOLIO", en)
+        self.assertIn("2 shares · avg. cost 200 → 220", en)
+        self.assertIn("Value 440.00 USD · Last session (08.10)", en)
+        self.assertIn("🟢 HOLD · #7", en)
+        self.assertIn("── Total 440.00 USD", en)
+        self.assertIn("💼 PORTFÖY", tr)
+        self.assertIn("2 hisse · ort. maliyet 200 → 220", tr)
+        self.assertIn("🟢 TUT · #7", tr)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -575,7 +575,7 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
                                    {"$unset": {"telegram_chat_id": "", "telegram_username": ""}})
         await get_db().users.update_one({"_id": ObjectId(link["user_id"])},
                                   {"$set": {"telegram_chat_id": body.chat_id, "telegram_username": body.username}})
-        user = await get_db().users.find_one({"_id": ObjectId(link["user_id"])}, {"email": 1})
-        return {"ok": True, "email": (user or {}).get("email")}
+        user = await get_db().users.find_one({"_id": ObjectId(link["user_id"])}, {"email": 1, "dil": 1})
+        return {"ok": True, "email": (user or {}).get("email"), "dil": (user or {}).get("dil")}   # dil: the language chosen on the site
 
     return r

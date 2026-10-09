@@ -650,6 +650,23 @@ async def panel_action(body: ActionBody, user: dict = Depends(get_current_user))
     return {"queued": True, "command": cmd}
 
 
+class LanguageBody(BaseModel):
+    dil: str
+
+
+@api.put("/account/language")
+async def set_language(body: LanguageBody, user: dict = Depends(get_current_user)):
+    """The site's language switch. Kept on the account (a new device opens in it) and passed to the bot,
+    so this user's Telegram messages follow the same choice without a command."""
+    if body.dil not in ("tr", "en"):
+        raise HTTPException(status_code=400, detail="Dil tr ya da en olmalı.")
+    await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": {"dil": body.dil}})
+    telegram = identity.is_owner(user) or bool(user.get("telegram_chat_id"))
+    if telegram:
+        await _queue_command("language.set", {"dil": body.dil}, user)
+    return {"dil": body.dil, "telegram": telegram}
+
+
 @api.get("/quota")
 async def quota(user: dict = Depends(get_current_user)):
     """Today's analysis allowance for the panel's QuotaMeter (the owner has no limit)."""

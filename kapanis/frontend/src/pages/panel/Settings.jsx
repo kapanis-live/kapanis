@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { K, U } from "@/ds";
 import { sendAction } from "@/lib/actions";
+import api from "@/lib/api";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData } from "@/lib/useData";
 import { DataView, Panel } from "@/components/DataView";
@@ -70,7 +72,10 @@ function LanguagePanel() {
   const pick = async (value) => {
     if (value === lang) return;
     setLang(value);
-    await sendAction("settings.set", { dil: value }, value === "en" ? "Language set to English." : "Dil Türkçe yapıldı.");
+    try {
+      await api.put("/account/language", { dil: value });
+      toast.success(value === "en" ? "Language set to English. Telegram follows." : "Dil Türkçe yapıldı. Telegram da Türkçe.");
+    } catch { toast.error(value === "en" ? "Could not save the language." : "Dil kaydedilemedi."); }
   };
   return (
     <Panel title={t("Dil")} testid="settings-language">
@@ -83,7 +88,7 @@ function LanguagePanel() {
           ))}
         </span>
       </div>
-      <p className="mt-3 text-xs text-t-3">{t("Seçim bu tarayıcıda saklanır ve bota iletilir: Telegram mesajları da aynı dile geçer. Çeviri aşamalı ilerliyor; henüz çevrilmemiş yerler Türkçe görünür.")}</p>
+      <p className="mt-3 text-xs text-t-3">{t("Seçim hesabına kaydedilir: site ve bağlı Telegram aynı dile geçer, komut yazman gerekmez. Çeviri aşamalı ilerliyor; henüz çevrilmemiş yerler Türkçe görünür.")}</p>
     </Panel>
   );
 }

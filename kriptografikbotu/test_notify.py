@@ -157,6 +157,7 @@ class LanguageTest(Base):
         st = alerts_store.load_settings()
         st.pop("dil", None)
         alerts_store.save_settings(st)
+        self.addCleanup(lambda: alerts_store.save_settings({k: v for k, v in alerts_store.load_settings().items() if k != "dil"}))
 
     async def test_dil_switches_this_chat_and_its_menu(self):
         import lang
@@ -206,6 +207,25 @@ class LanguageTest(Base):
         self.assertIn("NVDA 230$ · puan 95 · ↗ güçlü · güç GÜÇLÜ · UCUZ · bilanço 4g ⚠️", stock_scan.text(doc))
         self.assertIn("NVDA 230$ · score 95 · ↗ strong · strength STRONG · CHEAP · earnings 4d ⚠️", stock_scan.text(doc, code="en"))
         self.assertIn("a ranking, not a suggestion", stock_scan.text(doc, code="en"))
+
+    async def test_site_switch_reaches_the_right_chat(self):
+        """The site's language choice arrives as a queued command: the owner's chat, or a user's own linked chat."""
+        import lang
+        import web_sync
+        bot = types.SimpleNamespace(set_my_commands=AsyncMock())
+        main.register_panel_actions(bot)
+        run = web_sync.EXTRA_HANDLERS["language.set"]
+        self.assertIn("language.set", web_sync.USER_COMMANDS)
+        said = await run({"dil": "en", "_komut": {"role": "user", "telegram_chat_id": 555}})
+        self.assertIn("Language: English", said)
+        self.assertEqual((lang.get(555), lang.get(OWNER)), ("en", "tr"))               # only that user's chat
+        bot.set_my_commands.assert_not_awaited()                                         # the owner's command menu is not theirs
+        self.assertEqual(await run({"dil": "en", "_komut": {"role": "user", "telegram_chat_id": None}}), "")
+        said = await run({"dil": "en", "_komut": {"role": "owner"}})
+        self.assertIn("Language: English", said)
+        self.assertEqual(lang.get(OWNER), "en")
+        self.assertEqual(bot.set_my_commands.await_args.kwargs["scope"].chat_id, OWNER)
+        self.assertIn("❌", await run({"dil": "de", "_komut": {"role": "owner"}}))
 
 
 class DigestTest(Base):

@@ -625,12 +625,16 @@ async def alarm_event_sent(event_id: str):
         (await client.post(f"{config.WEB_URL}/api/bot/alarm-events/{event_id}/sent", headers=_headers())).raise_for_status()
 
 
+LINK_LANG: dict[int, str | None] = {}
+
+
 async def link_telegram(code: str, chat_id: int, username: str | None) -> tuple[bool, str]:
     """/bagla KOD: ask the web backend to bind this chat to the account that created the one-time code."""
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.post(f"{config.WEB_URL}/api/bot/telegram/link", headers=_headers(),
                               json={"code": code, "chat_id": chat_id, "username": username})
     if r.status_code == 200:
+        LINK_LANG[chat_id] = r.json().get("dil")        # the language the account chose on the site
         return True, r.json().get("email") or ""
     if r.status_code == 404:
         return False, "Kod geçersiz ya da süresi dolmuş (10 dakika). Siteden yeni kod al."
@@ -827,7 +831,7 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
 SIGNAL_WORDS = {"AL": "alım adayı (karar senin)", "BEKLE": "bekle", "PAS": "pas", "BİLGİ": "bilgi (öneri değil)"}
 
 
-USER_COMMANDS = {"analysis.request", "strategy.scan"}
+USER_COMMANDS = {"analysis.request", "strategy.scan", "language.set"}
 
 
 def command_meta(cmd: dict) -> dict:

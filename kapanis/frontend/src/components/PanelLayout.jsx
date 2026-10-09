@@ -6,7 +6,7 @@ import { Disclaimer } from "@/components/Disclaimer";
 import { useAuth } from "@/context/AuthContext";
 import { useData, usePendingCommands } from "@/lib/useData";
 import { useTheme } from "@/lib/theme";
-import { useLang, LANGS } from "@/lib/i18n";
+import { useLang, LANGS, hasStoredLang } from "@/lib/i18n";
 import api from "@/lib/api";
 import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -175,12 +175,17 @@ function TopActions({ onLogout }) {
   const { theme, toggle } = useTheme();
   const { user, owner } = useAuth();
   const { t, lang, setLang } = useLang();
-  // Dil değişince sistem sahibi için bota da iletilir: Telegram mesajları aynı dile geçer
+  // Dil hesaba kaydedilir; sunucu bota iletir: bağlı Telegram komut yazmadan aynı dile geçer
   const pickLang = (value) => {
     if (value === lang) return;
     setLang(value);
-    if (owner) api.post("/actions", { type: "settings.set", payload: { dil: value } }).catch(() => {});
+    api.put("/account/language", { dil: value }).catch(() => {});
   };
+  // Yeni cihaz: bu tarayıcıda seçim yoksa hesapta kayıtlı dil açılır
+  useEffect(() => {
+    if (user?.dil && user.dil !== lang && !hasStoredLang()) setLang(user.dil);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.dil]);
   const overview = useData("overview", "/overview", { refetchInterval: 30_000, enabled: owner });
   const pend = usePendingCommands();
   const decisions = overview.data?.pending_decisions || 0;

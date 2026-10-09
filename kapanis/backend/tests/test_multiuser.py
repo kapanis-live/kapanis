@@ -208,6 +208,27 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         # B's command list does not show A's requests
         self.assertEqual((await self.c.get("/api/commands", headers=hb)).json(), [])
 
+    async def test_language_follows_the_account(self):
+        """The site's switch: stored on the account; the bot is told only when there is a chat to switch."""
+        h = auth("user_a")
+        self.assertEqual((await self.c.put("/api/account/language", headers=h, json={"dil": "de"})).status_code, 400)
+        r = (await self.c.put("/api/account/language", headers=h, json={"dil": "en"})).json()
+        self.assertEqual(r, {"dil": "en", "telegram": False})                 # no linked chat: nothing queued for the bot
+        self.assertEqual((await self.c.get("/api/commands/pending", headers=BOT)).json(), [])
+        self.assertEqual((await self.c.get("/api/auth/me", headers=h)).json()["dil"], "en")
+        # linking Telegram afterwards hands the bot the chosen language
+        code = (await self.c.post("/api/telegram/link-code", headers=h)).json()["kod"]
+        link = (await self.c.post("/api/bot/telegram/link", headers=BOT, json={"code": code, "chat_id": 111, "username": "a_tg"})).json()
+        self.assertEqual(link["dil"], "en")
+        # with a linked chat a change is queued for that chat only
+        self.assertTrue((await self.c.put("/api/account/language", headers=h, json={"dil": "tr"})).json()["telegram"])
+        cmds = (await self.c.get("/api/commands/pending", headers=BOT)).json()
+        self.assertEqual([(c["type"], c["payload"], c["telegram_chat_id"], c["role"]) for c in cmds], [("language.set", {"dil": "tr"}, 111, "user")])
+        # the owner's choice goes to the owner's chat (role owner)
+        await self.c.put("/api/account/language", headers=auth("owner_clerk"), json={"dil": "en"})
+        roles = sorted(c["role"] for c in (await self.c.get("/api/commands/pending", headers=BOT)).json())
+        self.assertEqual(roles, ["owner", "user"])
+
     async def test_telegram_link_one_time_code(self):
         h = auth("user_a")
         code = (await self.c.post("/api/telegram/link-code", headers=h)).json()["kod"]

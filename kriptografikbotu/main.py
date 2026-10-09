@@ -507,8 +507,14 @@ async def bagla(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ok:
         _link_tries.pop(chat_id, None)
         web_sync._linked_cache.pop(chat_id, None)
-        await update.message.reply_text(f"✅ Bağlandı: {_mask_email(info)}\nSiteden istediğin analizler buraya da gelecek. "
-                                        "Bağlantıyı kaldırmak için sitede Hesap → Bağlantıyı kaldır.")
+        chosen = web_sync.LINK_LANG.pop(chat_id, None)
+        if chosen in lang.LANGS and chat_id != config.ALLOWED_CHAT_ID:      # the account's site language, no /dil needed
+            lang.set_lang(chat_id, chosen)
+        await update.message.reply_text(lang.pick(chat_id,
+            f"✅ Bağlandı: {_mask_email(info)}\nSiteden istediğin analizler buraya da gelecek. "
+            "Bağlantıyı kaldırmak için sitede Hesap → Bağlantıyı kaldır.",
+            f"✅ Linked: {_mask_email(info)}\nThe analyses you ask for on the site will also arrive here. "
+            "To remove the link: Account → Remove the link on the site."))
     else:
         await update.message.reply_text(f"❌ {info}")
 
@@ -5891,6 +5897,20 @@ def register_panel_actions(bot):
         return (f"🧪 Panelden backtest {pair} KAPANIŞ {direction} {trigger:g} {tf}: {t['islem']} tetik, "
                 f"isabet %{t['isabet_yuzde']}, net toplam {t['toplam_R_net']}R (sonuç panelde)")
 
+    async def language_set(p):
+        """The site's language switch (any account): the owner's chat, or that user's linked chat. Same store as /dil."""
+        meta = p.get("_komut") or {}
+        try:
+            if meta.get("role", "owner") == "owner":
+                return "⚙️ " + await apply_language(bot, config.ALLOWED_CHAT_ID, p["dil"])
+            chat = meta.get("telegram_chat_id")
+            if not chat:
+                return ""
+            code = lang.set_lang(chat, p["dil"])      # only the language: the command menu of the owner's bot is not theirs
+            return lang.pick(code, "🌐 Dil: Türkçe (siteden seçildi)", "🌐 Language: English (chosen on the site)")
+        except (KeyError, ValueError) as e:
+            return f"❌ Panel: {e}"
+
     async def settings_set(p):
         """Owner's parameters from the panel's "Düzenle" form (panel_settings.SPEC + quiet windows)."""
         if p.get("dil"):                            # the site's language switch: the same store as /dil
@@ -6154,6 +6174,7 @@ def register_panel_actions(bot):
         return "\n".join(lines) or "❌ Panel: satır yok"
 
     web_sync.EXTRA_HANDLERS.update({
+        "language.set": language_set,
         "holding.add": holding_add, "holding.edit": holding_edit, "holding.delete": holding_delete,
         "holding.bulk": holding_bulk, "holding.sell": holding_sell, "cash.set": cash_set,
         "dca.add": dca_add, "dca.delete": dca_delete, "palarm.add": palarm_add, "palarm.delete": palarm_delete,

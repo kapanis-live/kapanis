@@ -35,8 +35,9 @@ const EN = {
   "Kapalı piyasadan otomatik mesaj gelmez (alarm, sinyal, seviye özeti, çıkış uyarısı). Yazdığın komutlar yine cevaplanır, kayıtlı alarmlar silinmez; kapalıyken oluşan bildirimler sonradan gönderilmez. Telegram: /bildirimler":
     "A market that is switched off sends no automatic messages (alerts, signals, level digest, exit warnings). Commands you type are still answered and saved alerts are kept; messages suppressed while it was off are not sent later. Telegram: /bildirimler",
   "Site ve Telegram dili": "Language of the site and Telegram",
-  "Seçim bu tarayıcıda saklanır ve bota iletilir: Telegram mesajları da aynı dile geçer. Çeviri aşamalı ilerliyor; henüz çevrilmemiş yerler Türkçe görünür.":
-    "The choice is stored in this browser and sent to the bot, so Telegram messages switch too. Translation is in progress; parts not translated yet stay in Turkish.",
+  "Seçim hesabına kaydedilir: site ve bağlı Telegram aynı dile geçer, komut yazman gerekmez. Çeviri aşamalı ilerliyor; henüz çevrilmemiş yerler Türkçe görünür.":
+    "The choice is saved on your account: the site and your linked Telegram switch together, no command needed. Translation is in progress; parts not translated yet stay in Turkish.",
+  "Dil Türkçe yapıldı. Telegram da Türkçe.": "Language set to English. Telegram follows.", "Dil kaydedilemedi.": "Could not save the language.",
   // hisse tablosu
   "Bir evrenin bütün hisseleri tek tabloda: trend, endekse göre güç, bilanço günü, temel puan, değerleme. Bakmak ve sıralamak için; öneri listesi değil.":
     "Every stock of a universe in one table: trend, strength against the index, earnings day, fundamental score, valuation. For looking up and sorting; not a list of suggestions.",
@@ -651,4 +652,8 @@ export function LangProvider({ children }) {
 export const useLang = () => useContext(LangContext);
 // React dışındaki yardımcılar için (tarih biçimleri): seçili dil
 export const currentLang = read;
+// Bu tarayıcıda daha önce dil seçildi mi (seçilmediyse hesapta kayıtlı dil açılır)
+export function hasStoredLang() {
+  try { return localStorage.getItem(KEY) != null; } catch { return true; }
+}
 export const LANGS = [{ value: "tr", label: "Türkçe" }, { value: "en", label: "English" }];

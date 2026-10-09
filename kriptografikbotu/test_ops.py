@@ -331,6 +331,48 @@ class WatchCardsTest(unittest.TestCase):
         self.assertIn("güç GÜÇLÜ · bilanço 4g ⚠️ · puan 64", said)
 
 
+class MonthlyReportTest(unittest.TestCase):
+    def test_only_the_days_held_count_and_new_money_is_not_profit(self):
+        import pandas as pd
+        import monthly
+        ser = lambda d: pd.Series(d)
+        pos = lambda i, mkt, sym, pair, qty, cost, opened, **k: {
+            "id": i, "piyasa": mkt, "symbol": sym, "pair": pair, "adet": qty, "giris": cost, "acilis": opened + "T10:00:00+03:00",
+            "durum": "acik", "para": "TL" if mkt == "BIST" else "USD", **k}
+        items = [
+            pos(1, "BIST", "AAA.IS", "AAA.IS", 10, 50.0, "2026-06-01"),                                  # held all month: 100 -> 110
+            pos(2, "KRIPTO", "SOLUSDT", "SOL/USDT", 2, 200.0, "2026-09-10"),                             # bought inside: 200 -> 180
+            pos(3, "KRIPTO", "ETHUSDT", "ETH/USDT", 1, 1000.0, "2026-07-01", durum="kapali", kapanis_fiyat=2400.0,
+                kapanis_zamani="2026-09-20T12:00:00+03:00"),                                            # sold inside: 2000 -> 2400
+            pos(4, "BIST", "LATE.IS", "LATE.IS", 5, 10.0, "2026-10-03"),                                 # bought after the month
+            pos(5, "ABD", "OLD.US", "OLD.US", 1, 10.0, "2026-01-01", durum="kapali", kapanis_fiyat=12.0, kapanis_zamani="2026-08-15T12:00:00+03:00"),
+            pos(6, "ABD", "NOPRICE.US", "NOPRICE.US", 1, 10.0, "2026-01-01"),
+        ]
+        closes = {"AAA.IS": ser({"2026-08-31": 100.0, "2026-09-30": 110.0}), "SOLUSDT": ser({"2026-08-31": 250.0, "2026-09-30": 180.0}),
+                  "ETHUSDT": ser({"2026-08-31": 2000.0, "2026-09-30": 9999.0})}
+        fx = ser({"2026-08-31": 40.0, "2026-09-10": 40.0, "2026-09-20": 40.0, "2026-09-30": 40.0})        # flat: TL and USD results agree
+        bench = {"BIST 100": ser({"2026-08-31": 1000.0, "2026-09-30": 1050.0}), "BTC": ser({"2026-08-31": 100.0, "2026-09-30": 90.0})}
+        d = monthly.compute(items, closes, fx, bench, "2026-09")
+        # TL: AAA 1000 -> 1100, SOL 16000 -> 14400, ETH 80000 -> 96000: 97000 -> 111500
+        self.assertEqual((d["getiri"]["izlenen_tl"], d["getiri"]["kazanc_tl"], d["getiri"]["tl_yuzde"], d["getiri"]["usd_yuzde"]),
+                         (97000.0, 14500.0, 14.9, 14.9))
+        self.assertEqual(d["kiyas"], {"BIST 100": 5.0, "BTC": -10.0})
+        self.assertEqual(monthly.differences(d), [("BIST 100", 9.9, "TL"), ("BTC", 24.9, "USD")])
+        self.assertEqual([(a["ad"], a["yuzde"]) for a in d["en_iyi"]], [("ETH", 20.0), ("AAA", 10.0)])     # ETH from the month's start, not from cost
+        self.assertEqual([(a["ad"], a["yuzde"]) for a in d["en_kotu"]], [("SOL", -10.0)])                  # SOL from its buy price, not from 250
+        self.assertEqual(d["islemler"], {"alim": 1, "satim": 1, "gerceklesen": {"USD": 1400.0}, "alinan": ["SOL"], "satilan": ["ETH"]})
+        self.assertEqual((d["yogunlasma"]["ay_basi"]["ad"], d["yogunlasma"]["ay_basi"]["yuzde"]), ("ETH", 98.8))
+        self.assertEqual((d["yogunlasma"]["ay_sonu"]["ad"], d["yogunlasma"]["ay_sonu"]["yuzde"]), ("SOL", 92.9))
+        self.assertEqual((d["varlik"], d["hesaplanamayan"]), (3, ["NOPRICE"]))                             # LATE and OLD are outside the month
+        said = monthly.text(d)
+        self.assertIn("AYLIK RAPOR — Eylül 2026", said)
+        self.assertIn("Getiri: TL %+14.9 (+14,500 TL)", said)
+        self.assertIn("Yeni giren para getiri sayılmaz", said)
+        self.assertIn("tahmin ya da öneri içermez", said)
+        self.assertEqual(monthly.bounds("2026-12"), ("2026-11-30", "2026-12-31"))
+        self.assertEqual(monthly.previous_month(__import__("datetime").date(2027, 1, 1)), "2026-12")
+
+
 class DeleteButtonTest(unittest.TestCase):
     def test_sil_removes_every_lot_of_one_asset_without_a_sale(self):
         import positions

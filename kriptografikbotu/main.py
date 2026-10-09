@@ -69,6 +69,7 @@ import conversation_store as store
 import llm
 import macro
 import model_score
+import monthly
 import notify_prefs
 import news
 import opportunities
@@ -248,6 +249,7 @@ BOT_MENU = [
     ("midas", "Midas'ta alınamayan coinler (taramaya girmez)"),
     ("seviye", "Destek/direnç taraması (30 dk'da bir; kapat/ac)"),
     ("bildirimler", "Piyasa bildirimleri: /kripto /bist /abd ac|kapat"),
+    ("aylik", "Aylık rapor: getiri, endekse göre fark, işlemler"),
     ("ne", "Elindeki bir varlık için plan: /ne ASTOR"),
     ("pozisyon", "Plan için pozisyon işareti: /pozisyon BTC acik"),
     ("sil", "Plan sil: /sil BTC"),
@@ -4501,6 +4503,45 @@ async def weekly_job(context: ContextTypes.DEFAULT_TYPE):
     await weekly_summary(context.bot, config.ALLOWED_CHAT_ID)
 
 
+async def monthly_report(bot, chat_id: int, month: str | None = None) -> dict | None:
+    """Build one month's report, keep it, send it to the panel and to the chat."""
+    try:
+        doc = await monthly.build(month)
+    except Exception as e:
+        log.exception("Monthly report failed")
+        await bot.send_message(chat_id, f"❌ Aylık rapor hazırlanamadı: {str(e)[:150]}")
+        return None
+    monthly.save(doc)
+    if config.WEB_URL:
+        try:
+            await web_sync.push_docs("sonuclar", [{"id": "aylik", "tur": "aylik", "zaman": doc["uretildi"], "son": doc,
+                                                   "gecmis": monthly.history()[:12]}])
+        except Exception as e:
+            log.warning("Monthly report not pushed to the panel: %s", e)
+    await send_long(bot, chat_id, monthly.text(doc))
+    return doc
+
+
+async def monthly_job(context: ContextTypes.DEFAULT_TYPE):
+    """The first morning of each month: last month's report."""
+    await monthly_report(context.bot, config.ALLOWED_CHAT_ID)
+
+
+@authorized
+async def aylik(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/aylik: last month. /aylik 2026-09: that month."""
+    month = context.args[0] if context.args else None
+    if month and not re.fullmatch(r"20\d\d-(0[1-9]|1[0-2])", month):
+        await update.message.reply_text("Kullanım: /aylik (geçen ay) ya da /aylik 2026-09")
+        return
+    if month and month >= alerts_store.now_tr().strftime("%Y-%m"):
+        await update.message.reply_text("Bu ay henüz bitmedi; rapor ay bitince hazırlanır.")
+        return
+    status = await update.message.reply_text("⏳ aylık rapor: fiyat geçmişi ve işlemler...")
+    await monthly_report(context.bot, update.effective_chat.id, month)
+    await status.delete()
+
+
 @authorized
 async def haftalik(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await weekly_summary(context.bot, update.effective_chat.id)
@@ -6908,6 +6949,7 @@ def main():
     app.add_handler(CommandHandler("midas", midas_cmd))
     app.add_handler(CommandHandler("seviye", seviye_cmd))
     app.add_handler(CommandHandler("bildirimler", bildirimler_cmd))
+    app.add_handler(CommandHandler("aylik", aylik))
     app.add_handler(CommandHandler("kripto", kripto_cmd))
     app.add_handler(CommandHandler(["ne", "neyapayim"], ne_yapayim))
     app.add_handler(CommandHandler("risk", risk_cmd))
@@ -6972,6 +7014,7 @@ def main():
         app.job_queue.run_once(notify_prefs.scoped("BIST")(corporate_job), when=60, name="corporate_start")
         app.job_queue.run_daily(dca_job, dtime(*config.DCA_REMIND_HOUR, tzinfo=macro.TR), name="birikim")
         app.job_queue.run_daily(weekly_job, dtime(20, 0, tzinfo=macro.TR), days=(0,), name="haftalik")  # 0 = Sunday
+        app.job_queue.run_monthly(monthly_job, dtime(9, 30, tzinfo=macro.TR), day=1, name="aylik_rapor")
         app.job_queue.run_daily(notify_prefs.scoped("BIST")(eod_job), dtime(18, 45, tzinfo=macro.TR), name="bist_gunsonu")
         app.job_queue.run_once(universe_job, when=30, name="evren_ilk")
         # US: after the New York close (16:20 ET, DST handled by the time zone) and a Saturday ranking

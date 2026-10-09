@@ -9,44 +9,47 @@ import { formatNumber, formatPct } from "@/lib/format";
 import { TEXTS } from "@/lib/texts";
 import { useTheme } from "@/lib/theme";
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip } from "recharts";
+import { useLang } from "@/lib/i18n";
 
 const TFS = ["15m", "1h", "4h", "1d"];
 
 // Aynı motor: Telegram'daki /backtest. Sonuç birkaç saniye içinde aşağıdaki kartlara gelir.
 function RunCard() {
+  const { t } = useLang();
   const [f, setF] = useState({ pair: "BTC", yon: "ABOVE", tetik: "", tf: "15m", iptal: "", hedef: "", gun: "180" });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const run = async () => {
     const num = (v) => (String(v).trim() === "" ? null : U.parseTr(String(v)));
     const body = { ...f, pair: f.pair.trim().toUpperCase(), tetik: num(f.tetik), iptal: num(f.iptal), hedef: num(f.hedef), gun: parseInt(f.gun, 10) || 180 };
-    if (!body.pair || !(body.tetik > 0)) return toast.error("Parite ve tetik fiyatı gerekli.");
-    await sendAction("backtest.run", body, `${body.pair} backtest başlatıldı (kapanış bazlı).`);
+    if (!body.pair || !(body.tetik > 0)) return toast.error(t("Parite ve tetik fiyatı gerekli."));
+    await sendAction("backtest.run", body, t("{k} backtest başlatıldı (kapanış bazlı).", { k: body.pair }));
   };
   return (
-    <K.Card title="Yeni backtest (kripto, kapanış bazlı)">
+    <K.Card title={t("Yeni backtest (kripto, kapanış bazlı)")}>
       <div className="grid gap-3 sm:grid-cols-4 lg:grid-cols-8">
         <K.Field label="Coin"><K.TextInput value={f.pair} onChange={set("pair")} placeholder="BTC" /></K.Field>
-        <K.Field label="Yön"><K.Select value={f.yon} onChange={set("yon")} options={[{ value: "ABOVE", label: "Üstünde kapanış" }, { value: "BELOW", label: "Altında kapanış" }]} /></K.Field>
-        <K.Field label="Tetik"><K.TextInput prefix="$" inputMode="decimal" value={f.tetik} onChange={set("tetik")} /></K.Field>
-        <K.Field label="Mum"><K.Select value={f.tf} onChange={set("tf")} options={TFS} /></K.Field>
-        <K.Field label="İptal" hint="boş = 1,5×ATR"><K.TextInput prefix="$" inputMode="decimal" value={f.iptal} onChange={set("iptal")} /></K.Field>
-        <K.Field label="Hedef" hint="boş = 2×ATR"><K.TextInput prefix="$" inputMode="decimal" value={f.hedef} onChange={set("hedef")} /></K.Field>
-        <K.Field label="Gün"><K.TextInput inputMode="numeric" value={f.gun} onChange={set("gun")} /></K.Field>
-        <div className="flex items-end"><K.Button variant="primary" onClick={run}>Çalıştır</K.Button></div>
+        <K.Field label={t("Yön")}><K.Select value={f.yon} onChange={set("yon")} options={[{ value: "ABOVE", label: t("Üstünde kapanış") }, { value: "BELOW", label: t("Altında kapanış") }]} /></K.Field>
+        <K.Field label={t("Tetik")}><K.TextInput prefix="$" inputMode="decimal" value={f.tetik} onChange={set("tetik")} /></K.Field>
+        <K.Field label={t("Mum")}><K.Select value={f.tf} onChange={set("tf")} options={TFS} /></K.Field>
+        <K.Field label={t("İptal")} hint={t("boş = 1,5×ATR")}><K.TextInput prefix="$" inputMode="decimal" value={f.iptal} onChange={set("iptal")} /></K.Field>
+        <K.Field label={t("Hedef")} hint={t("boş = 2×ATR")}><K.TextInput prefix="$" inputMode="decimal" value={f.hedef} onChange={set("hedef")} /></K.Field>
+        <K.Field label={t("Gün§sayı")}><K.TextInput inputMode="numeric" value={f.gun} onChange={set("gun")} /></K.Field>
+        <div className="flex items-end"><K.Button variant="primary" onClick={run}>{t("Çalıştır")}</K.Button></div>
       </div>
-      <p className="kp-note">Komisyon ve kayma düşülmüş net R ile hesaplanır. Geçmiş sonuç geleceği garanti etmez. Telegram: /backtest</p>
+      <p className="kp-note">{t("Komisyon ve kayma düşülmüş net R ile hesaplanır. Geçmiş sonuç geleceği garanti etmez. Telegram: /backtest")}</p>
     </K.Card>
   );
 }
 
 export default function Backtest() {
+  const { t } = useLang();
   const q = useData("backtest", "/backtest");
   const { colors: c } = useTheme();
   return (
     <div>
-      <PageHeader eyebrow="Performans / Backtest" title="Backtest" subtitle="Strateji simülasyonu ve performans metrikleri." testid="page-backtest" />
+      <PageHeader eyebrow="Performans / Backtest" title="Backtest" subtitle={t("Strateji simülasyonu ve performans metrikleri.")} testid="page-backtest" />
       <div className="mb-6"><RunCard /></div>
-      <DataView query={q} loadingText={TEXTS.loading.backtest}>
+      <DataView query={q} loadingText={t(TEXTS.loading.backtest)}>
         {(d) => {
           const m = d.metrics;
           const curve = d.equity_curve.map((v, i) => ({ i, v }));
@@ -62,15 +65,15 @@ export default function Backtest() {
               </Panel>
 
               <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
-                <StatCard label="İşlem" value={formatNumber(m.trades, { decimals: 0 })} testid="bt-trades" />
-                <StatCard label="Kazanma oranı" value={formatPct(m.win_rate * 100, { sign: false })} tone="up" testid="bt-winrate" />
+                <StatCard label={t("İşlem")} value={formatNumber(m.trades, { decimals: 0 })} testid="bt-trades" />
+                <StatCard label={t("Kazanma oranı")} value={formatPct(m.win_rate * 100, { sign: false })} tone="up" testid="bt-winrate" />
                 <StatCard label="Profit factor" value={formatNumber(m.profit_factor, { decimals: 2 })} testid="bt-pf" />
-                <StatCard label="Beklenti (R)" value={formatNumber(m.expectancy_r, { decimals: 2, sign: true })} tone={m.expectancy_r >= 0 ? "up" : "down"} testid="bt-exp" />
-                <StatCard label="Maks. düşüş (R)" value={formatNumber(m.max_drawdown_r, { decimals: 1 })} tone="down" testid="bt-dd" />
+                <StatCard label={t("Beklenti (R)")} value={formatNumber(m.expectancy_r, { decimals: 2, sign: true })} tone={m.expectancy_r >= 0 ? "up" : "down"} testid="bt-exp" />
+                <StatCard label={t("Maks. düşüş (R)")} value={formatNumber(m.max_drawdown_r, { decimals: 1 })} tone="down" testid="bt-dd" />
                 <StatCard label="Sharpe" value={formatNumber(m.sharpe, { decimals: 2 })} testid="bt-sharpe" />
               </div>
 
-              <Panel title="Kümülatif R (equity curve)" testid="backtest-curve">
+              <Panel title={t("Kümülatif R (equity curve)")} testid="backtest-curve">
                 <div style={{ width: "100%", height: 260 }}>
                   <ResponsiveContainer>
                     <LineChart data={curve} margin={{ top: 8, right: 8, bottom: 8, left: 0 }}>
@@ -80,7 +83,7 @@ export default function Backtest() {
                       <Tooltip
                         contentStyle={{ background: c.tooltipBg, border: `1px solid ${c.tooltipBorder}`, borderRadius: 8, fontSize: 12 }}
                         labelStyle={{ color: c.text }}
-                        formatter={(v) => [formatNumber(v, { decimals: 2 }) + "R", "Kümülatif"]}
+                        formatter={(v) => [formatNumber(v, { decimals: 2 }) + "R", t("Kümülatif")]}
                       />
                       <Line type="monotone" dataKey="v" stroke={c.brand} strokeWidth={2} dot={false} isAnimationActive={false} />
                     </LineChart>

@@ -4,6 +4,10 @@ import { K, U } from "@/ds";
 import { useData } from "@/lib/useData";
 import api, { formatApiErrorDetail } from "@/lib/api";
 import { baseCode } from "@/lib/portfolio";
+import { translate, currentLang } from "@/lib/i18n";
+import { useLang } from "@/lib/i18n";
+
+const tx = (s, v) => translate(currentLang(), s, v);
 
 // Kripto Danışman: Telegram'daki /danis ve /firsat tara ile aynı kod (danisman.py). Emir göndermez.
 const plain = (t) => String(t || "").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "").trim();
@@ -22,13 +26,14 @@ async function ask(fn, setBusy, setText) {
     const r = await fn();
     setText(r.data.text);
   } catch (e) {
-    toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Danışman cevap vermedi.");
+    toast.error(formatApiErrorDetail(e.response?.data?.detail) || tx("Danışman cevap vermedi."));
   } finally {
     setBusy(false);
   }
 }
 
 export default function Advisor() {
+  const { t } = useLang();
   const extras = useData("extras", "/extras");
   // Eldeki kriptolar: taramada "portföyde" işaretlenir, tek coin raporunda TUT/KORU/AZALT için kullanılır
   const held = useMemo(() => (extras.data?.portfoy || []).filter((g) => g.piyasa === "KRIPTO")
@@ -44,7 +49,7 @@ export default function Advisor() {
     if (!portfolio.trim()) return undefined;
     const v = U.parseTr(portfolio);
     if (!(v > 0)) {
-      toast.error("Portföy tutarı pozitif bir sayı olmalı (USDT).");
+      toast.error(t("Portföy tutarı pozitif bir sayı olmalı (USDT)."));
       return null;
     }
     return v;
@@ -59,7 +64,7 @@ export default function Advisor() {
     const symbol = code.trim().toUpperCase().replace("/", "").replace(/USDT$/, "");
     const portfolio_usdt = size();
     if (!symbol || portfolio_usdt === null) {
-      if (!symbol) toast.error("Coin kodunu yaz (ör. BTC, HYPE).");
+      if (!symbol) toast.error(t("Coin kodunu yaz (ör. BTC, HYPE)."));
       return;
     }
     const mine = held.find((h) => h.code === symbol);
@@ -71,34 +76,33 @@ export default function Advisor() {
 
   return (
     <div className="kp-page">
-      <K.PageHeader controls={false} title="Kripto Danışman"
-        subtitle="USDT pariteleri, kapanmış 15m/1h/4h/1d mumlarla: trend, destek/direnç, kırılım, stop ve pozisyon tutarı. Emir göndermez." />
-      <K.Card title="Portföy büyüklüğü">
+      <K.PageHeader controls={false} title={t("Kripto Danışman")}
+        subtitle={t("USDT pariteleri, kapanmış 15m/1h/4h/1d mumlarla: trend, destek/direnç, kırılım, stop ve pozisyon tutarı. Emir göndermez.")} />
+      <K.Card title={t("Portföy büyüklüğü")}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <K.Field label="Kripto portföyün (USDT)" hint="boş bırakırsan pozisyon tutarı hesaplanmaz">
+          <K.Field label={t("Kripto portföyün (USDT)")} hint={t("boş bırakırsan pozisyon tutarı hesaplanmaz")}>
             <K.TextInput prefix="$" inputMode="decimal" value={portfolio} placeholder="287" onChange={(e) => setPortfolio(e.target.value)} />
           </K.Field>
         </div>
         <p className="kp-note">
-          {held.length ? `Portföyündeki kriptolar: ${held.map((h) => h.code).join(", ")}. Taramada işaretlenir; tek coin raporunda elindeki için TUT/KORU/AZALT denir.`
-            : "Portföyünde kripto yok: raporlar yeni giriş gözüyle yazılır."}
+          {held.length ? t("Portföyündeki kriptolar: {k}. Taramada işaretlenir; tek coin raporunda elindeki için TUT/KORU/AZALT denir.", { k: held.map((h) => h.code).join(", ") })
+            : t("Portföyünde kripto yok: raporlar yeni giriş gözüyle yazılır.")}
         </p>
       </K.Card>
-      <K.Card title="Fırsat taraması" actions={<K.Button variant="primary" disabled={scanning} onClick={runScan}>{scanning ? "Taranıyor…" : "Şimdi tara"}</K.Button>}>
-        {scanning && <p className="kp-note">En çok işlem gören pariteler aynı analizden geçiyor; bir dakikaya yakın sürebilir.</p>}
-        {scan ? <Result text={scan} /> : !scanning && <p className="kp-note">Borsadaki en çok işlem gören USDT pariteleri taranır, en fazla 10 kurulum sıralanır. Telegram'da: /firsat tara.</p>}
+      <K.Card title={t("Fırsat taraması")} actions={<K.Button variant="primary" disabled={scanning} onClick={runScan}>{scanning ? t("Taranıyor…") : t("Şimdi tara")}</K.Button>}>
+        {scanning && <p className="kp-note">{t("En çok işlem gören pariteler aynı analizden geçiyor; bir dakikaya yakın sürebilir.")}</p>}
+        {scan ? <Result text={scan} /> : !scanning && <p className="kp-note">{t("Borsadaki en çok işlem gören USDT pariteleri taranır, en fazla 10 kurulum sıralanır. Telegram'da: /firsat tara.")}</p>}
       </K.Card>
-      <K.Card title="Tek coin raporu">
+      <K.Card title={t("Tek coin raporu")}>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <K.Field label="Coin"><K.TextInput value={code} placeholder="BTC, SOL, HYPE" onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runReport()} /></K.Field>
-          <div className="flex items-end"><K.Button variant="primary" disabled={asking} onClick={runReport}>{asking ? "Hesaplanıyor…" : "Danış"}</K.Button></div>
+          <div className="flex items-end"><K.Button variant="primary" disabled={asking} onClick={runReport}>{asking ? t("Hesaplanıyor…") : t("Danış")}</K.Button></div>
         </div>
         {report && <Result text={report} />}
       </K.Card>
       <p className="kp-note">
-        Karar desteğidir, yatırım tavsiyesi değildir. Danışmanın gün içi kuralları geçmiş veride sınanmış bir üstünlük göstermedi;
-        seviyeler ve risk hesabı içindir, “al” garantisi değildir. Her rapor araştırma kaydına yazılır.
+        {t("Karar desteğidir, yatırım tavsiyesi değildir. Danışmanın gün içi kuralları geçmiş veride sınanmış bir üstünlük göstermedi; seviyeler ve risk hesabı içindir, “al” garantisi değildir. Her rapor araştırma kaydına yazılır.")}
       </p>
     </div>
   );

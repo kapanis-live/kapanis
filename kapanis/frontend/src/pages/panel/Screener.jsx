@@ -83,7 +83,7 @@ export default function Screener() {
           <SearchField value={search} onChange={setSearch} />
           <label className="inline-flex h-11 items-center rounded-[10px] border border-hairline bg-ink px-3">
             <span className="sr-only">{t("Sıralama")}</span>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sıralama" className="bg-transparent text-base font-semibold text-t-1 outline-none">
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label={t("Sıralama")} className="bg-transparent text-base font-semibold text-t-1 outline-none">
               {SORTS.map(([k, v]) => <option key={k} value={k}>{t(v)}</option>)}
             </select>
           </label>
@@ -91,7 +91,7 @@ export default function Screener() {
         <div className="flex flex-wrap gap-2">
           {Object.entries(FILTERS).map(([k, f]) => <Chip key={k} active={filters.includes(k)} onClick={() => toggle(k)}>{t(f.label)}</Chip>)}
         </div>
-        {waiting && <p className="kp-note m-0" aria-busy="true">Bot {market === "ABD" ? "100" : "200'e yakın"} hisse için fiyat, temel puan ve takvim topluyor (5–10 dakika). Sayfa kendiliğinden yenilenir.</p>}
+        {waiting && <p className="kp-note m-0" aria-busy="true">{t("Bot {n} hisse için fiyat, temel puan ve takvim topluyor (5–10 dakika). Sayfa kendiliğinden yenilenir.", { n: market === "ABD" ? "100" : t("200'e yakın") })}</p>}
         {q.isLoading ? <div className="kp-skel h-40" aria-busy="true" /> : !all.length ? (
           <K.Card title={t("Tablo henüz hazırlanmadı")}>
             <p className="kp-note m-0">{t("Bot her işlem günü kapanıştan sonra bu tabloyu yeniler. Beklemeden görmek için \"Şimdi yenile\"ye bas ya da Telegram'da")}
@@ -115,7 +115,7 @@ export default function Screener() {
                     </thead>
                     <tbody>
                       {rows.map((r) => (
-                        <tr key={r.kod} tabIndex={0} onClick={() => open(r.kod)} onKeyDown={(e) => e.key === "Enter" && open(r.kod)} aria-label={`${r.kod} kartını aç`}
+                        <tr key={r.kod} tabIndex={0} onClick={() => open(r.kod)} onKeyDown={(e) => e.key === "Enter" && open(r.kod)} aria-label={t("{k} kartını aç", { k: r.kod })}
                           className="cursor-pointer border-b border-hairline transition-colors duration-150 last:border-0 hover:bg-raised">
                           <td className="h-14 whitespace-nowrap px-3">
                             <span className="inline-flex items-center gap-3"><AssetLogo code={r.kod} market={market} />

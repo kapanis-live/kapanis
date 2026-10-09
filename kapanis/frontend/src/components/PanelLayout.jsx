@@ -184,8 +184,10 @@ function TopActions({ onLogout }) {
   // Yeni cihaz: bu tarayıcıda seçim yoksa hesapta kayıtlı dil açılır
   useEffect(() => {
     if (user?.dil && user.dil !== lang && !hasStoredLang()) setLang(user.dil);
+    // Girişten önce tanıtım sitesinde English seçildiyse ve hesapta dil yoksa: seçim hesaba yazılır (Telegram da uyar)
+    else if (user && !user.dil && lang === "en") api.put("/account/language", { dil: "en" }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.dil]);
+  }, [user?.id, user?.dil]);
   const overview = useData("overview", "/overview", { refetchInterval: 30_000, enabled: owner });
   const pend = usePendingCommands();
   const decisions = overview.data?.pending_decisions || 0;

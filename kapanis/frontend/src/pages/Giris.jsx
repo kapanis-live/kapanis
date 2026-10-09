@@ -4,9 +4,11 @@ import { useNavigate } from "react-router-dom";
 import { K } from "@/ds";
 import { useAuth } from "@/context/AuthContext";
 import { ClerkSignIn } from "@/pages/Kayit";
+import { useLang } from "@/lib/i18n";
 
 // Tasarım sistemindeki giriş ekranı: logo, "Sadece kapanış konuşur.", e-posta + şifre (Göster/Gizle)
 export default function Giris() {
+  const { t } = useLang();
   const { mode, legacy } = useAuth();
   const [admin, setAdmin] = useState(false);
   if (mode !== "clerk" || admin) return <LegacyGiris />;
@@ -15,7 +17,7 @@ export default function Giris() {
       <ClerkSignIn />
       {legacy && (
         <p style={{ textAlign: "center", margin: "-1.5rem 0 2rem" }}>
-          <button type="button" className="kp-linkbtn" onClick={() => setAdmin(true)}>Bu bilgisayarın yönetici şifresiyle gir</button>
+          <button type="button" className="kp-linkbtn" onClick={() => setAdmin(true)}>{t("Bu bilgisayarın yönetici şifresiyle gir")}</button>
         </p>
       )}
     </>

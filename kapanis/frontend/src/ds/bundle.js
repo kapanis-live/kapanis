@@ -5,6 +5,13 @@
   var useState = R.useState, useMemo = R.useMemo, useRef = R.useRef, useEffect = R.useEffect;
 
   function cx() { return Array.prototype.filter.call(arguments, Boolean).join(' '); }
+  /* Kapanış paneli: paketin kendi yazıları sitenin sözlüğünden geçer (lib/i18n.jsx window.__kpT'yi kurar) */
+  function kt(s, v) { var f = window.__kpT; return f ? f(s, v) : String(s).split('§')[0]; }
+  function LangLink(p) {
+    var en = !!window.__kpLang && window.__kpLang() === 'en';
+    return h('button', { type: 'button', className: cx('kp-linkbtn', p && p.className), lang: en ? 'tr' : 'en', 'data-testid': 'lang-link',
+      onClick: function () { if (window.__kpSetLang) window.__kpSetLang(en ? 'tr' : 'en'); } }, en ? 'Türkçe' : 'English');
+  }
 
   /* ---------- formatting (tr-TR, Istanbul time) ---------- */
   var NF = {};
@@ -100,7 +107,7 @@
   function Trend(p) {
     var d = TREND[p.dir] ? p.dir : 'flat';
     return h('span', { className: cx('kp-trend', 'kp-trend--' + d) },
-      h('span', { className: 'kp-trend__arrow', 'aria-hidden': true }, TREND[d][0]), p.label || TREND[d][1]);
+      h('span', { className: 'kp-trend__arrow', 'aria-hidden': true }, TREND[d][0]), p.label || kt(TREND[d][1]));
   }
 
   function RsiMeter(p) {
@@ -121,7 +128,7 @@
     return h('span', { className: cx('kp-range', 'kp-range--' + pos) },
       h('span', { className: 'kp-range__labels' },
         h('span', null, fmtPrice(s, p.cur)), h('span', { className: 'kp-range__sep', 'aria-hidden': true }, '→'), h('span', null, fmtPrice(r, p.cur))),
-      h('span', { className: 'kp-range__track', role: 'img', 'aria-label': 'Fiyat destek ile direnç arasında %' + fmtNum(c, 0) + ' konumunda' },
+      h('span', { className: 'kp-range__track', role: 'img', 'aria-label': kt('Fiyat destek ile direnç arasında %{n} konumunda', { n: fmtNum(c, 0) }) },
         h('span', { className: 'kp-range__dot', style: { left: c + '%' } })));
   }
 
@@ -177,7 +184,7 @@
   function SearchField(p) {
     var st = useState(p.defaultValue || ''), val = p.value != null ? p.value : st[0];
     return h('label', { className: 'kp-search' }, SEARCH_ICON,
-      h('input', { type: 'search', value: val, placeholder: p.placeholder || 'Kod ara (ör. THYAO)', 'aria-label': p.ariaLabel || 'Kod ara',
+      h('input', { type: 'search', value: val, placeholder: p.placeholder || kt('Kod ara (ör. THYAO)'), 'aria-label': p.ariaLabel || kt('Kod ara'),
         onChange: function (e) { st[1](e.target.value); p.onChange && p.onChange(e.target.value); },
         onKeyDown: function (e) { if (e.key === 'Enter' && p.onSubmit) p.onSubmit(e.target.value.trim().toUpperCase()); } }));
   }
@@ -189,16 +196,16 @@
     var init = +store('kp-font') || 16, st = useState(SCALES.indexOf(init) >= 0 ? init : 16), px = st[0];
     useEffect(function () { document.documentElement.style.fontSize = px + 'px'; store('kp-font', String(px)); }, [px]);
     var i = SCALES.indexOf(px);
-    return h('div', { className: 'kp-fontscale', role: 'group', 'aria-label': 'Yazı boyutu' },
-      h('button', { type: 'button', className: 'kp-fontscale__btn', disabled: i <= 0, 'aria-label': 'Yazıyı küçült', onClick: function () { st[1](SCALES[i - 1]); } }, 'A−'),
+    return h('div', { className: 'kp-fontscale', role: 'group', 'aria-label': kt('Yazı boyutu') },
+      h('button', { type: 'button', className: 'kp-fontscale__btn', disabled: i <= 0, 'aria-label': kt('Yazıyı küçült'), onClick: function () { st[1](SCALES[i - 1]); } }, 'A−'),
       h('span', { className: 'kp-fontscale__val' }, '%' + Math.round(px / 16 * 100)),
-      h('button', { type: 'button', className: 'kp-fontscale__btn kp-fontscale__btn--lg', disabled: i >= SCALES.length - 1, 'aria-label': 'Yazıyı büyüt', onClick: function () { st[1](SCALES[i + 1]); } }, 'A+'));
+      h('button', { type: 'button', className: 'kp-fontscale__btn kp-fontscale__btn--lg', disabled: i >= SCALES.length - 1, 'aria-label': kt('Yazıyı büyüt'), onClick: function () { st[1](SCALES[i + 1]); } }, 'A+'));
   }
 
   function ThemeToggle() {
     var st = useState(document.documentElement.getAttribute('data-theme') || store('kp-theme') || 'dark');
     useEffect(function () { document.documentElement.setAttribute('data-theme', st[0]); store('kp-theme', st[0]); }, [st[0]]);
-    return h(Segmented, { ariaLabel: 'Tema', value: st[0], onChange: st[1], options: [{ value: 'dark', label: 'Koyu' }, { value: 'light', label: 'Açık' }] });
+    return h(Segmented, { ariaLabel: kt('Tema'), value: st[0], onChange: st[1], options: [{ value: 'dark', label: kt('Koyu') }, { value: 'light', label: kt('Açık§tema') }] });
   }
 
   function PageHeader(p) {
@@ -234,7 +241,7 @@
   }
 
   function Disclaimer(p) {
-    return h('footer', { className: 'kp-disclaimer' }, p.children || 'Yatırım tavsiyesi değildir. Bot işlem yapmaz.');
+    return h('footer', { className: 'kp-disclaimer' }, p.children || kt('Yatırım tavsiyesi değildir. Bot işlem yapmaz.'));
   }
 
   /* ---------- watchlist ---------- */
@@ -264,49 +271,49 @@
     var cur = p.cur, invested = p.qty * p.cost, now = p.qty * p.price, pl = now - invested, plPct = invested ? pl / invested * 100 : 0;
     var tone = pl > 0 ? 'up' : pl < 0 ? 'down' : 'flat', hasStop = p.stop != null;
     var mode = useState(null), val = useState(''), err = useState(null);
-    var nowLabel = p.priceLabel || (hasStop ? 'Son kapanış' : 'Şimdi');
+    var nowLabel = p.priceLabel || (hasStop ? kt('Son kapanış') : kt('Şimdi'));
     function open(m) { var base = m === 'stop' ? p.stop : p.price; err[1](null); val[1](fmtNum(base, autoDigits(base)).replace(/\./g, '')); mode[1](m); }
     function submit(e) {
       e.preventDefault();
       var v = parseTr(val[0]);
-      if (!(v > 0)) { err[1]('Geçerli bir fiyat yaz.'); return; }
+      if (!(v > 0)) { err[1](kt('Geçerli bir fiyat yaz.')); return; }
       if (mode[0] === 'stop') {
-        if (v <= p.stop) { err[1]('Stop yalnız yukarı taşınır. ' + fmtPrice(p.stop, cur) + ' üstünde bir değer yaz.'); return; }
-        if (v >= p.price) { err[1]('Stop son kapanışın (' + fmtPrice(p.price, cur) + ') altında olmalı.'); return; }
+        if (v <= p.stop) { err[1](kt('Stop yalnız yukarı taşınır. {p} üstünde bir değer yaz.', { p: fmtPrice(p.stop, cur) })); return; }
+        if (v >= p.price) { err[1](kt('Stop son kapanışın ({p}) altında olmalı.', { p: fmtPrice(p.price, cur) })); return; }
         p.onRaiseStop && p.onRaiseStop({ symbol: p.symbol, stop: v });
       } else if (p.onSold) p.onSold({ symbol: p.symbol, price: v, qty: p.qty });
       mode[1](null);
     }
     function tile(k, v) { return h('div', { key: k, className: 'kp-tile' }, h('span', { className: 'kp-tile__label' }, k), h('span', { className: 'kp-tile__val' }, v)); }
     var tiles = hasStop
-      ? [tile('Alış', fmtPrice(p.cost, cur)), tile(nowLabel, fmtPrice(p.price, cur)), tile('Değer', fmtPrice(now, cur, 2))]
-      : [tile('Yatırdığın', fmtPrice(invested, cur, 2)), tile('Şimdiki değeri', fmtPrice(now, cur, 2)),
-         h('div', { key: 'a', className: 'kp-tile' }, h('span', { className: 'kp-tile__label' }, 'Alış → şimdi'),
+      ? [tile(kt('Alış'), fmtPrice(p.cost, cur)), tile(nowLabel, fmtPrice(p.price, cur)), tile(kt('Değer'), fmtPrice(now, cur, 2))]
+      : [tile(kt('Yatırdığın'), fmtPrice(invested, cur, 2)), tile(kt('Şimdiki değeri'), fmtPrice(now, cur, 2)),
+         h('div', { key: 'a', className: 'kp-tile' }, h('span', { className: 'kp-tile__label' }, kt('Alış → şimdi')),
            h('span', { className: 'kp-tile__val' }, fmtPrice(p.cost, cur), h('span', { className: 'kp-tile__arrow' }, ' → '), fmtPrice(p.price, cur)))];
     var form = mode[0] ? h('form', { className: 'kp-pos__sell', onSubmit: submit, noValidate: true },
-        h(Field, { label: mode[0] === 'stop' ? 'Yeni stop' : 'Sattığın fiyat', error: err[0],
-          hint: mode[0] === 'stop' ? 'Şu an ' + fmtPrice(p.stop, cur) + ' · stop yalnız yukarı taşınır' : 'Son kapanışla dolu geldi; gerçekleşen fiyatı yaz' },
+        h(Field, { label: mode[0] === 'stop' ? kt('Yeni stop') : kt('Sattığın fiyat'), error: err[0],
+          hint: mode[0] === 'stop' ? kt('Şu an {p} · stop yalnız yukarı taşınır', { p: fmtPrice(p.stop, cur) }) : kt('Son kapanışla dolu geldi; gerçekleşen fiyatı yaz') },
           h(TextInput, { prefix: SYM[cur] || '', inputMode: 'decimal', value: val[0], autoFocus: true, onChange: function (e) { val[1](e.target.value); } })),
         h('div', { className: 'kp-pos__actions' },
-          h(Button, { variant: 'ghost', onClick: function () { mode[1](null); } }, 'Vazgeç'),
-          h(Button, { variant: 'primary', type: 'submit' }, 'Kaydet'))) : null;
+          h(Button, { variant: 'ghost', onClick: function () { mode[1](null); } }, kt('Vazgeç')),
+          h(Button, { variant: 'primary', type: 'submit' }, kt('Kaydet')))) : null;
     return h('article', { className: 'kp-card kp-pos' },
       h('div', { className: 'kp-pos__head' },
         /* Kapanış paneli düzeltmesi: başlığa tıklamak grafiği açar; ayrı "Grafiği aç" butonu yok */
-        h('button', { type: 'button', title: 'Grafiği aç', onClick: function () { p.onOpenChart && p.onOpenChart(p.symbol); },
+        h('button', { type: 'button', title: kt('Grafiği aç'), onClick: function () { p.onOpenChart && p.onOpenChart(p.symbol); },
           style: { background: 'none', border: 0, padding: 0, cursor: 'pointer', textAlign: 'left', color: 'inherit', font: 'inherit', minWidth: 0 } },
           h(Ticker, { symbol: p.symbol, name: p.name, logo: p.logo, size: 'lg' })),
-        h('span', { className: 'kp-pos__qty' }, new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 8 }).format(p.qty) + ' adet')),
+        h('span', { className: 'kp-pos__qty' }, kt('{n} adet', { n: new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 8 }).format(p.qty) }))),
       h('div', { className: 'kp-pos__pl' },
         h('span', { className: cx('kp-pos__plval', 'is-' + tone) }, fmtSignedMoney(pl, cur)),
-        h(ChangeBadge, { value: plPct, size: 'lg' }), hasStop ? h('span', { className: 'kp-pos__pllabel' }, 'açık K/Z') : null),
+        h(ChangeBadge, { value: plPct, size: 'lg' }), hasStop ? h('span', { className: 'kp-pos__pllabel' }, kt('açık K/Z')) : null),
       h('div', { className: 'kp-pos__tiles' }, tiles),
       hasStop ? h(LevelBar, { stop: p.stop, target: p.target, cost: p.cost, price: p.price, cur: cur }) : null,
       form || h('div', { className: 'kp-pos__actions' },
-        hasStop && p.onRaiseStop !== false ? h(Button, { variant: 'secondary', onClick: function () { open('stop'); } }, 'Stopu yükselt') : null,
-        p.onSold !== false ? h(Button, { variant: 'secondary', onClick: function () { open('sell'); } }, 'Sattım') : null,
+        hasStop && p.onRaiseStop !== false ? h(Button, { variant: 'secondary', onClick: function () { open('stop'); } }, kt('Stopu yükselt')) : null,
+        p.onSold !== false ? h(Button, { variant: 'secondary', onClick: function () { open('sell'); } }, kt('Sattım')) : null,
         /* Kapanış paneli düzeltmesi: satış fiyatı sormadan kaydı kaldıran tek tıklık buton */
-        p.onDelete ? h(Button, { variant: 'secondary', onClick: function () { p.onDelete(p.symbol); } }, 'Sil') : null));
+        p.onDelete ? h(Button, { variant: 'secondary', onClick: function () { p.onDelete(p.symbol); } }, kt('Sil')) : null));
   }
 
   function signedPct(v) { return (v >= 0 ? '+' : '−') + '%' + fmtNum(Math.abs(v), 1); }
@@ -314,13 +321,13 @@
     var s = p.stop, t = p.target, x = p.price, c = p.cost, cur = p.cur, has = t != null && t > s;
     function pos(v) { return has ? Math.max(0, Math.min(100, (v - s) / (t - s) * 100)) : 50; }
     return h('div', { className: 'kp-levelbar' },
-      h('div', { className: 'kp-levelbar__track', role: 'img', 'aria-label': 'Stop ' + fmtPrice(s, cur) + (has ? ', hedef ' + fmtPrice(t, cur) : '') + ', son kapanış ' + fmtPrice(x, cur) },
-        has && c != null ? h('span', { className: 'kp-levelbar__cost', style: { left: pos(c) + '%' }, title: 'Alış ' + fmtPrice(c, cur) }) : null,
+      h('div', { className: 'kp-levelbar__track', role: 'img', 'aria-label': 'Stop ' + fmtPrice(s, cur) + (has ? ', ' + kt('hedef') + ' ' + fmtPrice(t, cur) : '') + ', ' + kt('son kapanış') + ' ' + fmtPrice(x, cur) },
+        has && c != null ? h('span', { className: 'kp-levelbar__cost', style: { left: pos(c) + '%' }, title: kt('Alış') + ' ' + fmtPrice(c, cur) }) : null,
         h('span', { className: 'kp-levelbar__dot', style: { left: pos(x) + '%' } })),
       h('div', { className: 'kp-levelbar__labels' },
         h('span', { className: 'kp-levelbar__stop' }, h('b', null, 'Stop '), fmtPrice(s, cur), h('span', { className: 'kp-levelbar__pct' }, signedPct((s / x - 1) * 100))),
-        has ? h('span', { className: 'kp-levelbar__target' }, h('b', null, 'Hedef '), fmtPrice(t, cur), h('span', { className: 'kp-levelbar__pct' }, signedPct((t / x - 1) * 100)))
-          : h('span', { className: 'kp-levelbar__pct' }, 'Hedef yok')));
+        has ? h('span', { className: 'kp-levelbar__target' }, h('b', null, kt('Hedef') + ' '), fmtPrice(t, cur), h('span', { className: 'kp-levelbar__pct' }, signedPct((t / x - 1) * 100)))
+          : h('span', { className: 'kp-levelbar__pct' }, kt('Hedef yok'))));
   }
 
   /* ---------- candlestick chart ---------- */
@@ -588,8 +595,8 @@
   var DEC = { AL: 'up', TUT: 'info', BEKLE: 'warn', PAS: 'flat', 'BİLGİ': 'info' };
   function DecisionBadge(p) {
     var d = DEC[p.decision] ? p.decision : 'PAS';
-    return h('span', { className: cx('kp-dec', 'kp-dec--' + DEC[d], p.size === 'lg' && 'kp-dec--lg'), title: 'Sinyal: ' + d },
-      p.size === 'lg' && p.prefix !== false ? h('span', { className: 'kp-dec__pre' }, 'Sinyal') : null, d);
+    return h('span', { className: cx('kp-dec', 'kp-dec--' + DEC[d], p.size === 'lg' && 'kp-dec--lg'), title: kt('Sinyal§rozet') + ': ' + kt(d) },
+      p.size === 'lg' && p.prefix !== false ? h('span', { className: 'kp-dec__pre' }, kt('Sinyal§rozet')) : null, kt(d));
   }
 
   var GATE = { gecti: ['pass', 'check', 'Geçti'], kaldi: ['fail', 'x', 'Kaldı'], uyari: ['warn', 'alert', 'Uyarı'] };
@@ -598,32 +605,32 @@
     items.forEach(function (i) { n[i.status] = (n[i.status] || 0) + 1; });
     return h('div', { className: 'kp-gate' },
       p.summary === false ? null : h('div', { className: 'kp-gate__sum' },
-        h('span', { className: 'kp-gate__big' }, n.gecti + '/' + items.length), h('span', null, 'kural geçti'),
-        n.kaldi ? h('span', { className: 'kp-gate__pill is-fail' }, n.kaldi + ' kaldı') : null,
-        n.uyari ? h('span', { className: 'kp-gate__pill is-warn' }, n.uyari + ' uyarı') : null),
+        h('span', { className: 'kp-gate__big' }, n.gecti + '/' + items.length), h('span', null, kt('kural geçti')),
+        n.kaldi ? h('span', { className: 'kp-gate__pill is-fail' }, n.kaldi + ' ' + kt('kaldı§kural')) : null,
+        n.uyari ? h('span', { className: 'kp-gate__pill is-warn' }, n.uyari + ' ' + kt('uyarı§kural')) : null),
       h('ul', { className: 'kp-gate__list' }, items.map(function (it, i) {
         var g = GATE[it.status] || GATE.uyari;
         return h('li', { key: i, className: 'kp-gate__item is-' + g[0] },
           h('span', { className: 'kp-gate__icon' }, h(Icon, { name: g[1], size: 16, stroke: 2.25 })),
           h('div', { className: 'kp-gate__body' },
-            h('div', { className: 'kp-gate__rule' }, it.rule, it.blocking === false ? h('span', { className: 'kp-gate__tag' }, 'engellemez') : null),
+            h('div', { className: 'kp-gate__rule' }, it.rule, it.blocking === false ? h('span', { className: 'kp-gate__tag' }, kt('engellemez')) : null),
             it.detail ? h('div', { className: 'kp-gate__detail' }, it.detail) : null),
-          h('span', { className: 'kp-gate__status' }, g[2]));
+          h('span', { className: 'kp-gate__status' }, kt(g[2])));
       })));
   }
 
   /* ---------- macro regime −5…+5 ---------- */
   function RegimeGauge(p) {
     var s = Math.max(-5, Math.min(5, Math.round(p.score || 0))), tone = s >= 2 ? 'up' : s <= -2 ? 'down' : 'flat';
-    var label = p.label || (s >= 2 ? 'Risk-on' : s <= -2 ? 'Risk-off' : 'Nötr');
-    var sub = s >= 2 ? 'Makro rüzgar arkada' : s <= -2 ? 'Makro rüzgar karşıda' : 'Belirgin bir rüzgar yok';
+    var label = p.label || (s >= 2 ? 'Risk-on' : s <= -2 ? 'Risk-off' : kt('Nötr'));
+    var sub = s >= 2 ? kt('Makro rüzgar arkada') : s <= -2 ? kt('Makro rüzgar karşıda') : kt('Belirgin bir rüzgar yok');
     var cells = [];
     for (var i = -5; i <= 5; i++) cells.push(h('span', { key: i, className: cx('kp-regime__cell', i === 0 && 'is-zero', s > 0 && i > 0 && i <= s && 'is-up', s < 0 && i < 0 && i >= s && 'is-down') }));
     return h('div', { className: 'kp-regime' },
       h('div', { className: 'kp-regime__head' },
         h('span', { className: 'kp-regime__score is-' + tone }, (s > 0 ? '+' : s < 0 ? '−' : '') + Math.abs(s)),
         h('div', null, h('div', { className: 'kp-regime__label' }, label), h('div', { className: 'kp-regime__sub' }, sub))),
-      h('div', { className: 'kp-regime__scale', role: 'img', 'aria-label': 'Makro rejim skoru ' + s + ', −5 ile +5 arası' }, cells),
+      h('div', { className: 'kp-regime__scale', role: 'img', 'aria-label': kt('Makro rejim skoru {s}, −5 ile +5 arası', { s: s }) }, cells),
       h('div', { className: 'kp-regime__ends' }, h('span', null, '−5'), h('span', null, '0'), h('span', null, '+5')),
       p.components ? h('ul', { className: 'kp-regime__comps' }, p.components.map(function (c) {
         var t = c.value > 0 ? 'up' : c.value < 0 ? 'down' : 'flat';
@@ -667,9 +674,9 @@
       return h('li', { key: i, className: 'kp-fresh__row' },
         h('span', { className: 'kp-fresh__dot is-' + f[0], 'aria-hidden': true }),
         h('div', { className: 'kp-fresh__main' },
-          h('div', { className: 'kp-fresh__src' }, it.source, it.gate ? h('span', { className: 'kp-fresh__gate' }, 'kapıyı etkiler') : null),
+          h('div', { className: 'kp-fresh__src' }, it.source, it.gate ? h('span', { className: 'kp-fresh__gate' }, kt('kapıyı etkiler')) : null),
           it.note ? h('div', { className: 'kp-fresh__note' }, it.note) : null),
-        h('div', { className: 'kp-fresh__right' }, h('span', { className: 'kp-fresh__age' }, it.age || '—'), h('span', { className: 'kp-fresh__st is-' + f[0] }, f[1])));
+        h('div', { className: 'kp-fresh__right' }, h('span', { className: 'kp-fresh__age' }, it.age || '—'), h('span', { className: 'kp-fresh__st is-' + f[0] }, kt(f[1]))));
     }));
   }
 
@@ -684,7 +691,7 @@
     function y(v) { return (hi - v) / (hi - lo) * H; }
     var last = c[n - 1];
     return h('div', { ref: ref, className: 'kp-mini' },
-      h('svg', { width: w, height: H, role: 'img', 'aria-label': (p.symbol || '') + ' küçük mum grafiği' },
+      h('svg', { width: w, height: H, role: 'img', 'aria-label': kt('{s} küçük mum grafiği', { s: p.symbol || '' }) },
         [0.25, 0.5, 0.75].map(function (f) { return h('line', { key: f, className: 'kp-ch-grid', x1: 0, x2: w, y1: H * f, y2: H * f }); }),
         c.map(function (k, i) {
           var up = k.c >= k.o, t = y(Math.max(k.o, k.c)), bh = Math.max(1, Math.abs(y(k.o) - y(k.c)));
@@ -701,13 +708,13 @@
         h('span', { className: 'kp-limit__val' }, h('b', null, fmtPrice(p.used, p.cur, 2)), ' / ' + fmtPrice(p.limit, p.cur, 2))),
       h('div', { className: 'kp-limit__track', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': p.limit, 'aria-valuenow': p.used, 'aria-label': p.label },
         h('span', { className: 'kp-limit__fill', style: { width: pct * 100 + '%' } })),
-      h('div', { className: 'kp-limit__foot' }, h('span', null, '%' + fmtNum(pct * 100, 0) + ' kullanıldı'), p.note ? h('span', null, p.note) : null));
+      h('div', { className: 'kp-limit__foot' }, h('span', null, kt('%{n} kullanıldı', { n: fmtNum(pct * 100, 0) })), p.note ? h('span', null, p.note) : null));
   }
 
   function StreakStrip(p) {
     var rs = p.results || [], mx = Math.max.apply(null, rs.map(function (r) { return Math.abs(r.r); }).concat([1]));
     return h('div', { className: 'kp-streak' },
-      h('ol', { className: 'kp-streak__list', 'aria-label': 'Son ' + rs.length + ' kapanış, eskiden yeniye' }, rs.map(function (r, i) {
+      h('ol', { className: 'kp-streak__list', 'aria-label': kt('Son {n} kapanış, eskiden yeniye', { n: rs.length }) }, rs.map(function (r, i) {
         var up = r.r >= 0, ht = Math.max(6, Math.abs(r.r) / mx * 100) + '%';
         return h('li', { key: i, className: 'kp-streak__item is-' + (up ? 'up' : 'down'), title: (r.symbol || '') + ' ' + (r.date || '') },
           h('span', { className: 'kp-streak__pos' }, up ? h('span', { className: 'kp-streak__bar', style: { height: ht } }) : null),
@@ -722,14 +729,14 @@
   function FearGreedGauge(p) {
     var v = Math.max(0, Math.min(100, Math.round(+p.value || 0))), seg = FG.filter(function (s) { return v >= s[0] && v <= s[1]; })[0] || FG[2], nd = arcPt(v, 60);
     return h('div', { className: 'kp-fg' },
-      h('svg', { viewBox: '0 0 200 110', role: 'img', 'aria-label': 'Korku-açgözlülük endeksi ' + v + ', ' + seg[2] },
+      h('svg', { viewBox: '0 0 200 110', role: 'img', 'aria-label': kt('Korku-açgözlülük endeksi') + ' ' + v + ', ' + kt(seg[2]) },
         FG.map(function (s) {
           var a = arcPt(s[0] + (s[0] ? 1 : 0), 80), b = arcPt(s[1] - (s[1] < 100 ? 1 : 0), 80);
           return h('path', { key: s[0], d: 'M' + a[0].toFixed(2) + ' ' + a[1].toFixed(2) + 'A80 80 0 0 1 ' + b[0].toFixed(2) + ' ' + b[1].toFixed(2), className: cx('kp-fg__seg', s === seg && 'is-' + s[3]) });
         }),
         h('line', { x1: 100, y1: 100, x2: nd[0], y2: nd[1], className: 'kp-fg__needle' }), h('circle', { cx: 100, cy: 100, r: 5, className: 'kp-fg__hub' })),
-      h('div', { className: 'kp-fg__read' }, h('span', { className: 'kp-fg__val' }, v), h('span', { className: 'kp-fg__lbl' }, p.label || seg[2])),
-      h('div', { className: 'kp-fg__ends' }, h('span', null, '0 · Aşırı korku'), h('span', null, '100 · Aşırı açgözlülük')),
+      h('div', { className: 'kp-fg__read' }, h('span', { className: 'kp-fg__val' }, v), h('span', { className: 'kp-fg__lbl' }, p.label || kt(seg[2]))),
+      h('div', { className: 'kp-fg__ends' }, h('span', null, '0 · ' + kt('Aşırı korku')), h('span', null, '100 · ' + kt('Aşırı açgözlülük'))),
       p.note ? h('p', { className: 'kp-fg__note' }, p.note) : null);
   }
 
@@ -739,7 +746,7 @@
     return h('div', { className: 'kp-card kp-shield is-' + s[0] },
       h('span', { className: 'kp-shield__icon' }, h(Icon, { name: 'shield', size: 28 })),
       h('div', { className: 'kp-shield__body' },
-        h('div', { className: 'kp-shield__state' }, p.title || s[1]),
+        h('div', { className: 'kp-shield__state' }, p.title || kt(s[1])),
         p.detail ? h('p', { className: 'kp-shield__detail' }, p.detail) : null,
         p.until ? h('div', { className: 'kp-shield__until' }, p.until) : null,
         p.children || null));
@@ -801,9 +808,9 @@
   function PulseList(p) {
     return h('ul', { className: 'kp-pulse' }, (p.items || []).map(function (it) {
       return h('li', { key: it.label, className: 'kp-pulse__row' },
-        h('div', { className: 'kp-pulse__name' }, h('i', { style: { background: it.color || 'var(--text-3)' } }), h('span', null, it.label), it.count != null ? h('span', { className: 'kp-pulse__count' }, it.count + ' varlık') : null),
+        h('div', { className: 'kp-pulse__name' }, h('i', { style: { background: it.color || 'var(--text-3)' } }), h('span', null, it.label), it.count != null ? h('span', { className: 'kp-pulse__count' }, kt('{n} varlık', { n: it.count })) : null),
         h('span', { className: 'kp-pulse__value' }, fmtPrice(it.value, it.cur, 2)),
-        h('span', { className: 'kp-pulse__badges' }, h(ChangeBadge, { value: it.day, label: 'Gün' }), h(ChangeBadge, { value: it.total, label: 'Toplam' })));
+        h('span', { className: 'kp-pulse__badges' }, h(ChangeBadge, { value: it.day, label: kt('Gün§değişim') }), h(ChangeBadge, { value: it.total, label: kt('Toplam') })));
     }));
   }
 
@@ -821,13 +828,13 @@
   /* ---------- signals ---------- */
   var SSTATE = { bekliyor: 'Karar bekliyor', aldim: 'Aldım', pas: 'Pas geçildi', doldu: 'Süresi doldu', izleniyor: 'İzleniyor', kapi: 'Kapı kaldı', bilgi: 'Kurallar geçti' };
   function SignalList(p) {
-    return h('ul', { className: 'kp-slist', role: 'listbox', 'aria-label': 'Sinyaller' }, (p.items || []).map(function (it) {
+    return h('ul', { className: 'kp-slist', role: 'listbox', 'aria-label': kt('Sinyaller') }, (p.items || []).map(function (it) {
       var on = it.id === p.value;
       function pick() { p.onSelect && p.onSelect(it.id); }
       return h('li', { key: it.id, role: 'option', 'aria-selected': on, tabIndex: 0, className: cx('kp-slist__item', on && 'is-active'), onClick: pick, onKeyDown: function (e) { if (e.key === 'Enter') pick(); } },
         h('div', { className: 'kp-slist__top' }, h(Ticker, { symbol: it.symbol, name: it.name }), h(DecisionBadge, { decision: it.decision })),
-        h('div', { className: 'kp-slist__meta' }, h('span', null, it.time), h('span', null, 'Kapı ' + it.score),
-          h('span', { className: 'kp-slist__state is-' + it.state }, SSTATE[it.state] || it.state)));
+        h('div', { className: 'kp-slist__meta' }, h('span', null, it.time), h('span', null, kt('Kapı') + ' ' + it.score),
+          h('span', { className: 'kp-slist__state is-' + it.state }, kt(SSTATE[it.state] || it.state))));
     }));
   }
 
@@ -835,17 +842,17 @@
     var st = useState(p.defaultOpen !== false), open = st[0];
     return h('section', { className: cx('kp-ai', open && 'is-open') },
       h('button', { type: 'button', className: 'kp-ai__head', 'aria-expanded': open, onClick: function () { st[1](!open); } },
-        h('span', { className: 'kp-ai__title' }, p.title || 'Yapay zekâ yorumu'),
+        h('span', { className: 'kp-ai__title' }, p.title || kt('Yapay zekâ yorumu')),
         p.model ? h('span', { className: 'kp-ai__model' }, p.model) : null,
         p.time ? h('span', { className: 'kp-ai__time' }, p.time) : null,
         h(Icon, { name: 'chevron', className: 'kp-ai__chev' })),
       open ? h('div', { className: 'kp-ai__body' }, p.children,
-        h('p', { className: 'kp-ai__foot' }, p.footnote || 'Model yalnız açıklar; kararı kod kapısı verir.')) : null);
+        h('p', { className: 'kp-ai__foot' }, p.footnote || kt('Model yalnız açıklar; kararı kod kapısı verir.'))) : null);
   }
 
   function OutcomeBox(p) {
     return h('div', { className: 'kp-outcome' },
-      h('div', { className: 'kp-outcome__title' }, p.title || 'Sonra ne oldu'),
+      h('div', { className: 'kp-outcome__title' }, p.title || kt('Sonra ne oldu')),
       h('dl', { className: 'kp-outcome__grid' }, (p.rows || []).map(function (r, i) {
         return h('div', { key: i }, h('dt', null, r.label), h('dd', { className: r.tone ? 'is-' + r.tone : null }, r.value));
       })),
@@ -890,32 +897,32 @@
     var dist = a.price ? (a.trigger / a.price - 1) * 100 : null;
     function kv(k, v, cls) { return h('div', { key: k }, h('dt', null, k), h('dd', { className: cls }, v)); }
     return h('article', { className: cx('kp-card kp-alarm', 'is-' + status) },
-      h('div', { className: 'kp-alarm__head' }, h(Ticker, { symbol: a.symbol, name: a.name }), h('span', { className: 'kp-alarm__status is-' + s[0] }, s[1])),
+      h('div', { className: 'kp-alarm__head' }, h(Ticker, { symbol: a.symbol, name: a.name }), h('span', { className: 'kp-alarm__status is-' + s[0] }, kt(s[1]))),
       h('div', { className: 'kp-alarm__trigger' },
-        h('span', { className: 'kp-alarm__dir' }, below ? 'Altına inerse (düşüş uyarısı)' : 'Üstüne çıkarsa (kırılım)'),
+        h('span', { className: 'kp-alarm__dir' }, below ? kt('Altına inerse (düşüş uyarısı)') : kt('Üstüne çıkarsa (kırılım)')),
         h('span', { className: 'kp-alarm__price' }, fmtPrice(a.trigger, cur)),
-        dist != null && status === 'kurulu' ? h('span', { className: 'kp-alarm__dist' }, 'şu anki fiyata %' + fmtNum(Math.abs(dist), 1) + ' uzaklıkta') : null),
+        dist != null && status === 'kurulu' ? h('span', { className: 'kp-alarm__dist' }, kt('şu anki fiyata %{n} uzaklıkta', { n: fmtNum(Math.abs(dist), 1) })) : null),
       below ? null : h('dl', { className: 'kp-alarm__levels' },
-        kv('İptal seviyesi', a.cancel ? fmtPrice(a.cancel, cur) : '—'), kv('Hedef', a.target ? fmtPrice(a.target, cur) : '—'),
+        kv(kt('İptal seviyesi'), a.cancel ? fmtPrice(a.cancel, cur) : '—'), kv(kt('Hedef'), a.target ? fmtPrice(a.target, cur) : '—'),
         kv('R/R', a.rr != null ? fmtNum(a.rr, 2) : '—', a.rr != null && a.rr < (a.minRr || 1) ? 'is-down' : null)),
       a.note ? h('p', { className: 'kp-alarm__note' }, a.note) : null,
-      status === 'tetiklendi' ? h('div', { className: 'kp-alarm__after' }, h('span', null, 'Tetiklendi ' + a.triggeredAt), a.gate ? h('span', null, 'Kod kapısı ' + a.gate) : null, a.after != null ? h('span', { className: 'kp-alarm__afterv' }, 'Sonra ', h(ChangeBadge, { value: a.after })) : null) : null,
+      status === 'tetiklendi' ? h('div', { className: 'kp-alarm__after' }, h('span', null, kt('Tetiklendi') + ' ' + a.triggeredAt), a.gate ? h('span', null, kt('Kod kapısı') + ' ' + a.gate) : null, a.after != null ? h('span', { className: 'kp-alarm__afterv' }, kt('Sonra') + ' ', h(ChangeBadge, { value: a.after })) : null) : null,
       status === 'iptal' && a.reason ? h('div', { className: 'kp-alarm__after' }, a.reason) : null,
       h('div', { className: 'kp-alarm__foot' },
-        h('span', { className: 'kp-alarm__created' }, 'Kuruldu ' + a.created),
-        confirm ? h('div', { className: 'kp-confirm', role: 'group', 'aria-label': 'Silme onayı' },
-            h('span', { className: 'kp-confirm__q' }, 'Silinsin mi?'),
-            h(Button, { variant: 'ghost', onClick: function () { st[1](false); } }, 'Vazgeç'),
-            h(Button, { variant: 'danger', onClick: function () { p.onDelete && p.onDelete(a.id); st[1](false); } }, 'Sil'))
-          : status === 'kurulu' ? h(Button, { variant: 'ghost', icon: h(Icon, { name: 'trash', size: 18 }), onClick: function () { st[1](true); } }, 'Sil') : null));
+        h('span', { className: 'kp-alarm__created' }, kt('Kuruldu') + ' ' + a.created),
+        confirm ? h('div', { className: 'kp-confirm', role: 'group', 'aria-label': kt('Silme onayı') },
+            h('span', { className: 'kp-confirm__q' }, kt('Silinsin mi?')),
+            h(Button, { variant: 'ghost', onClick: function () { st[1](false); } }, kt('Vazgeç')),
+            h(Button, { variant: 'danger', onClick: function () { p.onDelete && p.onDelete(a.id); st[1](false); } }, kt('Sil')))
+          : status === 'kurulu' ? h(Button, { variant: 'ghost', icon: h(Icon, { name: 'trash', size: 18 }), onClick: function () { st[1](true); } }, kt('Sil')) : null));
   }
 
   function AlarmForm(p) {
     var coins = p.coins || [], cs = useState(coins[0] ? coins[0].symbol : 'BTC'), coin = coins.filter(function (c) { return c.symbol === cs[0]; })[0] || { symbol: cs[0], price: 0 };
     var dir = useState('ABOVE'), tr = useState(p.defaults ? p.defaults.trigger : ''), ca = useState(p.defaults ? p.defaults.cancel : ''), ta = useState(p.defaults ? p.defaults.target : ''), nt = useState('');
     var T = parseTr(tr[0]), I = parseTr(ca[0]), H = parseTr(ta[0]), minRr = p.riskOff ? 1.5 : 1.0, above = dir[0] === 'ABOVE';
-    var errI = above && !isNaN(I) && !isNaN(T) && I >= T ? 'İptal seviyesi tetik fiyatının altında olmalı.' : null;
-    var errH = above && !isNaN(H) && !isNaN(T) && H <= T ? 'Hedef tetik fiyatının üstünde olmalı.' : null;
+    var errI = above && !isNaN(I) && !isNaN(T) && I >= T ? kt('İptal seviyesi tetik fiyatının altında olmalı.') : null;
+    var errH = above && !isNaN(H) && !isNaN(T) && H <= T ? kt('Hedef tetik fiyatının üstünde olmalı.') : null;
     var rr = above && !errI && !errH && !isNaN(T) && !isNaN(I) && !isNaN(H) ? (H - T) / (T - I) : null;
     var risk = rr != null ? (T - I) / T * 100 : null, gain = rr != null ? (H - T) / T * 100 : null;
     var ok = !isNaN(T) && (above ? rr != null && rr >= minRr : true);
@@ -923,39 +930,39 @@
     function submit(e) { e.preventDefault(); if (ok && p.onSubmit) p.onSubmit({ symbol: coin.symbol, direction: dir[0], trigger: T, cancel: above ? I : null, target: above ? H : null, rr: rr, note: nt[0] }); }
     return h('form', { className: 'kp-alarmform', onSubmit: submit, noValidate: true },
       h('div', { className: 'kp-alarmform__row' },
-        h(Field, { label: 'Coin', hint: coin.price ? 'Şu an ' + fmtPrice(coin.price, 'USD') : null },
+        h(Field, { label: 'Coin', hint: coin.price ? kt('Şu an') + ' ' + fmtPrice(coin.price, 'USD') : null },
           h(Select, { value: cs[0], onChange: function (e) { cs[1](e.target.value); }, options: coins.map(function (c) { return { value: c.symbol, label: c.symbol + ' · ' + c.name }; }) })),
-        h('div', { className: 'kp-field' }, h('span', { className: 'kp-field__label' }, 'Yön'),
-          h(Segmented, { ariaLabel: 'Alarm yönü', value: dir[0], onChange: dir[1], options: [{ value: 'ABOVE', label: 'Üstüne çıkarsa' }, { value: 'BELOW', label: 'Altına inerse' }] }))),
+        h('div', { className: 'kp-field' }, h('span', { className: 'kp-field__label' }, kt('Yön')),
+          h(Segmented, { ariaLabel: kt('Alarm yönü'), value: dir[0], onChange: dir[1], options: [{ value: 'ABOVE', label: kt('Üstüne çıkarsa') }, { value: 'BELOW', label: kt('Altına inerse') }] }))),
       h('div', { className: 'kp-alarmform__levels' },
-        h(Field, { label: 'Tetik fiyatı', hint: dist != null ? 'Fiyata %' + fmtNum(Math.abs(dist), 1) + (dist >= 0 ? ' yukarıda' : ' aşağıda') : '15 dk mum bu seviyenin ' + (above ? 'üstünde' : 'altında') + ' kapanırsa' },
+        h(Field, { label: kt('Tetik fiyatı'), hint: dist != null ? kt(dist >= 0 ? 'Fiyata %{n} yukarıda' : 'Fiyata %{n} aşağıda', { n: fmtNum(Math.abs(dist), 1) }) : kt(above ? '15 dk mum bu seviyenin üstünde kapanırsa' : '15 dk mum bu seviyenin altında kapanırsa') },
           h(TextInput, { prefix: '$', inputMode: 'decimal', value: tr[0], placeholder: '0,00', onChange: function (e) { tr[1](e.target.value); } })),
-        above ? h(Field, { label: 'İptal seviyesi', error: errI, hint: 'Senaryo bu seviyenin altında bozulur' },
+        above ? h(Field, { label: kt('İptal seviyesi'), error: errI, hint: kt('Senaryo bu seviyenin altında bozulur') },
           h(TextInput, { prefix: '$', inputMode: 'decimal', value: ca[0], placeholder: '0,00', onChange: function (e) { ca[1](e.target.value); } })) : null,
-        above ? h(Field, { label: 'Hedef', error: errH },
+        above ? h(Field, { label: kt('Hedef'), error: errH },
           h(TextInput, { prefix: '$', inputMode: 'decimal', value: ta[0], placeholder: '0,00', onChange: function (e) { ta[1](e.target.value); } })) : null),
       above ? h('div', { className: cx('kp-rr', rr == null ? 'is-empty' : rr >= minRr ? 'is-ok' : 'is-low'), 'aria-live': 'polite' },
         h('div', { className: 'kp-rr__main' }, h('span', { className: 'kp-rr__label' }, 'R/R'), h('span', { className: 'kp-rr__val' }, rr == null ? '—' : fmtNum(rr, 2))),
         h('div', { className: 'kp-rr__side' },
           h('span', null, 'Risk ', h('b', null, risk == null ? '—' : '%' + fmtNum(risk, 2))),
-          h('span', null, 'Kazanç ', h('b', null, gain == null ? '—' : '%' + fmtNum(gain, 2))),
-          h('span', { className: 'kp-rr__rule' }, rr == null ? 'Kapı eşiği ' + fmtNum(minRr, 1) : rr >= minRr ? 'Kapı eşiğini geçiyor (' + fmtNum(minRr, 1) + ')' : 'Kapı eşiğinin altında (' + fmtNum(minRr, 1) + ')'))) :
-        h(Callout, { tone: 'info' }, 'Altına inerse alarmı yalnız düşüş uyarısıdır; R/R ve kod kapısı çalışmaz.'),
-      h(Field, { label: 'Not (isteğe bağlı)' }, h(TextInput, { value: nt[0], placeholder: 'Ör. 4h direnç kırılımı', onChange: function (e) { nt[1](e.target.value); } })),
+          h('span', null, kt('Kazanç') + ' ', h('b', null, gain == null ? '—' : '%' + fmtNum(gain, 2))),
+          h('span', { className: 'kp-rr__rule' }, kt(rr == null ? 'Kapı eşiği {n}' : rr >= minRr ? 'Kapı eşiğini geçiyor ({n})' : 'Kapı eşiğinin altında ({n})', { n: fmtNum(minRr, 1) })))) :
+        h(Callout, { tone: 'info' }, kt('Altına inerse alarmı yalnız düşüş uyarısıdır; R/R ve kod kapısı çalışmaz.')),
+      h(Field, { label: kt('Not (isteğe bağlı)') }, h(TextInput, { value: nt[0], placeholder: kt('Ör. 4h direnç kırılımı'), onChange: function (e) { nt[1](e.target.value); } })),
       h('div', { className: 'kp-alarmform__foot' },
-        h('span', { className: 'kp-alarmform__note' }, 'Alarm yalnız bildirim gönderir. Bot işlem yapmaz.'),
-        h(Button, { variant: 'primary', type: 'submit', disabled: !ok }, 'Alarmı kur')));
+        h('span', { className: 'kp-alarmform__note' }, kt('Alarm yalnız bildirim gönderir. Bot işlem yapmaz.')),
+        h(Button, { variant: 'primary', type: 'submit', disabled: !ok }, kt('Alarmı kur'))));
   }
 
   /* ---------- portfolio ---------- */
   function MarketCard(p) {
     return h('div', { className: 'kp-card kp-market' },
-      h('div', { className: 'kp-market__head' }, h('span', { className: 'kp-market__name' }, h('i', { style: { background: p.color || 'var(--text-3)' } }), p.label), h('span', { className: 'kp-market__cur' }, (p.cur === 'TRY' ? '₺ · TL' : '$ · USD') + (p.count != null ? ' · ' + p.count + ' varlık' : ''))),
+      h('div', { className: 'kp-market__head' }, h('span', { className: 'kp-market__name' }, h('i', { style: { background: p.color || 'var(--text-3)' } }), p.label), h('span', { className: 'kp-market__cur' }, (p.cur === 'TRY' ? '₺ · TL' : '$ · USD') + (p.count != null ? ' · ' + kt('{n} varlık', { n: p.count }) : ''))),
       h('div', { className: 'kp-market__value' }, fmtPrice(p.value, p.cur, 2)),
-      h('div', { className: 'kp-market__badges' }, h(ChangeBadge, { value: p.day, label: 'Gün' }), h(ChangeBadge, { value: p.total, label: 'Toplam' })),
+      h('div', { className: 'kp-market__badges' }, h(ChangeBadge, { value: p.day, label: kt('Gün§değişim') }), h(ChangeBadge, { value: p.total, label: kt('Toplam') })),
       h('dl', { className: 'kp-market__kv' },
         h('div', null, h('dt', null, 'K/Z'), h('dd', { className: p.pl >= 0 ? 'is-up' : 'is-down' }, fmtSignedMoney(p.pl, p.cur))),
-        h('div', null, h('dt', null, 'Yatırılan'), h('dd', null, fmtPrice(p.cost, p.cur, 2)))));
+        h('div', null, h('dt', null, kt('Yatırılan')), h('dd', null, fmtPrice(p.cost, p.cur, 2)))));
   }
 
   function CompareCard(p) {
@@ -964,7 +971,7 @@
     return h('div', { className: 'kp-card kp-compare' },
       h('div', { className: 'kp-compare__label' }, p.label),
       h('div', { className: 'kp-compare__val' }, sp(p.value)),
-      h('div', { className: 'kp-compare__vs' }, h('span', { className: 'kp-compare__diff is-' + (ahead ? 'up' : 'down') }, (ahead ? '▲ ' : '▼ ') + fmtNum(Math.abs(diff), 1) + ' puan'), ahead ? ' öndesin' : ' gerindesin'),
+      h('div', { className: 'kp-compare__vs' }, h('span', { className: 'kp-compare__diff is-' + (ahead ? 'up' : 'down') }, (ahead ? '▲ ' : '▼ ') + fmtNum(Math.abs(diff), 1) + ' ' + kt('puan§fark')), ' ' + kt(ahead ? 'öndesin' : 'gerindesin')),
       p.note ? h('div', { className: 'kp-compare__note' }, p.note) : null);
   }
 
@@ -993,22 +1000,22 @@
     function go(k) { return function (e) { if (p.onNavigate) { e.preventDefault(); p.onNavigate(k); } st[1](false); }; }
     function links() {
       return SITE_NAV.map(function (n) {
-        return h('a', { key: n[0], href: '/' + n[0], className: cx('kp-sitenav__link', p.active === n[0] && 'is-active'), 'aria-current': p.active === n[0] ? 'page' : undefined, onClick: go(n[0]) }, n[1]);
+        return h('a', { key: n[0], href: '/' + n[0], className: cx('kp-sitenav__link', p.active === n[0] && 'is-active'), 'aria-current': p.active === n[0] ? 'page' : undefined, onClick: go(n[0]) }, kt(n[1]));
       });
     }
     return h('header', { className: 'kp-sitehead' },
       h('div', { className: 'kp-sitehead__inner' },
-        h('a', { href: '/', className: 'kp-sitehead__brand', 'aria-label': 'Kapanış ana sayfa', onClick: go('') }, h(BrandMark, null)),
-        h('nav', { className: 'kp-sitenav', 'aria-label': 'Site menüsü' }, links()),
-        h('div', { className: 'kp-sitehead__actions' },
-          h(Button, { variant: 'ghost', href: '/giris', onClick: go('giris') }, 'Giriş yap'),
-          h(Button, { variant: 'primary', href: '/kayit', onClick: go('kayit') }, 'Ücretsiz hesap aç')),
-        h('button', { type: 'button', className: 'kp-sitehead__menu', 'aria-expanded': open, 'aria-controls': 'kp-sitemenu', 'aria-label': open ? 'Menüyü kapat' : 'Menüyü aç', onClick: function () { st[1](!open); } },
+        h('a', { href: '/', className: 'kp-sitehead__brand', 'aria-label': kt('Kapanış ana sayfa'), onClick: go('') }, h(BrandMark, null)),
+        h('nav', { className: 'kp-sitenav', 'aria-label': kt('Site menüsü') }, links()),
+        h('div', { className: 'kp-sitehead__actions', style: { alignItems: 'center' } }, h(LangLink, { className: 'kp-sitehead__lang' }),
+          h(Button, { variant: 'ghost', href: '/giris', onClick: go('giris') }, kt('Giriş yap')),
+          h(Button, { variant: 'primary', href: '/kayit', onClick: go('kayit') }, kt('Ücretsiz hesap aç'))),
+        h('button', { type: 'button', className: 'kp-sitehead__menu', 'aria-expanded': open, 'aria-controls': 'kp-sitemenu', 'aria-label': open ? kt('Menüyü kapat') : kt('Menüyü aç'), onClick: function () { st[1](!open); } },
           h(Icon, { name: open ? 'x' : 'menu', size: 22 }))),
-      open ? h('div', { id: 'kp-sitemenu', className: 'kp-sitemenu' }, links(),
+      open ? h('div', { id: 'kp-sitemenu', className: 'kp-sitemenu' }, links(), h('div', { style: { padding: '0.75rem' } }, h(LangLink, null)),
         h('div', { className: 'kp-sitemenu__actions' },
-          h(Button, { variant: 'secondary', href: '/giris', onClick: go('giris') }, 'Giriş yap'),
-          h(Button, { variant: 'primary', href: '/kayit', onClick: go('kayit') }, 'Ücretsiz hesap aç'))) : null);
+          h(Button, { variant: 'secondary', href: '/giris', onClick: go('giris') }, kt('Giriş yap')),
+          h(Button, { variant: 'primary', href: '/kayit', onClick: go('kayit') }, kt('Ücretsiz hesap aç')))) : null);
   }
 
   function SiteFooter() {
@@ -1017,12 +1024,12 @@
         items.map(function (i) { return h('a', { key: i[1], href: i[1], className: 'kp-sitefoot__link' }, i[0]); }));
     }
     return h('footer', { className: 'kp-sitefoot' }, h('div', { className: 'kp-sitefoot__inner' },
-      h('div', { className: 'kp-sitefoot__brand' }, h(BrandMark, { size: 'sm' }), h('p', null, 'Dokunma değil, kapanış.')),
-      h('nav', { className: 'kp-sitefoot__cols', 'aria-label': 'Alt menü' },
-        col('Ürün', [['Özellikler', '/ozellikler'], ['Nasıl çalışır', '/nasil-calisir'], ['Kurallar', '/kurallar'], ['SSS', '/sss']]),
-        col('Hesap', [['Giriş yap', '/giris'], ['Ücretsiz hesap aç', '/kayit']]),
-        col('Yasal', [['Gizlilik ve KVKK', '/kvkk'], ['Kullanım koşulları', '/kosullar']])),
-      h('p', { className: 'kp-sitefoot__legal' }, 'Yatırım tavsiyesi değildir. Bot işlem yapmaz. Kapanış aracı kurum şifresi istemez; fiyatlar gecikmeli olabilir.')));
+      h('div', { className: 'kp-sitefoot__brand' }, h(BrandMark, { size: 'sm' }), h('p', null, kt('Dokunma değil, kapanış.'))),
+      h('nav', { className: 'kp-sitefoot__cols', 'aria-label': kt('Alt menü') },
+        col(kt('Ürün'), [[kt('Özellikler'), '/ozellikler'], [kt('Nasıl çalışır'), '/nasil-calisir'], [kt('Kurallar'), '/kurallar'], [kt('SSS'), '/sss']]),
+        col(kt('Hesap'), [[kt('Giriş yap'), '/giris'], [kt('Ücretsiz hesap aç'), '/kayit']]),
+        col(kt('Yasal'), [[kt('Gizlilik ve KVKK'), '/kvkk'], [kt('Kullanım koşulları'), '/kosullar']])),
+      h('p', { className: 'kp-sitefoot__legal' }, kt('Yatırım tavsiyesi değildir. Bot işlem yapmaz. Kapanış aracı kurum şifresi istemez; fiyatlar gecikmeli olabilir.'))));
   }
 
   function StepList(p) {
@@ -1068,9 +1075,9 @@
 
   function CloseRuleDiagram(p) {
     return h('figure', { className: 'kp-closerule' },
-      h('svg', { viewBox: '0 0 320 168', role: 'img', 'aria-label': 'Solda fitili direnci geçen ama altında kapanan mum: sayılmaz. Sağda direncin üstünde kapanan mum: sayılır.' },
+      h('svg', { viewBox: '0 0 320 168', role: 'img', 'aria-label': kt('Solda fitili direnci geçen ama altında kapanan mum: sayılmaz. Sağda direncin üstünde kapanan mum: sayılır.') },
         h('line', { x1: 8, x2: 312, y1: 62, y2: 62, className: 'kp-closerule__level' }),
-        h('text', { x: 10, y: 54, className: 'kp-ch-axis' }, p.levelLabel || 'Direnç'),
+        h('text', { x: 10, y: 54, className: 'kp-ch-axis' }, p.levelLabel || kt('Direnç')),
         h('line', { x1: 95, x2: 95, y1: 26, y2: 150, className: 'kp-closerule__wick' }),
         h('rect', { x: 80, y: 84, width: 30, height: 46, rx: 2, className: 'kp-closerule__body' }),
         h('circle', { cx: 95, cy: 30, r: 10, className: 'kp-closerule__ring is-no' }),
@@ -1078,25 +1085,25 @@
         h('rect', { x: 210, y: 42, width: 30, height: 78, rx: 2, className: 'kp-closerule__body' }),
         h('circle', { cx: 225, cy: 42, r: 10, className: 'kp-closerule__ring is-yes' })),
       h('figcaption', { className: 'kp-closerule__cap' },
-        h('div', null, h('span', { className: 'kp-closerule__tag is-no' }, h(Icon, { name: 'x', size: 14, stroke: 2.5 }), 'Sayılmaz'),
-          h('p', null, 'Fitil direnci geçti, mum altında kapandı.')),
-        h('div', null, h('span', { className: 'kp-closerule__tag is-yes' }, h(Icon, { name: 'check', size: 14, stroke: 2.5 }), 'Sayılır'),
-          h('p', null, 'Mum direncin üstünde kapandı.'))));
+        h('div', null, h('span', { className: 'kp-closerule__tag is-no' }, h(Icon, { name: 'x', size: 14, stroke: 2.5 }), kt('Sayılmaz')),
+          h('p', null, kt('Fitil direnci geçti, mum altında kapandı.'))),
+        h('div', null, h('span', { className: 'kp-closerule__tag is-yes' }, h(Icon, { name: 'check', size: 14, stroke: 2.5 }), kt('Sayılır')),
+          h('p', null, kt('Mum direncin üstünde kapandı.')))));
   }
 
   function MessagePreview(p) {
-    return h('div', { className: 'kp-msg', role: 'group', 'aria-label': 'Örnek bildirim' },
-      h('div', { className: 'kp-msg__head' }, h(BrandMark, { size: 'sm', wordmark: false }), h('div', null, h('div', { className: 'kp-msg__from' }, p.from || 'Kapanış botu'), h('div', { className: 'kp-msg__time' }, p.time))),
+    return h('div', { className: 'kp-msg', role: 'group', 'aria-label': kt('Örnek bildirim') },
+      h('div', { className: 'kp-msg__head' }, h(BrandMark, { size: 'sm', wordmark: false }), h('div', null, h('div', { className: 'kp-msg__from' }, p.from || kt('Kapanış botu')), h('div', { className: 'kp-msg__time' }, p.time))),
       h('div', { className: 'kp-msg__body' }, p.children));
   }
 
   /* ---------- sign-in frame (the Clerk component mounts in the slot) ---------- */
   function AuthFrame(p) {
     return h('div', { className: 'kp-auth' }, h('div', { className: 'kp-auth__box' },
-      h('a', { href: '/', className: 'kp-auth__brand', 'aria-label': 'Kapanış ana sayfa' }, h(BrandMark, { size: 'lg' })),
-      h('p', { className: 'kp-auth__tag' }, p.tagline || 'Dokunma değil, kapanış.'),
+      h('a', { href: '/', className: 'kp-auth__brand', 'aria-label': kt('Kapanış ana sayfa') }, h(BrandMark, { size: 'lg' })),
+      h('p', { className: 'kp-auth__tag' }, p.tagline || kt('Dokunma değil, kapanış.')),
       h('div', { className: 'kp-auth__slot' }, p.children),
-      h('p', { className: 'kp-auth__foot' }, 'Bot işlem yapmaz', h('span', { 'aria-hidden': true }, ' · '), h('a', { href: '/kvkk', className: 'kp-link' }, 'Gizlilik ve KVKK'))));
+      h('p', { className: 'kp-auth__foot' }, kt('Bot işlem yapmaz'), h('span', { 'aria-hidden': true }, ' · '), h('a', { href: '/kvkk', className: 'kp-link' }, kt('Gizlilik ve KVKK')), h('span', { 'aria-hidden': true }, ' · '), h(LangLink, null))));
   }
   function AuthBox(p) {
     var mode = p.mode || 'giris', step = useState(p.step || 'start'), em = useState(p.email || ''), code = useState('');
@@ -1132,16 +1139,16 @@
     var steps = p.steps || [], done = steps.filter(function (s) { return s.done; }).length;
     return h('section', { className: 'kp-card kp-setup' },
       h('div', { className: 'kp-setup__head' },
-        h('div', null, h('h2', { className: 'kp-card__title' }, p.title || 'İlk kurulum'), h('p', { className: 'kp-setup__sub' }, done + '/' + steps.length + ' adım tamamlandı')),
-        h('div', { className: 'kp-setup__bar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': steps.length, 'aria-valuenow': done, 'aria-label': 'Kurulum ilerlemesi' },
+        h('div', null, h('h2', { className: 'kp-card__title' }, p.title || kt('İlk kurulum')), h('p', { className: 'kp-setup__sub' }, kt('{a}/{b} adım tamamlandı', { a: done, b: steps.length }))),
+        h('div', { className: 'kp-setup__bar', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': steps.length, 'aria-valuenow': done, 'aria-label': kt('Kurulum ilerlemesi') },
           steps.map(function (s, i) { return h('span', { key: i, className: cx('kp-setup__seg', s.done && 'is-done') }); }))),
       h('ol', { className: 'kp-setup__list' }, steps.map(function (s, i) {
         return h('li', { key: i, className: cx('kp-setup__item', s.done && 'is-done') },
           h('span', { className: 'kp-setup__mark', 'aria-hidden': true }, s.done ? h(Icon, { name: 'check', size: 16, stroke: 2.5 }) : i + 1),
           h('div', { className: 'kp-setup__body' },
-            h('div', { className: 'kp-setup__title' }, s.title, s.optional ? h('span', { className: 'kp-gate__tag' }, 'isteğe bağlı') : null),
+            h('div', { className: 'kp-setup__title' }, s.title, s.optional ? h('span', { className: 'kp-gate__tag' }, kt('isteğe bağlı')) : null),
             s.detail ? h('div', { className: 'kp-setup__detail' }, s.detail) : null),
-          h('div', { className: 'kp-setup__action' }, s.done ? h('span', { className: 'kp-setup__done' }, h(Icon, { name: 'check', size: 16, stroke: 2.5 }), 'Tamamlandı') : s.action || null));
+          h('div', { className: 'kp-setup__action' }, s.done ? h('span', { className: 'kp-setup__done' }, h(Icon, { name: 'check', size: 16, stroke: 2.5 }), kt('Tamamlandı')) : s.action || null));
       })));
   }
 
@@ -1160,7 +1167,7 @@
       p.chart ? h('div', { className: 'kp-skel__block', style: { height: p.chart } }) : null,
       p.tiles ? h('div', { className: 'kp-skel__tiles' }, Array.apply(null, Array(p.tiles)).map(function (_, i) { return h('div', { key: i, className: 'kp-skel__tile' }); })) : null,
       Array.apply(null, Array(rows)).map(function (_, i) { return h('div', { key: i, className: 'kp-skel__line', style: { width: widths[i % 5] + '%' } }); }),
-      h('div', { className: 'kp-skel__label', role: 'status' }, p.label || 'Yükleniyor…'));
+      h('div', { className: 'kp-skel__label', role: 'status' }, p.label || kt('Yükleniyor…')));
   }
 
   function QuotaMeter(p) {
@@ -1169,8 +1176,8 @@
       limit <= 12 ? h('div', { className: 'kp-quota__cells', 'aria-hidden': true }, Array.apply(null, Array(limit)).map(function (_, i) { return h('span', { key: i, className: cx('kp-quota__cell', i < left && 'is-left') }); }))
         : h('div', { className: 'kp-limit__track', 'aria-hidden': true }, h('span', { className: 'kp-limit__fill', style: { width: left / limit * 100 + '%' } })),
       h('div', { className: 'kp-quota__text' },
-        empty ? h('b', null, 'Bugünkü analiz hakkın doldu') : ['Bugün ', h('b', { key: 'b' }, left + '/' + limit), ' analiz hakkın kaldı'],
-        p.ownLimit ? h('span', { className: 'kp-quota__own' }, p.ownKey ? ' · kendi anahtarınla' : ' · kendi anahtarınla ' + p.ownLimit) : null),
+        empty ? h('b', null, kt('Bugünkü analiz hakkın doldu')) : [kt('Bugün §hak'), h('b', { key: 'b' }, left + '/' + limit), kt(' analiz hakkın kaldı§hak')],
+        p.ownLimit ? h('span', { className: 'kp-quota__own' }, ' · ' + kt('kendi anahtarınla') + (p.ownKey ? '' : ' ' + p.ownLimit)) : null),
       p.reset ? h('div', { className: 'kp-quota__reset' }, p.reset) : null);
   }
 
@@ -1180,37 +1187,37 @@
       sl = useState(d.stop || ''), tg = useState(d.target || ''), saved = useState(null);
     var m = BUY_MKTS.filter(function (x) { return x.value === mk[0]; })[0], cur = m.cur, sym = SYM[cur];
     var Q = parseTr(qty[0]), P = parseTr(pr[0]), S = parseTr(sl[0]), T = parseTr(tg[0]);
-    var errC = code[0] && !/^[A-Z0-9.]{1,12}$/.test(code[0]) ? 'Kod yalnız harf ve rakam içerir.' : null;
-    var errQ = !isNaN(Q) && Q <= 0 ? 'Adet sıfırdan büyük olmalı.' : mk[0] !== 'kripto' && !isNaN(Q) && Q % 1 ? 'Hissede adet tam sayı olmalı.' : null;
-    var errS = !isNaN(S) && !isNaN(P) && S >= P ? 'Stop alış fiyatının altında olmalı.' : null;
-    var errT = !isNaN(T) && !isNaN(P) && T <= P ? 'Hedef alış fiyatının üstünde olmalı.' : null;
+    var errC = code[0] && !/^[A-Z0-9.]{1,12}$/.test(code[0]) ? kt('Kod yalnız harf ve rakam içerir.') : null;
+    var errQ = !isNaN(Q) && Q <= 0 ? kt('Adet sıfırdan büyük olmalı.') : mk[0] !== 'kripto' && !isNaN(Q) && Q % 1 ? kt('Hissede adet tam sayı olmalı.') : null;
+    var errS = !isNaN(S) && !isNaN(P) && S >= P ? kt('Stop alış fiyatının altında olmalı.') : null;
+    var errT = !isNaN(T) && !isNaN(P) && T <= P ? kt('Hedef alış fiyatının üstünde olmalı.') : null;
     var total = Q > 0 && P > 0 ? Q * P : null, risk = total && S > 0 && !errS ? (P - S) * Q : null, rr = risk && T > 0 && !errT ? (T - P) / (P - S) : null;
     var ok = code[0] && !errC && Q > 0 && !errQ && P > 0 && S > 0 && !errS && !errT;
     function submit(e) {
       e.preventDefault(); if (!ok) return;
       var rec = { market: mk[0], code: code[0], qty: Q, price: P, stop: S, target: isNaN(T) ? null : T };
       if (p.onSubmit) p.onSubmit(rec);
-      saved[1](code[0] + ' · ' + new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 8 }).format(Q) + ' adet kaydedildi.');
+      saved[1](code[0] + ' · ' + kt('{n} adet kaydedildi.', { n: new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 8 }).format(Q) }));
     }
     function money(v) { return v == null ? '—' : fmtPrice(v, cur, 2); }
     return h('form', { className: 'kp-buyform', onSubmit: submit, noValidate: true },
-      h('div', { className: 'kp-field' }, h('span', { className: 'kp-field__label' }, 'Piyasa'),
-        h(Segmented, { ariaLabel: 'Piyasa', value: mk[0], onChange: function (v) { mk[1](v); saved[1](null); }, options: BUY_MKTS })),
+      h('div', { className: 'kp-field' }, h('span', { className: 'kp-field__label' }, kt('Piyasa')),
+        h(Segmented, { ariaLabel: kt('Piyasa'), value: mk[0], onChange: function (v) { mk[1](v); saved[1](null); }, options: BUY_MKTS.map(function (x) { return { value: x.value, label: kt(x.label) }; }) })),
       h('div', { className: 'kp-buyform__grid' },
-        h(Field, { label: 'Kod', error: errC, hint: mk[0] === 'kripto' ? 'Yalnız spot · USDT paritesi' : null },
+        h(Field, { label: kt('Kod'), error: errC, hint: mk[0] === 'kripto' ? kt('Yalnız spot · USDT paritesi') : null },
           h(TextInput, { value: code[0], placeholder: m.ph, autoCapitalize: 'characters', onChange: function (e) { code[1](e.target.value.toUpperCase().replace(/\s/g, '')); saved[1](null); } })),
-        h(Field, { label: 'Adet', error: errQ }, h(TextInput, { inputMode: 'decimal', value: qty[0], placeholder: mk[0] === 'kripto' ? '0,05' : '100', onChange: function (e) { qty[1](e.target.value); } })),
-        h(Field, { label: 'Alış fiyatı' }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: pr[0], placeholder: '0,00', onChange: function (e) { pr[1](e.target.value); } })),
-        h(Field, { label: 'Stop', error: errS, hint: errS ? null : 'Zorunlu · sonra yalnız yukarı taşınır' }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: sl[0], placeholder: '0,00', onChange: function (e) { sl[1](e.target.value); } })),
-        h(Field, { label: 'Hedef', error: errT, hint: errT ? null : 'İsteğe bağlı' }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: tg[0], placeholder: '0,00', onChange: function (e) { tg[1](e.target.value); } }))),
+        h(Field, { label: kt('Adet'), error: errQ }, h(TextInput, { inputMode: 'decimal', value: qty[0], placeholder: mk[0] === 'kripto' ? '0,05' : '100', onChange: function (e) { qty[1](e.target.value); } })),
+        h(Field, { label: kt('Alış fiyatı') }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: pr[0], placeholder: '0,00', onChange: function (e) { pr[1](e.target.value); } })),
+        h(Field, { label: 'Stop', error: errS, hint: errS ? null : kt('Zorunlu · sonra yalnız yukarı taşınır') }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: sl[0], placeholder: '0,00', onChange: function (e) { sl[1](e.target.value); } })),
+        h(Field, { label: kt('Hedef'), error: errT, hint: errT ? null : kt('İsteğe bağlı') }, h(TextInput, { prefix: sym, inputMode: 'decimal', value: tg[0], placeholder: '0,00', onChange: function (e) { tg[1](e.target.value); } }))),
       h('dl', { className: 'kp-buyform__sum' },
-        h('div', null, h('dt', null, 'Tutar'), h('dd', null, money(total))),
-        h('div', null, h('dt', null, 'Stopa kadar risk'), h('dd', { className: risk ? 'is-down' : null }, risk ? '−' + fmtPrice(risk, cur, 2) : '—')),
+        h('div', null, h('dt', null, kt('Tutar')), h('dd', null, money(total))),
+        h('div', null, h('dt', null, kt('Stopa kadar risk')), h('dd', { className: risk ? 'is-down' : null }, risk ? '−' + fmtPrice(risk, cur, 2) : '—')),
         h('div', null, h('dt', null, 'R/R'), h('dd', null, rr == null ? '—' : fmtNum(rr, 2)))),
       saved[0] ? h('p', { className: 'kp-buyform__ok', role: 'status' }, h(Icon, { name: 'check', size: 16, stroke: 2.5 }), saved[0]) : null,
       h('div', { className: 'kp-buyform__foot' },
-        h('span', { className: 'kp-buyform__note' }, 'Yalnız kayıttır. Kapanış işlem yapmaz; alımı aracı kurumunda sen yaparsın.'),
-        h(Button, { variant: 'primary', type: 'submit', disabled: !ok }, 'Alımı kaydet')));
+        h('span', { className: 'kp-buyform__note' }, kt('Yalnız kayıttır. Kapanış işlem yapmaz; alımı aracı kurumunda sen yaparsın.')),
+        h(Button, { variant: 'primary', type: 'submit', disabled: !ok }, kt('Alımı kaydet'))));
   }
 
   function TelegramLink(p) {
@@ -1263,13 +1270,13 @@
   }
 
   function DangerZone(p) {
-    var v = useState(''), word = p.word || 'SİL', ok = v[0].trim().toLocaleUpperCase('tr-TR') === word;
+    var v = useState(''), word = p.word || kt('SİL'), ok = v[0].trim().toLocaleUpperCase('tr-TR') === word || v[0].trim().toUpperCase() === word;
     return h('section', { className: 'kp-card kp-danger' },
-      h('h2', { className: 'kp-card__title' }, p.title || 'Hesabımı sil'),
-      h('p', { className: 'kp-danger__text' }, p.children || 'Portföyün, işlemlerin, analizlerin, kayıtlı anahtarların ve Telegram bağlantın kalıcı olarak silinir. Geri alınamaz. Önce verilerini indirmek isteyebilirsin.'),
+      h('h2', { className: 'kp-card__title' }, p.title || kt('Hesabımı sil')),
+      h('p', { className: 'kp-danger__text' }, p.children || kt('Portföyün, işlemlerin, analizlerin, kayıtlı anahtarların ve Telegram bağlantın kalıcı olarak silinir. Geri alınamaz. Önce verilerini indirmek isteyebilirsin.')),
       h('form', { className: 'kp-danger__form', onSubmit: function (e) { e.preventDefault(); if (ok && p.onDelete) p.onDelete(); } },
-        h(Field, { label: 'Onaylamak için ' + word + ' yaz' }, h(TextInput, { value: v[0], autoComplete: 'off', placeholder: word, onChange: function (e) { v[1](e.target.value); } })),
-        h(Button, { variant: 'danger', type: 'submit', disabled: !ok }, 'Hesabımı kalıcı olarak sil')));
+        h(Field, { label: kt('Onaylamak için {w} yaz', { w: word }) }, h(TextInput, { value: v[0], autoComplete: 'off', placeholder: word, onChange: function (e) { v[1](e.target.value); } })),
+        h(Button, { variant: 'danger', type: 'submit', disabled: !ok }, kt('Hesabımı kalıcı olarak sil'))));
   }
 
   var C = window;

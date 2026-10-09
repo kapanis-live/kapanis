@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { useNavigate } from "react-router-dom";
 import { ClerkProvider, useAuth as useClerkAuth, useClerk } from "@clerk/react";
 import { trTR } from "@clerk/localizations";
-import { currentLang } from "@/lib/i18n";
+import { useLang } from "@/lib/i18n";
 import api, { API, formatApiErrorDetail } from "@/lib/api";
 import { LoadingState } from "@/components/states";
 import { setLiveTokenGetter } from "@/lib/live";
@@ -133,8 +133,9 @@ function ClerkBridge({ children, legacy }) {
 
 function ClerkAuthProvider({ publishableKey, legacy, children }) {
   const navigate = useNavigate();
+  const { lang } = useLang();   // giriş kutusu ziyaretçinin seçtiği dilde
   return (
-    <ClerkProvider publishableKey={publishableKey} localization={currentLang() === "en" ? undefined : trTR}
+    <ClerkProvider publishableKey={publishableKey} localization={lang === "en" ? undefined : trTR}
       routerPush={(to) => navigate(to)} routerReplace={(to) => navigate(to, { replace: true })}
       signInUrl="/giris" signUpUrl="/kayit" signInFallbackRedirectUrl="/app" signUpFallbackRedirectUrl="/app" afterSignOutUrl="/">
       <ClerkBridge legacy={legacy}>{children}</ClerkBridge>

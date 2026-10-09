@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { API } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 
 // Gizlilik ve KVKK aydınlatma metni. Yalnız sistemin gerçekten topladığı veriyi anlatır.
 // Hukuki danışmanlık değildir: yayına almadan önce bir uzmana kontrol ettirilmeli.
@@ -30,24 +31,52 @@ const SECTIONS = [
   ["Önemli", () => <>Kapanış yatırım tavsiyesi vermez, işlem yapmaz ve senden aracı kurum ya da borsa şifresi istemez.</>],
 ];
 
+// English text of the same notice (shown when the visitor chose English). Same facts, same order.
+const SECTIONS_EN = [
+  ["Who processes the data?", (c) => <>The person who runs Kapanış is the data controller. Contact: {c ? <a className="text-info underline" href={`mailto:${c}`}>{c}</a> : <Link className="text-info underline" to="/iletisim">Contact page</Link>}.</>],
+  ["Which data?", () => (
+    <ul className="list-disc space-y-1 pl-5">
+      <li><b>Account:</b> your e-mail address and name. Sign-in is done through Clerk; your password is not kept at Kapanış. If you sign in with Google, the e-mail and name given by Google are used.</li>
+      <li><b>Portfolio:</b> the buys, sells, stop / target and cash you enter yourself on the My Portfolio page.</li>
+      <li><b>Analysis:</b> the analyses you ask for (ticker, market, time and the answer text).</li>
+      <li><b>Telegram (optional):</b> if you link your account, your Telegram chat id and user name.</li>
+      <li><b>API key (optional):</b> if you enter your own AI key it is stored encrypted; only its last 4 characters are shown.</li>
+    </ul>
+  )],
+  ["What for?", () => <>To open your account, to show you your portfolio, to produce the analysis you ask for and deliver it to you (and to your Telegram, if linked), and to limit abuse and cost (the daily analysis limit). The data is not used for advertising and is not sold.</>],
+  ["Who is it shared with?", () => (
+    <ul className="list-disc space-y-1 pl-5">
+      <li><b>Clerk</b> (sign-in service): e-mail and sign-in details.</li>
+      <li><b>MongoDB Atlas</b> (database, Frankfurt): your account, portfolio and analyses.</li>
+      <li><b>Hosting provider</b> (server, Europe): the machine where the data is processed.</li>
+      <li><b>AI provider</b> (DeepSeek or NVIDIA): only market data and the tickers you ask for are sent for an analysis; your e-mail and portfolio are not sent.</li>
+      <li><b>Telegram</b>: only if you linked it, the messages sent to you.</li>
+    </ul>
+  )],
+  ["For how long?", () => <>As long as your account is open. When you delete your account, your portfolio, analyses, request records and your sign-in account at Clerk are deleted.</>],
+  ["Your rights", () => <>To see and download your data (Account → Download my data), to correct it (My Portfolio), to delete it (Account → Delete my account), and to remove the Telegram link and the API key at any time. For other requests under the Turkish data protection law (KVKK), write to the contact address above.</>],
+  ["Important", () => <>Kapanış gives no investment advice, does not trade and does not ask you for a broker or exchange password.</>],
+];
+
 export default function Gizlilik() {
+  const { t, lang } = useLang();
   const [contact, setContact] = useState("");
   useEffect(() => {
     fetch(`${API}/auth/config`).then((r) => r.json()).then((c) => setContact(c.iletisim || "")).catch(() => {});
   }, []);
   return (
     <section className="mx-auto max-w-3xl px-5 py-14">
-      <h1 className="text-3xl font-extrabold tracking-tight text-t-1 sm:text-4xl">Gizlilik ve KVKK aydınlatma metni</h1>
-      <p className="mt-3 text-t-2">Kapanış hangi veriyi neden tutar, kimlerle paylaşır ve haklarını nasıl kullanırsın.</p>
+      <h1 className="text-3xl font-extrabold tracking-tight text-t-1 sm:text-4xl">{t("Gizlilik ve KVKK aydınlatma metni")}</h1>
+      <p className="mt-3 text-t-2">{t("Kapanış hangi veriyi neden tutar, kimlerle paylaşır ve haklarını nasıl kullanırsın.")}</p>
       <div className="mt-10 space-y-8">
-        {SECTIONS.map(([title, body]) => (
+        {(lang === "en" ? SECTIONS_EN : SECTIONS).map(([title, body]) => (
           <div key={title}>
             <h2 className="text-lg font-bold text-t-1">{title}</h2>
             <div className="mt-2 text-[0.9375rem] leading-relaxed text-t-2">{body(contact)}</div>
           </div>
         ))}
       </div>
-      <p className="mt-10 text-xs text-t-3">Son güncelleme: 27 Eylül 2026</p>
+      <p className="mt-10 text-xs text-t-3">{t("Son güncelleme: 27 Eylül 2026")}</p>
     </section>
   );
 }

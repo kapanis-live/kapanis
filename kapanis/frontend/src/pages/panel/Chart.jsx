@@ -18,9 +18,12 @@ import { toast } from "sonner";
 import { formatNumber, formatCompact } from "@/lib/format";
 import { px, baseCode, MARKET_LABEL } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
+import { useLang, currentLang, translate } from "@/lib/i18n";
 
-const TFS = [["15m", "15 dk"], ["1h", "1 saat"], ["4h", "4 saat"], ["1d", "Günlük"], ["1w", "Haftalık"]];
+const TFS = [["15m", "15 dk"], ["1h", "1 saat"], ["4h", "4 saat"], ["1d", "Günlük§mum"], ["1w", "Haftalık§mum"]];
 // Dönem düğmeleri (TradingView gibi): gösterilecek zaman aralığı + o aralığa uygun mum
+// React dışı yardımcılar (grafik çizimi, okuma kartları) için çeviri
+const tx = (text, vars) => translate(currentLang(), text, vars);
 const DAY = 86400;
 const RANGES = [["1G", "1 gün", DAY, "15m"], ["1H", "1 hafta", 7 * DAY, "1h"], ["1A", "1 ay", 30 * DAY, "4h"],
   ["3A", "3 ay", 91 * DAY, "1d"], ["6A", "6 ay", 182 * DAY, "1d"], ["YTD", "yıl başından beri", "ytd", "1d"],
@@ -110,16 +113,16 @@ function CandleChart({ data, on, overlay, onPick, range }) {
     const level = (price, color, title, style = 2, axis = true) =>
       price && candles.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: narrow ? axis && style !== 1 : axis, title: narrow ? "" : title });
     if (on.seviye && overlay) {
-      level(overlay.entry, c.info, "Alış ort.", 0);
-      level(overlay.plan?.tetik, c.wait, "Tetik");
-      level(overlay.plan?.iptal, c.down, "İptal");
-      level(overlay.plan?.hedef, c.up, "Hedef");
+      level(overlay.entry, c.info, tx("Alış ort."), 0);
+      level(overlay.plan?.tetik, c.wait, tx("Tetik"));
+      level(overlay.plan?.iptal, c.down, tx("İptal"));
+      level(overlay.plan?.hedef, c.up, tx("Hedef"));
     }
     // Kullanıcının bu koddaki aktif alarmları
     (overlay?.alarms || []).forEach((a) => level(a.seviye, c.wait, `Alarm ${a.yon === "ustu" ? "▲" : "▼"}`, 3));
     if (on.bolge && data.zones) {
-      data.zones.destek.forEach((z) => level(z.orta, `${c.up}b0`, `Destek (${z.dokunma})`, 1));
-      data.zones.direnc.forEach((z) => level(z.orta, `${c.down}b0`, `Direnç (${z.dokunma})`, 1));
+      data.zones.destek.forEach((z) => level(z.orta, `${c.up}b0`, `${tx("Destek")} (${z.dokunma})`, 1));
+      data.zones.direnc.forEach((z) => level(z.orta, `${c.down}b0`, `${tx("Direnç")} (${z.dokunma})`, 1));
     }
     // Bot sinyalleri: sinyalin geldiği mumun üstünde/altında işaret
     if (on.sinyal && overlay?.signals?.length) {
@@ -241,10 +244,11 @@ function CandleChart({ data, on, overlay, onPick, range }) {
 }
 
 const ALARM_TFS = { KRIPTO: ["1h", "4h", "1d"], BIST: ["1d"], ABD: ["1d"] };
-const ALARM_TF_LABEL = { "1h": "1 saatlik", "4h": "4 saatlik", "1d": "Günlük" };
+const ALARM_TF_LABEL = { "1h": "1 saatlik", "4h": "4 saatlik", "1d": "Günlük§mum" };
 
 // Grafikten alarm: tıkla ya da bölge seç, seviye gelsin; yön şimdiki fiyata göre kendiliğinden
 function AlarmBar({ d, code, market, chartTf, picked, setPicked, alarms }) {
+  const { t } = useLang();
   const qc = useQueryClient();
   const tfs = ALARM_TFS[market] || ["1d"];
   const [tf, setTf] = useState(tfs.includes(chartTf) ? chartTf : "1d");
@@ -254,14 +258,14 @@ function AlarmBar({ d, code, market, chartTf, picked, setPicked, alarms }) {
   const level = picked ?? "";
   const n = typeof level === "number" ? level : Number(String(level).replace(/\./g, "").replace(",", "."));
   const yon = Number.isFinite(n) && price ? (n >= price ? "ustu" : "alti") : "ustu";
-  const zones = [...(d.zones?.direnc || []).slice(0, 2).map((z) => ["Direnç", z.orta]), ...(d.zones?.destek || []).slice(0, 2).map((z) => ["Destek", z.orta])];
+  const zones = [...(d.zones?.direnc || []).slice(0, 2).map((z) => [t("Direnç"), z.orta]), ...(d.zones?.destek || []).slice(0, 2).map((z) => [t("Destek"), z.orta])];
   const save = async () => {
-    if (!Number.isFinite(n) || n <= 0) return toast.error("Grafiğe tıkla ya da seviye yaz.");
+    if (!Number.isFinite(n) || n <= 0) return toast.error(t("Grafiğe tıkla ya da seviye yaz."));
     setBusy(true);
     try {
       await api.post("/alarms", { piyasa: market, kod: code, tur: "fiyat", yon, seviye: Number(n.toPrecision(8)), tf });
       qc.invalidateQueries({ queryKey: ["my-alarms"] });
-      toast.success(`${code} ${px(n)} ${yon === "ustu" ? "üstünde" : "altında"} ${ALARM_TF_LABEL[tf].toLowerCase()} kapanışta haber vereceğim.`);
+      toast.success(t("{k} {p} {y} {tf} kapanışta haber vereceğim.", { k: code, p: px(n), y: t(yon === "ustu" ? "üstünde" : "altında"), tf: t(ALARM_TF_LABEL[tf]).toLowerCase() }));
       setPicked(null);
     } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail)); }
     finally { setBusy(false); }
@@ -269,33 +273,34 @@ function AlarmBar({ d, code, market, chartTf, picked, setPicked, alarms }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-hairline bg-raised p-4" data-testid="chart-alarm">
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1.5 text-sm font-medium text-t-2">⏰ Alarm seviyesi
-          <input inputMode="decimal" value={typeof level === "number" ? px(level) : level} placeholder="Grafiğe tıkla"
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-t-2">⏰ {t("Alarm seviyesi")}
+          <input inputMode="decimal" value={typeof level === "number" ? px(level) : level} placeholder={t("Grafiğe tıkla")}
             onChange={(e) => setPicked(e.target.value)}
             className="num h-10 w-40 rounded-lg border border-strong bg-ink px-3 font-bold text-t-1 outline-none focus:border-info" />
         </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium text-t-2">Mum
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-t-2">{t("Mum")}
           <select value={tf} onChange={(e) => setTf(e.target.value)} className="h-10 rounded-lg border border-strong bg-ink px-3 text-t-1">
-            {tfs.map((t) => <option key={t} value={t}>{ALARM_TF_LABEL[t]}</option>)}
+            {tfs.map((x) => <option key={x} value={x}>{t(ALARM_TF_LABEL[x])}</option>)}
           </select>
         </label>
         <K.Button variant="primary" disabled={busy} onClick={save}>
-          {Number.isFinite(n) && n > 0 ? `${yon === "ustu" ? "Üstünde" : "Altında"} kapanırsa haber ver` : "Alarm kur"}
+          {Number.isFinite(n) && n > 0 ? (yon === "ustu" ? t("Üstünde kapanırsa haber ver") : t("Altında kapanırsa haber ver")) : t("Alarm kur")}
         </K.Button>
       </div>
       {zones.length > 0 && <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-t-3">Hızlı seç:</span>
+        <span className="text-t-3">{t("Hızlı seç:")}</span>
         {zones.map(([label, v]) => <button key={label + v} type="button" onClick={() => setPicked(v)}
           className="rounded-lg border border-hairline px-2.5 py-1 font-semibold text-t-2 hover:bg-surface">{label} {px(v)}</button>)}
       </div>}
-      <p className="m-0 text-xs text-t-3">Grafikte bir fiyata tıkla, seviye buraya gelir. Yalnız mum kapanışı sayılır; bir kez çalışır ve
-        bağlı Telegram'ına gelir. {alarms.length ? `Bu kodda ${alarms.length} aktif alarmın var (grafikte sarı çizgi).` : ""} Tümü: Alarmlarım.</p>
+      <p className="m-0 text-xs text-t-3">{t("Grafikte bir fiyata tıkla, seviye buraya gelir. Yalnız mum kapanışı sayılır; bir kez çalışır ve bağlı Telegram'ına gelir.")}{" "}
+        {alarms.length ? `${t("Bu kodda {n} aktif alarmın var (grafikte sarı çizgi).", { n: alarms.length })} ` : ""}{t("Tümü: Alarmlarım.")}</p>
     </div>
   );
 }
 
 // Göstergelerin herkesin anlayacağı dille özeti (hepsi kodla hesaplandı)
 function readings(d) {
+  const t = tx;
   const L = d.last || {};
   const p = L.price;
   const out = [];
@@ -304,32 +309,33 @@ function readings(d) {
     const strong = p > L.sma50 && L.sma50 > L.sma200;
     const weak = p < L.sma50 && L.sma50 < L.sma200;
     out.push({ title: "Trend", tone: strong ? "up" : weak ? "down" : "flat",
-      verdict: strong ? "Yükseliş eğilimi" : weak ? "Düşüş eğilimi" : "Net yön yok",
-      detail: `Fiyat SMA 50'nin ${above(L.sma50) ? "üstünde" : "altında"}, SMA 200'ün ${above(L.sma200) ? "üstünde" : "altında"}.` });
+      verdict: strong ? t("Yükseliş eğilimi") : weak ? t("Düşüş eğilimi") : t("Net yön yok"),
+      detail: t("Fiyat SMA 50'nin {a}, SMA 200'ün {b}.", { a: t(above(L.sma50) ? "üstünde" : "altında"), b: t(above(L.sma200) ? "üstünde" : "altında") }) });
   } else if (L.sma20 != null) {
-    out.push({ title: "Trend", tone: above(L.sma20) ? "up" : "down", verdict: above(L.sma20) ? "Kısa vadede yukarı" : "Kısa vadede aşağı",
-      detail: "Uzun ortalamalar için yeterli mum yok." });
+    out.push({ title: "Trend", tone: above(L.sma20) ? "up" : "down", verdict: above(L.sma20) ? t("Kısa vadede yukarı") : t("Kısa vadede aşağı"),
+      detail: t("Uzun ortalamalar için yeterli mum yok.") });
   }
   if (L.rsi != null) {
     const r = Math.round(L.rsi);
     out.push({ title: "RSI", tone: r >= 70 ? "warn" : r <= 30 ? "info" : "flat",
-      verdict: r >= 70 ? `Isınmış · ${r}` : r <= 30 ? `Çok satılmış · ${r}` : `Normal · ${r}`,
-      detail: r >= 70 ? "Hızlı yükselmiş; kovalamak riskli, geri çekilme olabilir." : r <= 30 ? "Düşüş yorulmuş olabilir; dönüş için teyit bekle." : "30 ile 70 arasında, aşırılık yok." });
+      verdict: r >= 70 ? `${t("Isınmış")} · ${r}` : r <= 30 ? `${t("Çok satılmış")} · ${r}` : `Normal · ${r}`,
+      detail: r >= 70 ? t("Hızlı yükselmiş; kovalamak riskli, geri çekilme olabilir.") : r <= 30 ? t("Düşüş yorulmuş olabilir; dönüş için teyit bekle.") : t("30 ile 70 arasında, aşırılık yok.") });
   }
   if (L.vol_ma) {
     const x = L.volume / L.vol_ma;
-    out.push({ title: "Hacim", tone: x >= 1.2 ? "info" : "flat", verdict: `Ortalamanın ${formatNumber(x, { decimals: 1 })} katı`,
-      detail: x >= 1.2 ? "Katılım yüksek; hareket daha güvenilir." : x < 0.6 ? "Ortalamanın çok altında (son mum henüz bitmemiş olabilir)." : "Olağan katılım." });
+    out.push({ title: t("Hacim"), tone: x >= 1.2 ? "info" : "flat", verdict: t("Ortalamanın {x} katı", { x: formatNumber(x, { decimals: 1 }) }),
+      detail: x >= 1.2 ? t("Katılım yüksek; hareket daha güvenilir.") : x < 0.6 ? t("Ortalamanın çok altında (son mum henüz bitmemiş olabilir).") : t("Olağan katılım.") });
   }
   if (L.vwap != null) {
-    out.push({ title: "VWAP", tone: above(L.vwap) ? "up" : "down", verdict: above(L.vwap) ? "VWAP üstünde" : "VWAP altında",
-      detail: `${above(L.vwap) ? "Ortalama alıcı kârda; fiyat güçlü." : "Ortalama alıcı zararda; fiyat zayıf."} (${d.vwap_note})` });
+    out.push({ title: "VWAP", tone: above(L.vwap) ? "up" : "down", verdict: above(L.vwap) ? t("VWAP üstünde") : t("VWAP altında"),
+      detail: `${above(L.vwap) ? t("Ortalama alıcı kârda; fiyat güçlü.") : t("Ortalama alıcı zararda; fiyat zayıf.")} (${d.vwap_note})` });
   }
   return out;
 }
 
 // Panelden yapay zekâ analizi: bot analiz eder, cevap Telegram'a ve buraya gelir
 export function AiPanel({ code, market, codes, auto = false }) {
+  const { t } = useLang();
   const list = codes && codes.length ? codes : [code];
   const q = useData(["analyses", list[0]], `/analyses?kod=${encodeURIComponent(list[0])}`, LIVE);
   const [asked, setAsked] = useState(null);
@@ -343,7 +349,7 @@ export function AiPanel({ code, market, codes, auto = false }) {
   const latest = (q.data || [])[0];
   const waiting = asked && (!latest || new Date(latest.zaman).getTime() < asked);
   const ask = async () => {
-    if (await sendAction("analysis.request", { kodlar: list, piyasa: market }, `${list.join(", ")} için analiz istendi.`)) setAsked(Date.now());
+    if (await sendAction("analysis.request", { kodlar: list, piyasa: market }, t("{k} için analiz istendi.", { k: list.join(", ") }))) setAsked(Date.now());
     qc.invalidateQueries({ queryKey: ["quota"] });
   };
   const started = useRef(false);
@@ -353,25 +359,26 @@ export function AiPanel({ code, market, codes, auto = false }) {
   }, [auto]); // eslint-disable-line react-hooks/exhaustive-deps
   const ai = latest ? splitAi(latest.metin) : null;
   return (
-    <K.Card title="Yapay zekâ analizi" actions={<K.Button variant="primary" onClick={ask} disabled={!!waiting || exhausted}>{waiting ? "Hazırlanıyor…" : "Analiz et"}</K.Button>}>
+    <K.Card title={t("Yapay zekâ analizi")} actions={<K.Button variant="primary" onClick={ask} disabled={!!waiting || exhausted}>{waiting ? t("Hazırlanıyor…") : t("Analiz et")}</K.Button>}>
       {!owner && qd && <div style={{ marginBottom: "1rem" }}><Quota q={qd} /></div>}
       {!owner && exhausted && (
-        <K.EmptyState tone="warn" icon="info" title={qd.ortak_dolu ? "Bugünkü ortak analiz kapasitesi doldu" : "Bugünkü analiz hakkın doldu"}
-          action={!qd.kendi_anahtari ? <K.Button variant="secondary" icon={<K.Icon name="key" size={18} />} href="/app/hesap">Kendi anahtarını ekle</K.Button> : null}>
-          {qd.kendi_anahtari ? "Hakkın son 24 saate göre yenilenir." : `Kendi yapay zekâ anahtarınla günde ${qd.anahtarla_sinir} analiz yapabilirsin.`}
+        <K.EmptyState tone="warn" icon="info" title={qd.ortak_dolu ? t("Bugünkü ortak analiz kapasitesi doldu") : t("Bugünkü analiz hakkın doldu")}
+          action={!qd.kendi_anahtari ? <K.Button variant="secondary" icon={<K.Icon name="key" size={18} />} href="/app/hesap">{t("Kendi anahtarını ekle")}</K.Button> : null}>
+          {qd.kendi_anahtari ? t("Hakkın son 24 saate göre yenilenir.") : t("Kendi yapay zekâ anahtarınla günde {n} analiz yapabilirsin.", { n: qd.anahtarla_sinir })}
         </K.EmptyState>
       )}
-      {waiting && <p className="kp-note">Bot analizi hazırlıyor (genelde 20–60 sn). {owner ? "Sonuç Telegram'a da gelir." : "Telegram'ı bağladıysan sonuç oraya da gelir."}</p>}
+      {waiting && <p className="kp-note">{t("Bot analizi hazırlıyor (genelde 20–60 sn).")} {owner ? t("Sonuç Telegram'a da gelir.") : t("Telegram'ı bağladıysan sonuç oraya da gelir.")}</p>}
       {ai ? (
-        <K.AiNote model={ai.model || "Yapay zekâ"} time={relDay(latest.zaman)} title={latest.kodlar?.length > 1 ? `Karşılaştırma: ${latest.kodlar.join(", ")}` : "Son analiz"}>
+        <K.AiNote model={ai.model || t("Yapay zekâ")} time={relDay(latest.zaman)} title={latest.kodlar?.length > 1 ? `${t("Karşılaştırma")}: ${latest.kodlar.join(", ")}` : t("Son analiz")}>
           {ai.body.split(/\n{2,}/).map((t, i) => <p key={i} style={{ whiteSpace: "pre-wrap" }}>{t}</p>)}
         </K.AiNote>
-      ) : !waiting && <p className="kp-note">Bu kod için panelden istenmiş analiz yok. “Analiz et”e bas; kararı yine kod kapısı verir.</p>}
+      ) : !waiting && <p className="kp-note">{t("Bu kod için panelden istenmiş analiz yok. “Analiz et”e bas; kararı yine kod kapısı verir.")}</p>}
     </K.Card>
   );
 }
 
 export default function ChartPage() {
+  const { t } = useLang();
   const [params, setParams] = useSearchParams();
   const code = (params.get("kod") || "BTC").toUpperCase();
   const market = MARKETS.includes(params.get("piyasa")) ? params.get("piyasa") : "KRIPTO";
@@ -429,21 +436,21 @@ export default function ChartPage() {
 
   return (
     <div>
-      <PageHeader title="Grafik" testid="page-chart"
-        subtitle="Kripto, BIST ya da ABD: istediğin kodu, istediğin zaman diliminde incele." />
+      <PageHeader title={t("Grafik")} testid="page-chart"
+        subtitle={t("Kripto, BIST ya da ABD: istediğin kodu, istediğin zaman diliminde incele.")} />
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <Segmented ariaLabel="Piyasa" value={market} onChange={(m) => set({ piyasa: m })}
-            options={MARKETS.map((m) => ({ value: m, label: MARKET_LABEL[m] }))} />
-          <SearchField value={draft} onChange={setDraft} onSubmit={submit} placeholder="Kod yaz: BTC, THYAO, NVDA" list="chart-codes" />
+          <Segmented ariaLabel={t("Piyasa")} value={market} onChange={(m) => set({ piyasa: m })}
+            options={MARKETS.map((m) => ({ value: m, label: t(MARKET_LABEL[m]) }))} />
+          <SearchField value={draft} onChange={setDraft} onSubmit={submit} placeholder={t("Kod yaz: BTC, THYAO, NVDA")} list="chart-codes" />
           <datalist id="chart-codes">{quick.watch.filter((w) => w.market === market).map((w) => <option key={w.code} value={w.code} />)}</datalist>
 
         </div>
 
         {quick.held.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="mr-1 text-[0.9375rem] font-medium text-t-3">Portföyüm</span>
+            <span className="mr-1 text-[0.9375rem] font-medium text-t-3">{t("Portföyüm")}</span>
             {quick.held.map((h) => (
               <button key={h.market + h.code} onClick={() => set({ kod: h.code, piyasa: h.market })}
                 className={cn("inline-flex h-9 items-center gap-2 rounded-lg border px-2.5 text-[0.9375rem] font-semibold transition-colors duration-150",
@@ -454,8 +461,8 @@ export default function ChartPage() {
           </div>
         )}
 
-        {q.isLoading ? <LoadingState text="Grafik hazırlanıyor..." /> : q.isError ? (
-          <ErrorState text={formatApiErrorDetail(q.error?.response?.data?.detail) || "Grafik alınamadı."} onRetry={() => q.refetch()} />
+        {q.isLoading ? <LoadingState text={t("Grafik hazırlanıyor...")} /> : q.isError ? (
+          <ErrorState text={formatApiErrorDetail(q.error?.response?.data?.detail) || t("Grafik alınamadı.")} onRetry={() => q.refetch()} />
         ) : d && (
           <>
             <section className="flex flex-col gap-5 rounded-xl border border-hairline bg-surface p-6">
@@ -464,7 +471,7 @@ export default function ChartPage() {
                   <AssetLogo code={d.symbol} market={d.market} size={48} />
                   <span className="flex flex-col leading-tight">
                     <span className="text-[1.375rem] font-bold tracking-[0.01em] text-t-1">{d.symbol}</span>
-                    <span className="text-[0.9375rem] text-t-3">{MARKET_LABEL[d.market]} · {TFS.find(([k]) => k === d.tf)?.[1]}</span>
+                    <span className="text-[0.9375rem] text-t-3">{t(MARKET_LABEL[d.market])} · {t(TFS.find(([k]) => k === d.tf)?.[1])}</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -476,49 +483,49 @@ export default function ChartPage() {
               </div>
               <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible [&>*]:shrink-0 [&>*]:whitespace-nowrap">
                 <button type="button" className="rounded-lg border border-hairline px-3 py-2 text-sm font-semibold text-t-1 hover:bg-raised"
-                  aria-expanded={showIndicators} onClick={() => setShowIndicators((v) => !v)}>＋ İndikatör ekle</button>
+                  aria-expanded={showIndicators} onClick={() => setShowIndicators((v) => !v)}>{t("＋ İndikatör ekle")}</button>
                 {INDICATORS.flatMap((group) => group.items).filter(([key]) => on[key]).map(([key, label]) => (
-                  <Chip key={key} color={c[key] || INDICATOR_COLORS[key]} active onClick={() => setOn((o) => ({ ...o, [key]: false }))}>{label} ×</Chip>
+                  <Chip key={key} color={c[key] || INDICATOR_COLORS[key]} active onClick={() => setOn((o) => ({ ...o, [key]: false }))}>{t(label)} ×</Chip>
                 ))}
                 <span className="mx-1 w-px self-stretch bg-hairline" />
                 {OVERLAYS.map(([k, label]) => (
-                  <Chip key={k} active={on[k]} onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}>{label}</Chip>
+                  <Chip key={k} active={on[k]} onClick={() => setOn((o) => ({ ...o, [k]: !o[k] }))}>{t(label)}</Chip>
                 ))}
               </div>
               {showIndicators && <div className="rounded-xl border border-hairline bg-raised p-4">
-                <input aria-label="İndikatör ara" value={indicatorSearch} onChange={(e) => setIndicatorSearch(e.target.value)}
-                  placeholder="İndikatör ara: EMA, MACD, ATR..." className="mb-3 w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-t-1" />
+                <input aria-label={t("İndikatör ara")} value={indicatorSearch} onChange={(e) => setIndicatorSearch(e.target.value)}
+                  placeholder={t("İndikatör ara: EMA, MACD, ATR...")} className="mb-3 w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-t-1" />
                 {INDICATORS.map((group) => {
                   const items = group.items.filter(([, label]) => label.toLocaleLowerCase("tr-TR").includes(indicatorSearch.toLocaleLowerCase("tr-TR")));
                   return items.length ? <div key={group.title} className="mb-3">
-                    <p className="mb-2 text-sm font-semibold text-t-2">{group.title}</p>
+                    <p className="mb-2 text-sm font-semibold text-t-2">{t(group.title)}</p>
                     <div className="flex flex-wrap gap-2">{items.map(([key, label]) =>
                       <button key={key} type="button" aria-pressed={!!on[key]} onClick={() => setOn((o) => ({ ...o, [key]: !o[key] }))}
                         className={cn("rounded-lg border px-3 py-2 text-sm", on[key] ? "border-strong bg-surface font-semibold text-t-1" : "border-hairline text-t-2 hover:bg-surface")}>
-                        {on[key] ? "✓ " : "+ "}{label}
+                        {on[key] ? "✓ " : "+ "}{t(label)}
                       </button>)}</div>
                   </div> : null;
                 })}
-                <p className="m-0 text-xs text-t-3">Seçimlerin bu tarayıcıda saklanır. Göstergeler yalnız grafiği değiştirir; botun karar kurallarını değiştirmez.</p>
+                <p className="m-0 text-xs text-t-3">{t("Seçimlerin bu tarayıcıda saklanır. Göstergeler yalnız grafiği değiştirir; botun karar kurallarını değiştirmez.")}</p>
               </div>}
               <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-hairline bg-raised p-1 sm:flex-wrap [&>*]:shrink-0" data-testid="chart-ranges">
                 {RANGES.map(([k, title, , rtf]) => (
-                  <button key={k} type="button" title={title} onClick={() => set({ donem: k, tf: rtf })}
+                  <button key={k} type="button" title={t(title)} onClick={() => set({ donem: k, tf: rtf })}
                     className={cn("h-8 min-w-[2.1rem] rounded-lg px-1.5 text-sm font-semibold transition-colors sm:min-w-[2.5rem] sm:px-2",
-                      range === k ? "bg-surface text-t-1 shadow" : "text-t-3 hover:text-t-1")}>{k}</button>
+                      range === k ? "bg-surface text-t-1 shadow" : "text-t-3 hover:text-t-1")}>{t(k)}</button>
                 ))}
                 <span className="mx-1 h-5 w-px bg-hairline" />
-                <label className="ml-auto flex items-center gap-2 pr-1 text-sm text-t-3">Aralık
-                  <select value={tf} onChange={(e) => set({ tf: e.target.value, donem: "" })} aria-label="Mum aralığı"
+                <label className="ml-auto flex items-center gap-2 pr-1 text-sm text-t-3">{t("Aralık")}
+                  <select value={tf} onChange={(e) => set({ tf: e.target.value, donem: "" })} aria-label={t("Mum aralığı")}
                     className="h-8 rounded-lg border-0 bg-transparent font-semibold text-t-1 outline-none">
-                    {TFS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                    {TFS.map(([v, label]) => <option key={v} value={v}>{t(label)}</option>)}
                   </select>
                 </label>
               </div>
               <CandleChart data={d} on={on} overlay={overlay} onPick={(v) => setPicked(v)} range={range} />
               <AlarmBar d={d} code={code} market={market} chartTf={tf} picked={picked} setPicked={setPicked} alarms={myAlarms} />
               <p className="m-0 text-sm text-t-3">
-                Saatler İstanbul saati. {d.note} VWAP: {d.vwap_note}. Hacim altta gösterilir; seçtiğin diğer göstergeler ayrı bölmelerde açılır.
+                {t("Saatler İstanbul saati.")} {d.note} VWAP: {d.vwap_note}. {t("Hacim altta gösterilir; seçtiğin diğer göstergeler ayrı bölmelerde açılır.")}
               </p>
             </section>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))" }}>

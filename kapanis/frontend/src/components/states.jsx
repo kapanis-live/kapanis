@@ -1,7 +1,10 @@
 import { Inbox, AlertTriangle } from "lucide-react";
 import { TEXTS } from "@/lib/texts";
+import { useLang } from "@/lib/i18n";
 
 export function LoadingState({ text = TEXTS.loading.default, testid = "loading-state" }) {
+  const { t } = useLang();
+  text = t(text);
   return (
     // iskelet: sayfanın gri taslağı; veri gelince yerine oturur, sayfa zıplamaz
     <div data-testid={testid} aria-busy="true" aria-label={text} className="flex flex-col gap-4 py-2">
@@ -15,6 +18,8 @@ export function LoadingState({ text = TEXTS.loading.default, testid = "loading-s
 }
 
 export function EmptyState({ text = TEXTS.empty.generic, testid = "empty-state", children }) {
+  const { t } = useLang();
+  text = t(text);
   return (
     <div data-testid={testid} className="flex flex-col items-center justify-center gap-3 py-16 text-center animate-fade-in">
       <div className="flex h-11 w-11 items-center justify-center rounded-full border border-hairline bg-surface">
@@ -27,6 +32,8 @@ export function EmptyState({ text = TEXTS.empty.generic, testid = "empty-state",
 }
 
 export function ErrorState({ text = TEXTS.error.default, onRetry, testid = "error-state" }) {
+  const { t } = useLang();
+  text = t(text);
   return (
     <div data-testid={testid} className="flex flex-col items-center justify-center gap-3 py-16 text-center animate-fade-in">
       <div className="flex h-11 w-11 items-center justify-center rounded-full border border-down/40 bg-down/10">
@@ -39,7 +46,7 @@ export function ErrorState({ text = TEXTS.error.default, onRetry, testid = "erro
           onClick={onRetry}
           className="mt-1 rounded-md border border-hairline px-3 py-1.5 text-xs text-t-1 transition-colors duration-150 hover:bg-secondary"
         >
-          {TEXTS.error.retry}
+          {t(TEXTS.error.retry)}
         </button>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { currentLang, translate } from "@/lib/i18n";
 // Botun panel verisini tasarım sistemi bileşenlerinin beklediği biçime çevirir.
 import { U } from "@/ds";
 import { marketTotals, baseCode } from "@/lib/portfolio";
@@ -44,9 +45,10 @@ export function relDay(iso) {
   const now = new Date();
   const y = new Date(now.getTime() - 86400000);
   const hm = d.toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" });
-  if (key(d) === key(now)) return `Bugün ${hm}`;
-  if (key(d) === key(y)) return `Dün ${hm}`;
-  return `${d.toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul", day: "numeric", month: "short" })} ${hm}`;
+  const lang = currentLang();
+  if (key(d) === key(now)) return `${translate(lang, "Bugün")} ${hm}`;
+  if (key(d) === key(y)) return `${translate(lang, "Dün")} ${hm}`;
+  return `${d.toLocaleDateString(lang === "en" ? "en-GB" : "tr-TR", { timeZone: "Europe/Istanbul", day: "numeric", month: "short" })} ${hm}`;
 }
 
 // Yapay zekâ metninin sonundaki "🧠 Model" satırını ayır; metindeki emojileri temizle (sistem: emoji yok)

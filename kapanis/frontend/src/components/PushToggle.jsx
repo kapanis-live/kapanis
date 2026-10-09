@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { K } from "@/ds";
 import api, { formatApiErrorDetail } from "@/lib/api";
+import { useLang } from "@/lib/i18n";
 
 // Uygulama bildirimleri (Web Push): botun Telegram'a attığı otomatik mesajlar bu cihaza da gelir.
 const supported = () => typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
@@ -15,6 +16,7 @@ function keyBytes(b64) {
 const worker = () => Promise.race([navigator.serviceWorker.ready, new Promise((done) => setTimeout(() => done(null), 4000))]);
 
 export default function PushToggle() {
+  const { t } = useLang();
   const [state, setState] = useState("loading");   // loading | unsupported | denied | off | on
   const [busy, setBusy] = useState(false);
 
@@ -40,9 +42,9 @@ export default function PushToggle() {
         || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(data.key) }));
       await api.post("/push/subscribe", sub.toJSON());
       setState("on");
-      toast.success("Bu cihazda uygulama bildirimleri açık.");
+      toast.success(t("Bu cihazda uygulama bildirimleri açık."));
     } catch (e) {
-      toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Bildirim açılamadı. Tarayıcı izinlerini kontrol et.");
+      toast.error(formatApiErrorDetail(e.response?.data?.detail) || t("Bildirim açılamadı. Tarayıcı izinlerini kontrol et."));
     } finally { setBusy(false); }
   };
 
@@ -56,31 +58,30 @@ export default function PushToggle() {
         await sub.unsubscribe();
       }
       setState("off");
-      toast.success("Bu cihazda uygulama bildirimleri kapatıldı.");
+      toast.success(t("Bu cihazda uygulama bildirimleri kapatıldı."));
     } finally { setBusy(false); }
   };
 
   const test = async () => {
-    try { await api.post("/push/test"); toast.success("Test bildirimi gönderildi."); }
-    catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Gönderilemedi."); }
+    try { await api.post("/push/test"); toast.success(t("Test bildirimi gönderildi.")); }
+    catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || t("Gönderilemedi.")); }
   };
 
   return (
-    <K.Card title="Uygulama bildirimleri">
-      <p className="m-0 text-t-2">Botun Telegram'a attığı otomatik mesajlar (alarm, seviye özeti, çıkış uyarısı) bu cihaza da bildirim olarak gelir.
-        Telegram bildirimleri aynen sürer. Her cihazda ayrı açılır.</p>
+    <K.Card title={t("Uygulama bildirimleri")}>
+      <p className="m-0 text-t-2">{t("Botun Telegram'a attığı otomatik mesajlar (alarm, seviye özeti, çıkış uyarısı) bu cihaza da bildirim olarak gelir. Telegram bildirimleri aynen sürer. Her cihazda ayrı açılır.")}</p>
       <div className="mt-4 flex flex-wrap items-center gap-3" data-testid="push-toggle" data-state={state}>
-        {state === "loading" && <span className="kp-note m-0">Kontrol ediliyor…</span>}
-        {state === "unsupported" && <span className="kp-note m-0">Bu tarayıcı uygulama bildirimini desteklemiyor. Android'de Kapanış uygulaması ya da Chrome kullan.</span>}
-        {state === "denied" && <span className="kp-note m-0">Bildirim izni bu cihazda engellenmiş. Telefon ayarları → Uygulamalar → Kapanış (ya da Chrome) → Bildirimler'den izin ver.</span>}
-        {state === "off" && <K.Button variant="primary" onClick={enable} disabled={busy}>{busy ? "Açılıyor…" : "Bu cihazda aç"}</K.Button>}
+        {state === "loading" && <span className="kp-note m-0">{t("Kontrol ediliyor…")}</span>}
+        {state === "unsupported" && <span className="kp-note m-0">{t("Bu tarayıcı uygulama bildirimini desteklemiyor. Android'de Kapanış uygulaması ya da Chrome kullan.")}</span>}
+        {state === "denied" && <span className="kp-note m-0">{t("Bildirim izni bu cihazda engellenmiş. Telefon ayarları → Uygulamalar → Kapanış (ya da Chrome) → Bildirimler'den izin ver.")}</span>}
+        {state === "off" && <K.Button variant="primary" onClick={enable} disabled={busy}>{busy ? t("Açılıyor…") : t("Bu cihazda aç")}</K.Button>}
         {state === "on" && <>
-          <span className="kp-alarm__status is-up">Açık</span>
-          <K.Button variant="secondary" onClick={test}>Test bildirimi gönder</K.Button>
-          <K.Button variant="ghost" onClick={disable} disabled={busy}>Kapat</K.Button>
+          <span className="kp-alarm__status is-up">{t("Açık")}</span>
+          <K.Button variant="secondary" onClick={test}>{t("Test bildirimi gönder")}</K.Button>
+          <K.Button variant="ghost" onClick={disable} disabled={busy}>{t("Kapat§off")}</K.Button>
         </>}
       </div>
-      <p className="kp-note">Hangi piyasadan bildirim geleceğini Telegram'da /bildirimler ile ya da Ayarlar'dan seçersin; kapalı piyasa buraya da gelmez.</p>
+      <p className="kp-note">{t("Hangi piyasadan bildirim geleceğini Telegram'da /bildirimler ile ya da Ayarlar'dan seçersin; kapalı piyasa buraya da gelmez.")}</p>
     </K.Card>
   );
 }

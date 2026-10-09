@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { currentLang, translate } from "@/lib/i18n";
 
 // Menüde üstüne gelince / dokununca sayfanın ana verisi önceden yüklenir: tıklayınca beklemeden açılır.
 const ROUTE_DATA = {
@@ -50,9 +51,11 @@ export function usePullToRefresh(ref) {
     let pulled = 0;
     const hint = document.createElement("div");
     hint.className = "kp-ptr";
-    hint.textContent = "↓ Yenilemek için bırak";
     el.prepend(hint);
-    const onStart = (e) => { startY = window.scrollY <= 0 ? e.touches[0].clientY : null; };
+    const onStart = (e) => {
+      hint.textContent = translate(currentLang(), "↓ Yenilemek için bırak");
+      startY = window.scrollY <= 0 ? e.touches[0].clientY : null;
+    };
     const onMove = (e) => {
       if (startY == null) return;
       pulled = Math.max(0, e.touches[0].clientY - startY);

@@ -1,4 +1,6 @@
 // Sayı biçimi tr-TR: 84.350,25 (binlik nokta, ondalık virgül), negatifte gerçek eksi
+import { currentLang, translate } from "@/lib/i18n";
+
 export const MINUS = "−";
 
 export function formatNumber(value, opts = {}) {
@@ -75,8 +77,10 @@ export function relativeTime(iso) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
   const abs = Math.abs(diff);
   const future = diff < 0;
-  const fmt = (v, unit) => (future ? `${v} ${unit} sonra` : `${v} ${unit} önce`);
-  if (abs < 60) return future ? "birazdan" : "az önce";
+  const lang = currentLang();
+  const w = (text) => translate(lang, text);
+  const fmt = (v, unit) => (lang === "en" ? (future ? `in ${v} ${w(unit)}` : `${v} ${w(unit)} ago`) : future ? `${v} ${unit} sonra` : `${v} ${unit} önce`);
+  if (abs < 60) return future ? w("birazdan") : w("az önce");
   if (abs < 3600) return fmt(Math.round(abs / 60), "dk");
   if (abs < 86400) return fmt(Math.round(abs / 3600), "sa");
   return fmt(Math.round(abs / 86400), "gün");

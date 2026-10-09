@@ -34,6 +34,7 @@ import Backtest from "@/pages/panel/Backtest";
 import Settings from "@/pages/panel/Settings";
 import UsCard from "@/pages/panel/UsCard";
 import CompanyCalendar from "@/pages/panel/CompanyCalendar";
+import Screener from "@/pages/panel/Screener";
 import Portfolio from "@/pages/panel/Portfolio";
 import Watchlist from "@/pages/panel/Watchlist";
 import Discipline from "@/pages/panel/Discipline";
@@ -111,6 +112,8 @@ function App() {
           <Route path="/app/backtest" element={own(<Backtest />)} />
           <Route path="/app/ayarlar" element={own(<Settings />)} />
           <Route path="/app/abd" element={own(<UsCard />)} />
+          <Route path="/app/hisse" element={own(<UsCard />)} />
+          <Route path="/app/tarama" element={own(<Screener />)} />
           <Route path="/app/takvim" element={own(<CompanyCalendar />)} />
           <Route path="/app/kullanicilar" element={own(<Users />)} />
 

@@ -654,6 +654,42 @@ class USEngineTest(unittest.TestCase):
         self.assertTrue(any("Yarı iletken" in n for n in r["dikkat"]) and any("NVDA portföyün %50" in n for n in r["dikkat"]))
         self.assertIn("Öneri içermez", us_portfolio.text({**r, "kaynaklar": [], "uretildi": "x"}))
 
+    def test_bist_card_and_stock_table_describe_without_suggesting(self):
+        import pandas as pd
+        import bist_card
+        import stock_scan
+        import market
+        n = 300
+        closes = pd.Series([100.0 + i * 0.2 for i in range(n)])                           # steady rise
+        frame = lambda c: market.add_indicators(pd.DataFrame({"open_time": [1_760_000_000_000 + i * 86_400_000 for i in range(len(c))],
+                                                              "open": c, "high": c + 1, "low": c - 1, "close": c, "volume": 1000.0}))
+        d, index = frame(closes), frame(pd.Series([100.0] * n))
+        f = {"hisse": "TEST", "fiyat": 160.0, "grup": "sanayi/hizmet", "son_donem": "2026/6", "fk": 30.0, "pd_dd": 2.0, "fd_favok": 9.0,
+             "puan": {"skor": 72, "etiket": "İZLEME LİSTESİ"}, "kirmizi_bayraklar": ["stoklar satıştan hızlı büyüyor"],
+             "stage": {"aciklama": "Stage 2 — yükseliş"}}
+        now = datetime(2026, 10, 9, 18, 0, tzinfo=bist_card.alerts_store.TR)
+        cal = {"bilanco": "2026-10-12", "temettu_hak": "2025-09-02", "temettu_odeme": "2026-12-01"}
+        c = bist_card.build(f, d, d, index, cal, now)
+        self.assertEqual((c["piyasa"], c["guc"]["etiket"], c["bilanco"]["risk"], c["degerleme"]["etiket"]), ("BIST", "GÜÇLÜ", "YÜKSEK", "PAHALI"))
+        self.assertEqual(c["temettu"], {"hak_kullanim": None, "odeme": "2026-12-01"})          # last year's date is dropped
+        self.assertTrue(c["trend"]["hizalama"].startswith("fiyat > 50G"))
+        said = bist_card.text(c)
+        self.assertIn("Bilanço 3 gün sonra", said)
+        self.assertIn("Kırmızı bayrak: stoklar", said)
+        self.assertIn("AL/SAT önerisi değildir", said)
+        self.assertEqual([bist_card.valuation(x)["etiket"] for x in ({"fk": 5.0, "pd_dd": 0.8}, {"fk": 12.0, "pd_dd": 2.0}, {"pd_dd": 7.0}, {})],
+                         ["UCUZ", "MAKUL", "PAHALI", "BİLİNMİYOR"])
+        row = lambda kod, puan, **k: {"kod": kod, "fiyat": 10.0, "gun_yuzde": 1.0, "hafta_yuzde": 2.0, "trend": "↗ güçlü", "guc": "GÜÇLÜ",
+                                      "guc_6a": 12.0, "rsi": 60, "puan": puan, "puan_etiket": "x", "degerleme": "MAKUL", "sektor": "s",
+                                      "revizyon": None, "bilanco_tarih": None, "bilanco_gun": None, "bilanco_risk": None, **k}
+        doc = {"piyasa": "ABD", "zaman": "2026-10-09T18:00:00+03:00", "temeli_eksik": 1,
+               "satirlar": [row("LOW", 40), row("TOP", 95), row("SOON", 70, bilanco_gun=2, bilanco_risk="YÜKSEK"), row("NONE", None)]}
+        table = stock_scan.text(doc)
+        self.assertLess(table.index("TOP 10$"), table.index("SOON 10$"))                       # by score, highest first
+        self.assertIn("Bilançosu 5 gün içinde (boşluk riski): SOON (2g)", table)
+        self.assertIn("sıralama, öneri değil", table)
+        self.assertNotIn("NONE 10$", table)
+
     def test_us_calendar_is_computed_for_any_year(self):
         import us
         self.assertEqual(sorted(us.holidays(2026)), ["2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25",

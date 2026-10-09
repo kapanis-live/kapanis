@@ -25,6 +25,7 @@ import balance
 import backtest
 import benchmark
 import bist
+import bist_card
 import bist_signals
 import broker
 import charts
@@ -49,6 +50,7 @@ import risk_news
 import scanner
 import sentiment
 import shadow
+import stock_scan
 import strength
 import universe
 import us
@@ -3185,6 +3187,13 @@ async def bist_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if said:                                  # /bist ac | kapat; every other /bist form is untouched
         await update.message.reply_text(said)
         return
+    first = context.args[0].casefold() if context.args else ""
+    if first == "kart" and len(context.args) > 1:
+        await stock_card_cmd(update, context, "BIST", context.args[1].upper())
+        return
+    if first == "tara":
+        await stock_scan_cmd(update, context, "BIST")
+        return
     arg = context.args[0].lower() if context.args else ""
     chat = update.effective_chat.id
     if arg in ("butce", "bütçe"):
@@ -5888,8 +5897,8 @@ def register_panel_actions(bot):
                 flags = (f.get("uyarilar") or [])[:6]
                 good = (f.get("olumlular") or [])[:6]
             elif mkt == "BIST":
-                f = await fundamentals.report(tick)
-                text = fundamentals.text(f)
+                card_doc, f = await bist_card.card(tick)
+                text = bist_card.text(card_doc) + "\n\n— AYRINTI —\n" + fundamentals.text(f)
                 label = f["puan"].get("etiket")
                 flags = (f.get("kirmizi_bayraklar") or [])[:6]
                 good = []
@@ -5917,6 +5926,16 @@ def register_panel_actions(bot):
         await web_sync.push_docs("sonuclar", [{"id": "abd_portfoy", "tur": "abd_portfoy", "zaman": now, "bos": r is None,
                                                **(r or {})}])
         return "🇺🇸 Panelden ABD portföy analizi hazır (ayrıntı panelde)" if r else "ℹ️ Panel: açık ABD pozisyonu yok"
+
+    async def scan_req(p):
+        """The panel's stock table asks for a rebuild (once a day is automatic)."""
+        mkt = str(p.get("piyasa") or "").upper()
+        if mkt not in stock_scan.MARKETS:
+            return "❌ Panel: tablo yalnız ABD ve BIST için var"
+        if stock_scan.running(mkt):
+            return f"ℹ️ Panel: {mkt} hisse tablosu zaten hazırlanıyor"
+        _spawn(build_scan(bot, mkt))
+        return f"⏳ Panelden {mkt} hisse tablosu istendi; birkaç dakikada panelde yenilenir"
 
     def as_owner():
         """A stand-in for the owner's Telegram message: what the command would reply becomes the panel result."""
@@ -6087,7 +6106,7 @@ def register_panel_actions(bot):
         "lesson.request": lesson,
         "check.request": check_req, "ind.create": ind_create_, "ind.delete": ind_delete_, "compare.request": compare_req,
         "dividend.refresh": dividend_refresh,
-        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req, "us.portfolio": us_portfolio_req,
+        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req, "us.portfolio": us_portfolio_req, "scan.request": scan_req,
     })
 
 
@@ -6360,6 +6379,9 @@ async def abd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sub in ("portfoy", "portföy"):
         await us_portfolio_cmd(update, context)
         return
+    if sub == "tara":
+        await stock_scan_cmd(update, context, "ABD")
+        return
     if sub:
         await us_analysis(update, context, sub.upper())
         return
@@ -6378,7 +6400,8 @@ async def abd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     budget = us_signals.budget_usd()
     lines += ["", f"Bütçe: {budget:,.0f} USD · açık {us_signals.open_us_usd():,.0f} USD" if budget else "Bütçe girilmedi: /abd butce 1000",
               f"Veri: {'Tiingo (bugün ' + str(usage.get('istek', 0)) + '/900 istek)' if config.TIINGO_API_KEY else 'Yahoo (Tiingo anahtarı .env: TIINGO_API_KEY)'} + SEC EDGAR",
-              "", "/abd kart AAPL — karar destek kartı · /abd portfoy — tema, korelasyon, senaryo · /abd AAPL — yapay zekâ analizi · "
+              "", "/abd kart AAPL — karar destek kartı · /abd tara — S&P 100 hisse tablosu · /abd portfoy — tema, korelasyon, senaryo · "
+                  "/abd AAPL — yapay zekâ analizi · "
                   "/temel AAPL — temel · /abd guc — S&P 100 güç sıralaması · /abd butce 1000"]
     await update.message.reply_text("\n".join(lines))
 
@@ -6405,6 +6428,57 @@ async def us_card_cmd(update, context, t: str):
         return
     await status.delete()
     await send_long(context.bot, update.effective_chat.id, us_card.text(c))
+
+
+async def stock_card_cmd(update, context, mkt: str, code: str):
+    """/bist kart THYAO: the decision-support card of a BIST stock (the US one is us_card_cmd)."""
+    status = await update.message.reply_text(f"⏳ {code}: mali tablolar, fiyat ve takvim...")
+    try:
+        c, _ = await bist_card.card(code)
+    except Exception as e:
+        await status.edit_text(f"❌ {code}: {str(e)[:150]}")
+        return
+    await status.delete()
+    await send_long(context.bot, update.effective_chat.id, bist_card.text(c))
+
+
+async def build_scan(bot, mkt: str, chat_id: int | None = None):
+    """Build one market's stock table (minutes), send it to the panel and, when a chat asked for it, to that chat."""
+    try:
+        doc = await stock_scan.run(mkt)
+    except Exception as e:
+        log.exception("Stock scan %s failed", mkt)
+        if chat_id:
+            await bot.send_message(chat_id, f"❌ {mkt} hisse tablosu hazırlanamadı: {str(e)[:150]}")
+        return
+    if config.WEB_URL:
+        try:
+            await web_sync.push_docs("sonuclar", [doc])
+        except Exception as e:
+            log.warning("Stock scan %s not pushed to the panel: %s", mkt, e)
+    if chat_id:
+        await send_long(bot, chat_id, stock_scan.text(doc))
+
+
+async def stock_scan_cmd(update, context, mkt: str):
+    """/abd tara, /bist tara: today's table if it exists, else build it in the background and send it when ready."""
+    doc = stock_scan.fresh(mkt)
+    if doc:
+        await send_long(context.bot, update.effective_chat.id, stock_scan.text(doc))
+    elif stock_scan.running(mkt):
+        await update.message.reply_text("⏳ Tablo şu an hazırlanıyor; bitince buraya gelecek.")
+    else:
+        n = len(stock_scan.codes(mkt))
+        await update.message.reply_text(f"⏳ {n} hisse için fiyat, temel puan ve takvim toplanıyor (yaklaşık {max(3, n // 22)} dakika). Bitince buraya gönderirim.")
+        _spawn(build_scan(context.bot, mkt, update.effective_chat.id))
+
+
+async def stock_scan_job(context: ContextTypes.DEFAULT_TYPE):
+    """After each market's close: refresh its stock table for the panel. No message: it is there when asked for."""
+    mkt = context.job.data
+    if (mkt == "BIST" and not bist.trading_day()) or (mkt == "ABD" and not us.trading_day()) or stock_scan.running(mkt):
+        return
+    await build_scan(context.bot, mkt)
 
 
 async def us_portfolio_cmd(update, context):
@@ -6910,6 +6984,8 @@ def main():
         app.job_queue.run_repeating(notify_prefs.scoped("KRIPTO")(risk_news_job), interval=30 * 60, first=120, name="risk_haber")
         # two minutes after :00 and :30, so the hourly candle is closed and BIST's delayed bar has arrived
         app.job_queue.run_repeating(oi_store_job, interval=6 * 3600, first=300, name="oi_gecmisi")
+        app.job_queue.run_daily(stock_scan_job, dtime(18, 50, tzinfo=macro.TR), data="BIST", name="tarama_bist")
+        app.job_queue.run_daily(stock_scan_job, dtime(16, 40, tzinfo=us.NY), data="ABD", name="tarama_abd")
         app.job_queue.run_repeating(levels_job,interval=30 * 60, first=1800 - time.time() % 1800 + 120, name="seviye_tarama")
         app.job_queue.run_repeating(paper_outcomes_job, interval=30 * 60, first=420, name="danisman_paper")
         app.job_queue.run_repeating(takip_job, interval=5 * 60, first=180, name="takip_sor")  # asks every 30 min (/takip aralik)

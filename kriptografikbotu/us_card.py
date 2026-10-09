@@ -105,7 +105,7 @@ def build(f: dict, reaction: dict | None, estimate: str | None, price_day: str |
          "tarih": datetime.fromtimestamp(yahoo_ts, alerts_store.TR).strftime("%Y-%m-%d %H:%M") if yahoo_ts else "alınamadı"},
         {"veri": "son bilanço açıklama zamanı", "kaynak": "SEC EDGAR (8-K madde 2.02, resmi)",
          "tarih": reaction["aciklama"] if reaction else "bulunamadı"}]
-    return {"hisse": f["hisse"], "fiyat": f["fiyat"], "sektor": y.get("sektor"), "endustri": y.get("endustri"),
+    return {"hisse": f["hisse"], "piyasa": "ABD", "fiyat": f["fiyat"], "sektor": y.get("sektor"), "endustri": y.get("endustri"),
             "trend": {**t["trend"], "hizalama": t["hizalama"], "zirveye_uzaklik_yuzde": t["zirveye_uzaklik_yuzde"]},
             "guc": strength, "bilanco": earn,
             "son_bilanco": {"tepki": reaction, "surpriz_yuzde": sur[-1]["surpriz_yuzde"] if sur else None,

@@ -355,6 +355,7 @@ async def _queue_command(cmd_type: str, payload: dict, user: dict) -> dict:
         "role": "owner" if identity.is_owner(user) else "user",
         # where this user's results may also go; None = site only
         "telegram_chat_id": user.get("telegram_chat_id"),
+        "dil": user.get("dil"),      # the language chosen on the site: the answer is written in it
         # the analysis runs on the user's own API keys (the bot fetches them only while this is pending)
         "own_keys": bool(user.get("kendi_anahtari")) and not identity.is_owner(user),
     }

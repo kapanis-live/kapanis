@@ -31,6 +31,12 @@ CHECK_SECONDS = 300
 TIMEFRAMES = {"KRIPTO": ["1h", "4h", "1d"], "BIST": ["1d"], "ABD": ["1d"]}
 TF_SECONDS = {"1h": 3600, "4h": 14400, "1d": 86400}
 TF_LABEL = {"1h": "1 saatlik", "4h": "4 saatlik", "1d": "günlük"}
+TF_LABEL_EN = {"1h": "1-hour", "4h": "4-hour", "1d": "daily"}
+
+
+def english(user: dict | None) -> bool:
+    """The account chose English on the site (users.dil); messages written for it follow that choice."""
+    return (user or {}).get("dil") == "en"
 EVENT_DAYS = 30
 CAPSULE_DAYS = 30
 
@@ -81,7 +87,14 @@ def _fmt(x) -> str:
     return "—" if x is None else f"{x:,.8g}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def describe(a: dict) -> str:
+def describe(a: dict, en: bool = False) -> str:
+    if en:
+        if a["tur"] == "ay_donumu":
+            return f"{'BIST' if a['piyasa'] == 'BIST' else 'Crypto'} turn-of-the-month window (entry / exit days)"
+        if a["tur"] == "trend":
+            return f"{a['kod']} trend following (Donchian 20/10 + 200 days, daily)"
+        what = "RSI" if a["tur"] == "rsi" else "close"
+        return f"{a['kod']} {TF_LABEL_EN.get(a['tf'], a['tf'])} {what} {'above' if a['yon'] == 'ustu' else 'below'} {_fmt(a['seviye'])}"
     if a["tur"] == "ay_donumu":
         return f"{'BIST' if a['piyasa'] == 'BIST' else 'Kripto'} ay dönümü penceresi (giriş/çıkış günleri)"
     if a["tur"] == "trend":
@@ -222,7 +235,7 @@ async def run_once(db, now: float | None = None) -> int:
     async def user_of(uid: str):
         if uid not in users:
             try:
-                users[uid] = await db.users.find_one({"_id": ObjectId(uid)}, {"telegram_chat_id": 1, "role": 1})
+                users[uid] = await db.users.find_one({"_id": ObjectId(uid)}, {"telegram_chat_id": 1, "role": 1, "dil": 1})
             except Exception:
                 users[uid] = None
         return users[uid]
@@ -248,6 +261,13 @@ async def run_once(db, now: float | None = None) -> int:
             text = (f"📉 {a['kod']}: trend takibi ÇIKIŞ — günlük kapanış {_fmt(st['kapanis'])}, 10 günün dibinin "
                     f"({_fmt(st['alt10'])}) altında. Kural bu noktada piyasadan çıkar.")
         text += " Bu kural araştırma aşamasında: kazandırdığı kanıtlanmadı, düşüşte dışarıda kalmaya yarıyor. Karar senin."
+        if english(u):
+            text = ((f"📈 {a['kod']}: trend following ENTRY — daily close {_fmt(st['kapanis'])}, above the 20-day high "
+                     f"({_fmt(st['ust20'])}) and the 200-day average. The rule exits if the daily close falls below "
+                     f"{_fmt(st['alt10'])} (the 10-day low, updated each day).") if st["trendde"] else
+                    (f"📉 {a['kod']}: trend following EXIT — daily close {_fmt(st['kapanis'])}, below the 10-day low "
+                     f"({_fmt(st['alt10'])}). The rule leaves the market here."))
+            text += " This rule is at the research stage: it is not proven to make money; it helps to stay out in a fall. The decision is yours."
         if await _event(db, u, a["kod"], "KRIPTO", "1d", text, key=f"trend_{a['id']}_{st['mum']}_{int(st['trendde'])}"):
             fired += 1
 
@@ -270,6 +290,12 @@ async def run_once(db, now: float | None = None) -> int:
                 text = f"📅 {name} ay dönümü penceresi bugün bitiyor: kural bugünkü {close} ile çıkar. Sıradaki pencere gelecek ay sonu."
             else:
                 continue
+            if english(u):
+                close = "18:00 BIST close" if a["piyasa"] == "BIST" else "daily close (03:00 TR)"
+                name = "BIST" if a["piyasa"] == "BIST" else "Crypto"
+                text = ((f"📅 The {name} turn-of-the-month window starts today: the rule enters at today's {close} and exits at the close of "
+                         f"{days[-1][8:10]}.{days[-1][5:7]}. The only tested rule; its gain is small, the decision is yours.") if today == days[0] else
+                        f"📅 The {name} turn-of-the-month window ends today: the rule exits at today's {close}. The next window is at the end of next month.")
             if await _event(db, u, a["kod"], a["piyasa"], "1d", text, key=f"tom_{a['id']}_{today}"):
                 fired += 1
 
@@ -290,6 +316,9 @@ async def run_once(db, now: float | None = None) -> int:
             "durum": "tetiklendi", "tetik": {"zaman": when, "kapanis": candle["c"], "rsi": rsi}}})
         extra = f" (kapanış {_fmt(candle['c'])})" if a["tur"] == "rsi" else ""
         text = f"🔔 Alarmın: {describe(a)} — {TF_LABEL.get(a['tf'], a['tf'])} mum {_fmt(value)} ile kapandı{extra}."
+        if english(u):
+            extra = f" (close {_fmt(candle['c'])})" if a["tur"] == "rsi" else ""
+            text = f"🔔 Your alert: {describe(a, en=True)} — the {TF_LABEL_EN.get(a['tf'], a['tf'])} candle closed at {_fmt(value)}{extra}."
         await _event(db, u, a["kod"], a["piyasa"], a["tf"], text)
         fired += 1
 
@@ -313,6 +342,12 @@ async def run_once(db, now: float | None = None) -> int:
                     f"O gün yazdığın: “{k['tez']}”\n"
                     + (f"Çıkış şartın: “{k['cikis_sarti']}”\n" if k.get("cikis_sarti") else "")
                     + f"Şimdi: {_fmt(last)} ({ch:+.1f}%), {state}. Tezin tuttu mu, şartın gerçekleşti mi? Cevabını günlüğüne yaz.")
+            if english(u):
+                state = "you still hold it" if p.get("durum") == "acik" else f"you sold it ({_fmt(p.get('kapanis_fiyat'))})"
+                text = (f"💊 Decision capsule — {p['kod']}, you bought it {CAPSULE_DAYS} days ago at {_fmt(p['maliyet'])}.\n"
+                        f"What you wrote that day: “{k['tez']}”\n"
+                        + (f"Your exit condition: “{k['cikis_sarti']}”\n" if k.get("cikis_sarti") else "")
+                        + f"Now: {_fmt(last)} ({ch:+.1f}%), {state}. Did your thesis hold, did your condition happen? Write the answer in your journal.")
             if await _event(db, u, p["kod"], p["piyasa"], "1d", text, key=f"kapsul_{p['id']}"):
                 fired += 1
 
@@ -329,6 +364,10 @@ async def run_once(db, now: float | None = None) -> int:
                     text = (f"📉 {p['kod']}: günlük kapanış {_fmt(st['kapanis'])}, 10 günün dibinin ({_fmt(st['alt10'])}) altında. "
                             "Trend kuralı burada çıkar; geçmişte büyük düşüşlerin çoğundan böyle uzak durdu (kazandırdığı kanıtlanmadı). "
                             "Karar senin.")
+                    if english(u):
+                        text = (f"📉 {p['kod']}: daily close {_fmt(st['kapanis'])}, below the 10-day low ({_fmt(st['alt10'])}). "
+                                "The trend rule exits here; in the past it stayed away from most large falls this way (not proven to make money). "
+                                "The decision is yours.")
                     if await _event(db, u, p["kod"], "KRIPTO", "1d", text, key=f"pos_{p['id']}_trend_{st['mum']}"):
                         fired += 1
             if p.get("durum") != "acik" or (p.get("stop") is None and p.get("hedef") is None):
@@ -343,11 +382,17 @@ async def run_once(db, now: float | None = None) -> int:
             if p.get("stop") is not None and candle["c"] < p["stop"]:
                 text = (f"🔴 {p['kod']}: günlük kapanış {_fmt(candle['c'])}, stopun {_fmt(p['stop'])} altında. "
                         "Kural: kapanışla stop kırıldı. Karar senin; sattıysan portföyünde 'Sattım' ile kaydet.")
+                if english(u):
+                    text = (f"🔴 {p['kod']}: daily close {_fmt(candle['c'])}, below your stop {_fmt(p['stop'])}. "
+                            "Rule: the stop broke on a close. The decision is yours; if you sold, record it in your portfolio.")
                 if await _event(db, u, p["kod"], p["piyasa"], "1d", text, key=f"pos_{p['id']}_stop_{p['stop']}"):
                     fired += 1
             elif p.get("hedef") is not None and candle["c"] >= p["hedef"]:
                 text = (f"🎯 {p['kod']}: günlük kapanış {_fmt(candle['c'])}, hedefin {_fmt(p['hedef'])} üstünde "
                         f"({day}). Kâr al ya da stopu yukarı taşı; plan için Kriz Planı sayfası.")
+                if english(u):
+                    text = (f"🎯 {p['kod']}: daily close {_fmt(candle['c'])}, above your target {_fmt(p['hedef'])} "
+                            f"({day}). Take profit or move the stop up; see the Crisis Plan page for a plan.")
                 if await _event(db, u, p["kod"], p["piyasa"], "1d", text, key=f"pos_{p['id']}_hedef_{p['hedef']}"):
                     fired += 1
     return fired
@@ -421,7 +466,8 @@ async def weekly_text(db, user: dict, now: float) -> str | None:
             cur = p.get("para") or "USD"
             moves[cur] = moves.get(cur, 0.0) + p["adet"] * (last - base)
         if p.get("stop") and last > p["stop"] and (last / p["stop"] - 1) * 100 <= NEAR_STOP_PCT:
-            near.append(f"{p['kod']} {_fmt(last)} (stop {_fmt(p['stop'])}, %{(last / p['stop'] - 1) * 100:.1f} yukarıda)")
+            near.append(f"{p['kod']} {_fmt(last)} (stop {_fmt(p['stop'])}, {(last / p['stop'] - 1) * 100:.1f}% above)" if english(user) else
+                        f"{p['kod']} {_fmt(last)} (stop {_fmt(p['stop'])}, %{(last / p['stop'] - 1) * 100:.1f} yukarıda)")
     realized: dict[str, float] = {}
     sold = []
     for t in pf.get("transactions", []):
@@ -432,6 +478,18 @@ async def weekly_text(db, user: dict, now: float) -> str | None:
     fired = await db.user_alert_events.count_documents({"user_id": uid, "zaman": {"$gte": since_iso}, "tur": {"$ne": "ozet"}})
     if not moves and not realized and not fired and not near:
         return None
+    if english(user):
+        lines.append("📅 Weekly summary")
+        if moves:
+            lines.append("Open positions this week: " + " · ".join(_money(v, c) for c, v in moves.items()) + " (at daily closes, unrealized)")
+        if realized:
+            lines.append(f"Closed ({', '.join(dict.fromkeys(sold))}): " + " · ".join(_money(v, c) for c, v in realized.items()))
+        if fired:
+            lines.append(f"{fired} alerts / warnings arrived this week (details: My Alerts).")
+        if near:
+            lines.append("⚠️ Close to the stop: " + "; ".join(near[:5]))
+        lines.append("Past results do not show the future; the decision is yours.")
+        return "\n".join(lines)
     lines.append("📅 Haftalık özet")
     if moves:
         lines.append("Açık pozisyonlar bu hafta: " + " · ".join(_money(v, c) for c, v in moves.items())
@@ -455,7 +513,7 @@ async def weekly_once(db, now: float | None = None) -> int:
     week = local.strftime("%G-%V")
     sent = 0
     async for u in db.users.find({"$or": [{"telegram_chat_id": {"$ne": None}}, {"role": {"$in": ["owner", "admin"]}}]},
-                                 {"telegram_chat_id": 1, "role": 1}):
+                                 {"telegram_chat_id": 1, "role": 1, "dil": 1}):
         key = f"ozet_{u['_id']}_{week}"
         if await db.user_alert_events.find_one({"id": key}, {"_id": 1}):
             continue

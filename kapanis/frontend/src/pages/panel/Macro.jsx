@@ -6,9 +6,11 @@ import { formatNumber, formatTime, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/states";
 import { TEXTS } from "@/lib/texts";
+import { useLang } from "@/lib/i18n";
 
 // -5…+5 rejim skalası
 export function RegimeScale({ score, label }) {
+  const { t } = useLang();
   const clamped = Math.max(-5, Math.min(5, score));
   const pct = ((clamped + 5) / 10) * 100;
   const tone = clamped > 0 ? "text-up" : clamped < 0 ? "text-down" : "text-t-1";
@@ -18,7 +20,7 @@ export function RegimeScale({ score, label }) {
         <div className={cn("num text-3xl font-bold", tone)}>{score > 0 ? "+" : ""}{score}</div>
         <div className="text-right">
           <div className="text-sm font-medium text-t-1">{label}</div>
-          <div className="text-xs text-t-3">-5 … +5 skalası</div>
+          <div className="text-xs text-t-3">{t("-5 … +5 skalası")}</div>
         </div>
       </div>
       <div className="relative mt-3 h-2 rounded-full bg-ink border border-hairline overflow-hidden">
@@ -29,7 +31,7 @@ export function RegimeScale({ score, label }) {
         />
       </div>
       <div className="mt-1.5 flex justify-between text-[10px] text-t-3">
-        <span>Risk-kaçışı</span><span>Nötr</span><span>Risk-iştahı</span>
+        <span>{t("Risk-kaçışı")}</span><span>{t("Nötr")}</span><span>{t("Risk-iştahı")}</span>
       </div>
     </div>
   );
@@ -39,19 +41,20 @@ const IMP = { high: "bg-down/15 text-down", medium: "bg-wait/15 text-wait", low:
 const IMP_LABEL = { high: "Yüksek", medium: "Orta", low: "Düşük" };
 
 export default function Macro() {
+  const { t } = useLang();
   const q = useData("macro", "/macro");
   return (
     <div>
-      <PageHeader eyebrow="Piyasa / Makro" title="Makro" subtitle="Rejim skalası, alt dolar endeksi ve ekonomik takvim." testid="page-macro" />
+      <PageHeader eyebrow={t("Piyasa / Makro")} title={t("Makro")} subtitle={t("Rejim skalası, alt dolar endeksi ve ekonomik takvim.")} testid="page-macro" />
       <DataView query={q} loadingText={TEXTS.loading.macro}>
         {(d) => (
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-3">
-              <Panel title="Rejim skalası" testid="macro-regime" action={d.stale ? <StaleBadge /> : <span className="text-xs text-t-3">Güncel · {relativeTime(d.updated_at)}</span>}>
+              <Panel title={t("Rejim skalası")} testid="macro-regime" action={d.stale ? <StaleBadge /> : <span className="text-xs text-t-3">{t("Güncel")} · {relativeTime(d.updated_at)}</span>}>
                 <RegimeScale score={d.regime_score} label={d.regime_label} />
               </Panel>
 
-              <Panel title="Dolar endeksi (alt)" testid="macro-dxy">
+              <Panel title={t("Dolar endeksi (alt)")} testid="macro-dxy">
                 <div className="flex items-center gap-2">
                   <span className="num text-2xl font-bold text-t-1">{formatNumber(d.dxy_alt.value)}</span>
                   <span className="inline-flex items-center rounded bg-info/12 px-1.5 py-0.5 text-xs font-medium text-info" data-testid="dxy-alt-tag">
@@ -59,18 +62,18 @@ export default function Macro() {
                   </span>
                 </div>
                 <p className="mt-3 text-xs leading-relaxed text-t-2">
-                  Bu endeks standart DXY değildir; likidite ağırlıklı, farklı bir hesaplama kullanır. Skor katkısı:{" "}
+                  {t("Bu endeks standart DXY değildir; likidite ağırlıklı, farklı bir hesaplama kullanır. Skor katkısı:")}{" "}
                   <span className={cn("num font-semibold", d.dxy_alt.score >= 0 ? "text-up" : "text-down")}>
                     {d.dxy_alt.score > 0 ? "+" : ""}{d.dxy_alt.score}
                   </span>
                 </p>
               </Panel>
 
-              <Panel title="Rejim bileşenleri" testid="macro-components">
+              <Panel title={t("Rejim bileşenleri")} testid="macro-components">
                 <ul className="space-y-2.5">
                   {d.components.map((c) => (
                     <li key={c.name} className="flex items-center justify-between text-sm">
-                      <span className="text-t-2">{c.name}</span>
+                      <span className="text-t-2">{t(c.name)}</span>
                       <span className="flex items-center gap-2">
                         <span className="text-t-1">{c.value}</span>
                         <span className={cn("num w-7 text-right text-xs font-semibold", c.score > 0 ? "text-up" : c.score < 0 ? "text-down" : "text-t-3")}>
@@ -83,7 +86,7 @@ export default function Macro() {
               </Panel>
             </div>
 
-            <Panel title="Ekonomik takvim" testid="macro-calendar">
+            <Panel title={t("Ekonomik takvim")} testid="macro-calendar">
               {(!d.calendar || d.calendar.length === 0) ? (
                 <EmptyState text={TEXTS.empty.calendar} />
               ) : (
@@ -91,13 +94,13 @@ export default function Macro() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-hairline text-left text-xs text-t-3">
-                        <th className="pb-2 font-medium">Zaman</th>
-                        <th className="pb-2 font-medium">Olay</th>
-                        <th className="pb-2 font-medium">Ülke</th>
-                        <th className="pb-2 font-medium">Önem</th>
-                        <th className="pb-2 text-right font-medium">Beklenti</th>
-                        <th className="pb-2 text-right font-medium">Önceki</th>
-                        <th className="pb-2 text-right font-medium">Açıklanan</th>
+                        <th className="pb-2 font-medium">{t("Zaman")}</th>
+                        <th className="pb-2 font-medium">{t("Olay")}</th>
+                        <th className="pb-2 font-medium">{t("Ülke")}</th>
+                        <th className="pb-2 font-medium">{t("Önem")}</th>
+                        <th className="pb-2 text-right font-medium">{t("Beklenti")}</th>
+                        <th className="pb-2 text-right font-medium">{t("Önceki")}</th>
+                        <th className="pb-2 text-right font-medium">{t("Açıklanan")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-hairline">
@@ -108,7 +111,7 @@ export default function Macro() {
                           <td className="py-2.5 text-t-2">{e.country}</td>
                           <td className="py-2.5">
                             <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium", IMP[e.importance])}>
-                              {IMP_LABEL[e.importance]}
+                              {t(IMP_LABEL[e.importance])}
                             </span>
                           </td>
                           <td className="num py-2.5 text-right text-t-2">{e.forecast ?? "—"}</td>

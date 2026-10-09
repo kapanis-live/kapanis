@@ -52,7 +52,7 @@ class CommandPermissionTest(unittest.TestCase):
     def test_command_meta_only_carries_identity(self):
         meta = web_sync.command_meta({"id": "c1", "type": "analysis.request", "payload": {"x": 1}, "user_id": "u1",
                                       "role": "user", "request_id": "r1", "telegram_chat_id": 42})
-        self.assertEqual(meta, {"user_id": "u1", "role": "user", "request_id": "r1", "telegram_chat_id": 42, "own_keys": None})
+        self.assertEqual(meta, {"user_id": "u1", "role": "user", "request_id": "r1", "telegram_chat_id": 42, "own_keys": None, "dil": None})
 
 
 class PersonalContextTest(unittest.IsolatedAsyncioTestCase):
@@ -123,6 +123,14 @@ class PanelAnalysisRoutingTest(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(all(b.url and "/app/analizlerim?id=" in b.url and not b.callback_data for b in buttons))
         self.assertEqual([d.get("user_id") for d in self.pushed], ["u1", "u2", "o", None])
         self.assertEqual(len({d["id"] for d in self.pushed}), 4)
+
+    async def test_site_language_travels_with_the_request(self):
+        """An account that chose English on the site: the analysis is asked for in English, linked chat or not."""
+        bot = FakeBot()
+        await main.panel_analysis(bot, "KRIPTO", ["BTC"], {"user_id": "u1", "role": "user", "request_id": "r1", "telegram_chat_id": None, "dil": "en"})
+        await main.panel_analysis(bot, "KRIPTO", ["BTC"], {"user_id": "u2", "role": "user", "request_id": "r2", "telegram_chat_id": 55, "dil": None})
+        self.assertEqual([kw.get("language") for _, kw in self.calls], ["en", None])
+        self.assertEqual(web_sync.command_meta({"dil": "en", "role": "user"})["dil"], "en")
 
     async def test_notify_goes_to_the_right_chat(self):
         bot = FakeBot()
@@ -329,6 +337,21 @@ class UserAlarmDeliveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([(c, u.endswith("kod=BTC&piyasa=KRIPTO")) for c, _, u in sent][0], (4242, True))
         self.assertEqual((sent[1][0], sent[1][2].endswith("/app/portfoyum")), (OWNER_CHAT, True))  # owner: bot's own chat
         self.assertEqual(marked, ["e1", "e2", "e3"])  # a chat that is gone is not retried forever
+
+
+class AnalysisLanguageTest(unittest.IsolatedAsyncioTestCase):
+    async def test_english_reader_gets_an_english_request(self):
+        """run_analysis adds the language note for an English reader and leaves a Turkish request untouched."""
+        asked = []
+
+        async def analyze(user_text, data, **kw):
+            asked.append(user_text)
+            return "answer", [], []
+        with unittest.mock.patch.object(main.llm, "analyze", analyze):
+            self.assertEqual(await main.run_analysis(FakeBot(), None, "BTC analiz et.", [], data={}, language="en"), "answer")
+            await main.run_analysis(FakeBot(), None, "BTC analiz et.", [], data={})
+        self.assertTrue(asked[0].endswith(main.ENGLISH_NOTE))
+        self.assertEqual(asked[1], "BTC analiz et.")
 
 
 if __name__ == "__main__":

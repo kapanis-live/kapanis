@@ -408,19 +408,29 @@ async def build_market_data(coins: list[str]) -> tuple[dict, list[str]]:
     return data, missing
 
 
+# Appended to the request when the reader chose English: the model writes the answer itself (no translation step)
+ENGLISH_NOTE = ("\n\n[LANGUAGE] Write the whole answer in English, in the same structure and with the same numbers, levels and "
+                "tickers. Keep any machine-readable block (for example <STATE>...</STATE>) exactly in its required format.")
+
+
 async def run_analysis(bot, chat_id: int | None, user_text: str, coins: list[str],
                        data: dict | None = None, footer: str = "", buttons=plan_alarm_buttons,
                        allow_state_update: bool = True, personal: bool = True, keys: dict | None = None,
-                       on_sent=None) -> str | None:
+                       on_sent=None, language: str | None = None) -> str | None:
     """DeepSeek analysis. Pass `data` to send prepared market data instead of coin snapshots.
 
     `buttons(reply, plan_coins)` returns the inline keyboard for the reply, or None.
+    `language`: "en" asks the model for an English answer; None = the language of the chat (/dil or the site's switch).
     """
+    english = (language or (lang.get(chat_id) if chat_id else "tr")) == "en"
+    if english:
+        user_text += ENGLISH_NOTE
     if chat_id and notify_prefs.blocked(chat_id, None, USER_TURN.get()):
         return None        # a scheduled analysis for a market whose notifications are off: no paid model call for nothing
     async with analysis_lock:
         # chat_id None: the answer only goes to the panel (a site user without a Telegram link)
-        status = await bot.send_message(chat_id, "⏳ veri çekiliyor, analiz ediliyor...", disable_notification=True) if chat_id else None
+        status = await bot.send_message(chat_id, "⏳ fetching data, analysing..." if english else "⏳ veri çekiliyor, analiz ediliyor...",
+                                        disable_notification=True) if chat_id else None
         try:
             if data is None:
                 data, missing = await build_market_data(coins)
@@ -523,6 +533,24 @@ EKLE_USAGE = ("Kullanım: /ekle KOD ADET ALIŞ_FİYATI\n"
               "Örnek: /ekle THYAO 10 300 · /ekle BTC 0.05 62000 · /ekle NVDA 3 120\n"
               "Piyasayı kendim bulurum; karışırsa başına yaz: /ekle abd COIN 2 250 · /ekle kripto SOL 4 150 · /ekle bist ASTOR 5 90\n"
               "Adedi bilmiyorsan: /ekle THYAO 300 TL ya da /ekle BTC 62000 $ yaz, adedi sorarım.")
+EKLE_USAGE_EN = ("Usage: /ekle TICKER QUANTITY BUY_PRICE\n"
+                 "Example: /ekle THYAO 10 300 · /ekle BTC 0.05 62000 · /ekle NVDA 3 120\n"
+                 "I find the market myself; if it is mixed up, write it first: /ekle abd COIN 2 250 · /ekle kripto SOL 4 150 · /ekle bist ASTOR 5 90\n"
+                 "If you do not know the quantity: write /ekle THYAO 300 TL or /ekle BTC 62000 $ and I ask for it.")
+# what /ekle can refuse, in English (the Turkish sentence is the key; anything else is shown as written)
+EKLE_ERRORS_EN = {"BIST'te adet tam sayı olmalı.": "On BIST the quantity must be a whole number.", "Kod geçersiz.": "The ticker is not valid.",
+                  "Fiyat sıfırdan büyük olmalı.": "The price must be greater than zero.",
+                  "Adet ve fiyat sıfırdan büyük olmalı.": "Quantity and price must be greater than zero.",
+                  "Kod, adet ve fiyatı kontrol et.": "Check the ticker, the quantity and the price.",
+                  "Kaç adet aldığını sayı olarak yaz.": "Write how many you bought as a number.",
+                  "Adet sıfırdan büyük olmalı.": "The quantity must be greater than zero."}
+
+
+def _ekle_say(chat_id, tr: str, en: str | None = None) -> str:
+    """A /ekle reply in the chat's language (set by the site's switch at /bagla or later)."""
+    return tr if lang.get(chat_id) != "en" else en if en is not None else EKLE_ERRORS_EN.get(tr, tr)
+
+
 EKLE_MARKETS = {"BIST": "BIST", "KRIPTO": "KRIPTO", "KRİPTO": "KRIPTO","ABD": "ABD", "US": "ABD", "USA": "ABD"}
 EKLE_PRICE_UNITS = {"TL": "BIST", "₺": "BIST", "$": None, "USD": None, "DOLAR": None}
 
@@ -551,9 +579,16 @@ async def _ekle_send(update, code: str, mkt: str, qty: float, price: float):
     row = await web_sync.telegram_add_position(update.effective_chat.id, mkt, code, qty, price)
     account = f" (hesap: {row['hesap']})" if row.get("hesap") else ""
     label = {"BIST": "BIST", "KRIPTO": "kripto", "ABD": "ABD"}[mkt]
-    await update.message.reply_text(f"✅ {row['kod']} ({label}) {row['adet']:g} adet × {row['maliyet']:g} {_ekle_cur(mkt)} "
-                                    f"portföyüne eklendi{account}.\n📊 {config.PUBLIC_URL}/app/portfoyum\n"
-                                    "Yanlış piyasaya düştüyse sitede sat/sil, başına piyasayı yazıp tekrar ekle. Gerçek emir gönderilmedi.")
+    label_en = {"BIST": "BIST", "KRIPTO": "crypto", "ABD": "US"}[mkt]
+    account_en = f" (account: {row['hesap']})" if row.get("hesap") else ""
+    await update.message.reply_text(_ekle_say(
+        update.effective_chat.id,
+        f"✅ {row['kod']} ({label}) {row['adet']:g} adet × {row['maliyet']:g} {_ekle_cur(mkt)} "
+        f"portföyüne eklendi{account}.\n📊 {config.PUBLIC_URL}/app/portfoyum\n"
+        "Yanlış piyasaya düştüyse sitede sat/sil, başına piyasayı yazıp tekrar ekle. Gerçek emir gönderilmedi.",
+        f"✅ {row['kod']} ({label_en}) {row['adet']:g} × {row['maliyet']:g} {_ekle_cur(mkt)} "
+        f"added to your portfolio{account_en}.\n📊 {config.PUBLIC_URL}/app/portfoyum\n"
+        "If it landed in the wrong market, delete it on the site and add it again with the market first. No real order was sent."))
 
 
 async def web_ekle(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -561,14 +596,16 @@ async def web_ekle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private" or not web_sync.enabled():
         return
     if not chat_rate_ok(update.effective_chat.id, "public", 30, 600):
-        await update.message.reply_text("Çok sık mesaj gönderdin; birkaç dakika sonra tekrar dene.")
+        await update.message.reply_text(_ekle_say(update.effective_chat.id, "Çok sık mesaj gönderdin; birkaç dakika sonra tekrar dene.",
+                                                  "You sent messages too often; try again in a few minutes."))
         return
     args = list(context.args or [])
     forced = EKLE_MARKETS.get(args[0].upper()) if args else None
     if forced:
         args = args[1:]
+    usage = _ekle_say(update.effective_chat.id, EKLE_USAGE, EKLE_USAGE_EN)
     if len(args) != 3:
-        await update.message.reply_text(EKLE_USAGE)
+        await update.message.reply_text(usage)
         return
     code = args[0].upper().removesuffix(".IS").removesuffix("/USDT").removesuffix(".US")
     try:
@@ -581,7 +618,9 @@ async def web_ekle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 raise ValueError("Fiyat sıfırdan büyük olmalı.")
             mkt = await _ekle_market(code, forced or EKLE_PRICE_UNITS[unit])
             context.user_data["site_ekle"] = (mkt, code, price)
-            await update.message.reply_text(f"{code} için alış fiyatı {price:g} {_ekle_cur(mkt)}. Kaç adet aldın? Yalnız sayıyı yaz.")
+            await update.message.reply_text(_ekle_say(update.effective_chat.id,
+                                                      f"{code} için alış fiyatı {price:g} {_ekle_cur(mkt)}. Kaç adet aldın? Yalnız sayıyı yaz.",
+                                                      f"Buy price for {code}: {price:g} {_ekle_cur(mkt)}. How many did you buy? Write the number only."))
             return
         qty, price = float(args[1].replace(",", ".")), float(args[2].replace(",", "."))
         if qty <= 0 or price <= 0:
@@ -589,10 +628,11 @@ async def web_ekle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _ekle_send(update, code, await _ekle_market(code, forced), qty, price)
     except ValueError as e:
         msg = str(e) if str(e) and not str(e).startswith("could not convert") else "Kod, adet ve fiyatı kontrol et."
-        await update.message.reply_text(f"❌ {msg}\n\n{EKLE_USAGE}")
+        await update.message.reply_text(f"❌ {_ekle_say(update.effective_chat.id, msg)}\n\n{usage}")
     except Exception:
         log.exception("Telegram portfolio add failed")
-        await update.message.reply_text("Şu an portföye eklenemedi; biraz sonra tekrar dene.")
+        await update.message.reply_text(_ekle_say(update.effective_chat.id, "Şu an portföye eklenemedi; biraz sonra tekrar dene.",
+                                                  "Could not add to the portfolio right now; try again in a moment."))
 
 
 async def site_or_owner_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -611,10 +651,11 @@ async def site_or_owner_text_message(update: Update, context: ContextTypes.DEFAU
             await _ekle_send(update, code, mkt, qty, price)
             context.user_data.pop("site_ekle", None)
         except ValueError as e:
-            await update.message.reply_text(f"❌ {e}")
+            await update.message.reply_text(f"❌ {_ekle_say(update.effective_chat.id, str(e))}")
         except Exception:
             log.exception("Telegram portfolio add failed")
-            await update.message.reply_text("Şu an eklenemedi; biraz sonra tekrar dene.")
+            await update.message.reply_text(_ekle_say(update.effective_chat.id, "Şu an eklenemedi; biraz sonra tekrar dene.",
+                                                      "Could not add right now; try again in a moment."))
         return
     n = voice_quant.top_n(update.message.text)
     if n is not None and update.effective_chat.type == "private" and web_sync.enabled():
@@ -5315,13 +5356,16 @@ async def panel_analysis(bot, piyasa: str, kodlar: list[str], cmd: dict | None =
     owner = not cmd or cmd.get("role", "owner") == "owner"
     chat = config.ALLOWED_CHAT_ID if owner else cmd.get("telegram_chat_id")
     extra = {} if owner else {"personal": False, "allow_state_update": False, "buttons": None}
+    if not owner and cmd.get("dil"):
+        extra["language"] = cmd["dil"]          # the account's site language, also when no Telegram chat is linked
     if cmd and cmd.get("request_id"):
         from urllib.parse import quote
         # The destination still requires the user's site session; no analysis text is in the URL.
         analysis_id = f"an_{cmd['request_id']}_{kodlar[0].upper()}" if kodlar else ""
         url = f"{config.PUBLIC_URL}/app/analizlerim?id={quote(analysis_id)}"
         extra["buttons"] = lambda _reply, _codes: InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 Web panelinde gör", url=url)]])
+            [InlineKeyboardButton("📊 See it in the web panel" if (cmd.get("dil") if not owner else lang.get(chat)) == "en"
+                                  else "📊 Web panelinde gör", url=url)]])
     if not owner and cmd.get("own_keys"):
         try:  # the user's own API keys, fetched for this analysis only and kept in memory
             keys = await web_sync.user_keys(cmd["user_id"])

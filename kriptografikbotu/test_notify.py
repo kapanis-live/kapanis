@@ -227,6 +227,25 @@ class LanguageTest(Base):
         self.assertEqual(bot.set_my_commands.await_args.kwargs["scope"].chat_id, OWNER)
         self.assertIn("❌", await run({"dil": "de", "_komut": {"role": "owner"}}))
 
+    async def test_ekle_answers_in_the_chat_language(self):
+        """/ekle for a linked account: English once the account chose English on the site, Turkish otherwise."""
+        import lang
+        import web_sync
+        update = types.SimpleNamespace(effective_chat=types.SimpleNamespace(id=777, type="private"), message=types.SimpleNamespace(reply_text=AsyncMock()))
+        said = lambda: update.message.reply_text.await_args.args[0]
+        row = {"kod": "NVDA", "adet": 3, "maliyet": 120.0}
+        with unittest.mock.patch.object(web_sync, "enabled", return_value=True),                 unittest.mock.patch.object(main, "chat_rate_ok", return_value=True),                 unittest.mock.patch.object(main, "_ekle_market", AsyncMock(return_value="ABD")),                 unittest.mock.patch.object(web_sync, "telegram_add_position", AsyncMock(return_value=row)):
+            await main.web_ekle(update, types.SimpleNamespace(args=["NVDA", "3", "120"], user_data={}))
+            self.assertIn("portföyüne eklendi", said())
+            lang.set_lang(777, "en")
+            await main.web_ekle(update, types.SimpleNamespace(args=["NVDA", "3", "120"], user_data={}))
+            self.assertIn("✅ NVDA (US) 3 × 120 $ added to your portfolio", said())
+            self.assertIn("No real order was sent.", said())
+            await main.web_ekle(update, types.SimpleNamespace(args=["NVDA"], user_data={}))
+            self.assertTrue(said().startswith("Usage: /ekle TICKER QUANTITY BUY_PRICE"))
+            await main.web_ekle(update, types.SimpleNamespace(args=["NVDA", "0", "120"], user_data={}))
+            self.assertIn("❌ Quantity and price must be greater than zero.", said())
+
 
 class DigestTest(Base):
     async def test_level_digest_lists_only_open_markets(self):

@@ -836,7 +836,7 @@ USER_COMMANDS = {"analysis.request", "strategy.scan", "language.set"}
 
 def command_meta(cmd: dict) -> dict:
     """Who asked (set by the web backend from the verified session, never by the browser)."""
-    return {k: cmd.get(k) for k in ("user_id", "role", "request_id", "telegram_chat_id", "own_keys")}
+    return {k: cmd.get(k) for k in ("user_id", "role", "request_id", "telegram_chat_id", "own_keys", "dil")}
 
 
 def allowed(cmd: dict) -> bool:

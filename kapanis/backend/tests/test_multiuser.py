@@ -529,6 +529,21 @@ class UserAlarmTest(MultiUserTest.__bases__[0]):
         await self.c.post(f"/api/bot/alarm-events/{events[0]['id']}/sent", headers=BOT)
         self.assertEqual((await self.c.get("/api/bot/alarm-events", headers=BOT)).json(), [])
 
+    async def test_alarm_message_follows_the_account_language(self):
+        """An account that chose English on the site gets its alarm message in English; another account stays Turkish."""
+        import unittest.mock as um
+        ha, hb = auth("user_a"), auth("user_b")
+        await self.c.put("/api/account/language", headers=ha, json={"dil": "en"})
+        start = int(time.time()) - 5 * 3600 - 60
+        with um.patch.object(server.user_alerts.chart_data, "chart", self._fake_chart([100, 101, 102, 103, 104, 110], start)):
+            for h in (ha, hb):
+                await self.c.post("/api/alarms", headers=h, json={"piyasa": "KRIPTO", "kod": "BTC", "tur": "fiyat", "yon": "ustu", "seviye": 105, "tf": "1h"})
+            self.assertEqual(await server.user_alerts.run_once(server.db, now=time.time() + 3600), 2)
+        en = (await self.c.get("/api/alarms", headers=ha)).json()["olaylar"][0]["metin"]
+        tr = (await self.c.get("/api/alarms", headers=hb)).json()["olaylar"][0]["metin"]
+        self.assertEqual(en, "🔔 Your alert: BTC 1-hour close above 105 — the 1-hour candle closed at 110.")
+        self.assertEqual(tr, "🔔 Alarmın: BTC 1 saatlik kapanış 105 üstünde — 1 saatlik mum 110 ile kapandı.")
+
     async def test_weekly_summary_once_on_sunday_evening_and_owner_events_reach_the_bot(self):
         import datetime as dt
         import unittest.mock as um

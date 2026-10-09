@@ -144,7 +144,9 @@ async def report(holdings: dict[str, float] | None = None) -> dict | None:
     return out
 
 
-def text(r: dict) -> str:
+def text(r: dict, code: str = "tr") -> str:
+    if code == "en":
+        return text_en(r)
     lines = [f"🇺🇸 ABD PORTFÖYÜ — {r['toplam_usd']:,.0f} USD · {len(r['agirlik_yuzde'])} hisse",
              "Ağırlık: " + " · ".join(f"{t} %{x:g}" for t, x in r["agirlik_yuzde"].items()),
              "Sektör: " + " · ".join(f"{k} %{v:g}" for k, v in r["sektor_yuzde"].items()), "Tema (bir hisse birden çok temada olabilir):"]
@@ -166,4 +168,38 @@ def text(r: dict) -> str:
         lines.append(f"Beta ve senaryolar portföyün %{r['kapsam_yuzde']:g}'ini kapsıyor (kalanların geçmişi 60 günden kısa).")
     lines += ["", "Kaynaklar:", *(f"· {x['veri']}: {x['kaynak']} — {x['tarih']}" for x in r["kaynaklar"]),
               "Cetvel, tahmin değil: gerçek bir satışta etkenler birlikte hareket eder ve duyarlılıklar değişir. Öneri içermez."]
+    return "\n".join(lines)
+
+
+NAMES_EN = {"Mega teknoloji": "Mega tech", "Yarı iletken": "Semiconductors", "Yapay zekâ (çip, bulut, yazılım)": "AI (chips, cloud, software)",
+            "Yapay zekâ enerjisi / altyapı": "AI energy / infrastructure", "Banka / finans": "Banks / finance",
+            "Savunmacı (temel tüketim, sağlık)": "Defensive (staples, health care)", "S&P 500 %10 düşerse": "If the S&P 500 falls 10%",
+            "Nasdaq-100 %10 düşerse": "If the Nasdaq-100 falls 10%", "10 yıllık faiz 0,50 puan artarsa": "If the 10-year yield rises 0.50 points",
+            "VIX 30'a çıkarsa": "If the VIX rises to 30"}
+
+
+def text_en(r: dict) -> str:
+    """The same report in English. Theme and scenario names are translated; concentration notes stay as written."""
+    N = lambda k: NAMES_EN.get(k, k)
+    lines = [f"🇺🇸 US PORTFOLIO — {r['toplam_usd']:,.0f} USD · {len(r['agirlik_yuzde'])} stocks",
+             "Weights: " + " · ".join(f"{t} {x:g}%" for t, x in r["agirlik_yuzde"].items()),
+             "Sectors: " + " · ".join(f"{k} {v:g}%" for k, v in r["sektor_yuzde"].items()), "Themes (a stock can be in more than one):"]
+    lines += [f"· {N(k)}: {v['agirlik_yuzde']:g}% ({', '.join(v['hisseler'])})" for k, v in r["tema"].items()] or ["· no stock in the defined themes"]
+    c = r["korelasyon"]
+    if c["ortalama"] is not None:
+        lines.append(f"Co-movement (1 year, daily): average correlation {c['ortalama']:g} · most linked "
+                     + ", ".join(f"{x['cift']} {x['korelasyon']:g}" for x in c["en_bagli"])
+                     + (" · most independent " + ", ".join(f"{x['cift']} {x['korelasyon']:g}" for x in c["en_bagimsiz"]) if c["en_bagimsiz"] else ""))
+    lines.append(f"Beta: {r['beta']['SPY']} to SPY · {r['beta']['QQQ']} to QQQ (1 = moves as much as the index)")
+    lines += ["", f"Scenarios (single factor, from the co-movement of the last year; VIX now {r['vix']:g}, 10Y {r['tnx']:g}%):"]
+    for s in r["senaryolar"]:
+        worst = ", ".join(f"{t} {m:+g}%" for m, t in s["en_cok_etkilenen"])
+        lines.append(f"· {N(s['senaryo'])}: portfolio {s['portfoy_yuzde']:+g}% ({s['tutar_usd']:+,.0f} USD)" + (f" · most affected: {worst}" if worst else ""))
+    lines += ["", *(f"⚠️ {n}" for n in r["dikkat"])] if r["dikkat"] else []
+    if r.get("fiyat_alinamayan"):
+        lines.append("No price for: " + ", ".join(r["fiyat_alinamayan"]))
+    if r["kapsam_yuzde"] < 99.9:
+        lines.append(f"Beta and scenarios cover {r['kapsam_yuzde']:g}% of the portfolio (the rest have less than 60 days of history).")
+    lines += ["", "Sources:", *(f"· {x['veri']}: {x['kaynak']} — {x['tarih']}" for x in r["kaynaklar"]),
+              "A ruler, not a forecast: in a real sell-off the factors move together and the sensitivities change. It contains no suggestion."]
     return "\n".join(lines)

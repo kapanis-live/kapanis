@@ -15,6 +15,7 @@ import alerts_store
 import bist
 import db_backup
 import fundamentals
+import lang
 import market
 import structure
 import us_card
@@ -107,7 +108,9 @@ def _v(x) -> str:
     return "—" if x is None else f"{x:g}"
 
 
-def text(c: dict) -> str:
+def text(c: dict, code: str = "tr") -> str:
+    if code == "en":
+        return text_en(c)
     t, g, e, v, div = c["trend"], c["guc"], c["bilanco"], c["degerleme"], c["temettu"]
     lines = [f"🇹🇷 {c['hisse']} — {c['fiyat']:g} TL" + (f" · {c['sektor']}" if c.get("sektor") else ""),
              "Trend: " + " · ".join(f"{k} {t[k]}" for k in ("günlük", "haftalık") if k in t) + f" · {t['hizalama']} · zirveye %{t['zirveye_uzaklik_yuzde']}",
@@ -121,4 +124,24 @@ def text(c: dict) -> str:
     lines += ["", "Kaynaklar:", *(f"· {x['veri']}: {x['kaynak']} — {x['tarih']}" for x in c["kaynaklar"]),
               f"Üretildi {c['uretildi'][:16].replace('T', ' ')}" + (f" · kod {c['kod']}" if c.get("kod") else ""),
               "Karar desteği: AL/SAT önerisi değildir. Analist tahmin revizyonu ve geçmiş bilanço tepkisi BIST için ücretsiz kaynakta yok."]
+    return "\n".join(lines)
+
+
+def text_en(c: dict) -> str:
+    """The same card in English. Labels are translated; notes and source names the card stores stay as written."""
+    L = lambda v: lang.label("en", v)
+    t, g, e, v, div = c["trend"], c["guc"], c["bilanco"], c["degerleme"], c["temettu"]
+    lines = [f"🇹🇷 {c['hisse']} — {c['fiyat']:g} TL" + (f" · {c['sektor']}" if c.get("sektor") else ""),
+             "Trend: " + " · ".join(f"{n} {L(t[k])}" for k, n in (("günlük", "daily"), ("haftalık", "weekly")) if k in t)
+             + f" · {t['hizalama']} · {t['zirveye_uzaklik_yuzde']}% below the high",
+             f"Strength (6 months, against the BIST 100): {'—' if g['endeks_6a'] is None else format(g['endeks_6a'], '+g')} points · {L(g['etiket'])}",
+             "Earnings: " + (f"{e['tarih']} ({e['gun']} days) · risk {L(e['risk'])} · {e['kaynak']}" if e["tarih"] else "date unknown"),
+             *([f"Dividend: ex-date {div['hak_kullanim'] or '—'} · payment {div['odeme'] or '—'}"] if div["hak_kullanim"] or div["odeme"] else []),
+             f"Fundamental score: {c['temel']['skor']}/100 ({L(c['temel']['durum'])})",
+             f"Valuation: {L(v['etiket'])} (coarse) · P/E {_v(v['fk'])} · P/B {_v(v['pd_dd'])} · EV/EBITDA {_v(v['fd_favok'])}",
+             *([f"Weekly stage: {c['stage']}"] if c.get("stage") else [])]
+    lines += ["", *(f"⚠️ {n}" for n in c["dikkat"])] if c["dikkat"] else []
+    lines += ["", "Sources:", *(f"· {x['veri']}: {x['kaynak']} — {x['tarih']}" for x in c["kaynaklar"]),
+              f"Generated {c['uretildi'][:16].replace('T', ' ')}" + (f" · code {c['kod']}" if c.get("kod") else ""),
+              "Decision support: not a BUY/SELL suggestion. Analyst estimate revisions and past earnings reactions are not available for BIST in a free source."]
     return "\n".join(lines)

@@ -40,6 +40,10 @@ LABEL = {"KIRILIM": "🟢 direnç kırıldı", "DESTEK_KIRILDI": "🔴 destek k�
          "DIRENCTE": "🧱 dirence takıldı"}
 NOTE = ("ℹ️ Bilgi amaçlı, AL/SAT önerisi değil. Geçmiş testte kırılım girişi işlem başına ortalama −0,21R "
         "kaybettirdi; direnç bölgeleri fiyatı rastgele seviyeden daha sık döndürmedi. Kapat: /seviye kapat")
+LABEL_EN = {"KIRILIM": "🟢 resistance broken", "DESTEK_KIRILDI": "🔴 support broken", "DESTEKTE": "🛟 held at support",
+            "DIRENCTE": "🧱 stopped at resistance"}
+NOTE_EN = ("ℹ️ For information, not a BUY/SELL suggestion. In the history test a breakout entry lost −0.21R per trade on average; "
+           "resistance zones did not turn the price more often than a random level. Turn off: /seviye kapat")
 
 
 def enabled() -> bool:
@@ -310,10 +314,12 @@ def _g(x) -> str:
     return "—" if x is None else f"{x:.6g}"
 
 
-def text(res: dict, empty: bool = False) -> str | None:
-    """The digest; None when there is nothing new (unless empty=True, for the command)."""
+def text(res: dict, empty: bool = False, code: str = "tr") -> str | None:
+    """The digest; None when there is nothing new (unless empty=True, for the command). code="en" gives the English text."""
     ev = res["olaylar"]
     n = res["taranan"]
+    if code == "en":
+        return _text_en(res, empty)
     head = (f"📍 SEVİYE TARAMASI {alerts_store.now_tr().strftime('%H:%M')} · {n.get('KRIPTO', 0)} coin, "
             f"{n.get('BIST', 0)} BIST, {n.get('ABD', 0)} ABD · kapanan mumlar")
     if not ev:
@@ -334,3 +340,26 @@ def text(res: dict, empty: bool = False) -> str | None:
     if res["hata"]:
         lines += ["", f"({res['hata']} varlığın verisi alınamadı)"]
     return "\n".join(lines + ["", NOTE])
+
+
+def _text_en(res: dict, empty: bool) -> str | None:
+    ev, n = res["olaylar"], res["taranan"]
+    head = (f"📍 LEVEL SCAN {alerts_store.now_tr().strftime('%H:%M')} · {n.get('KRIPTO', 0)} coins, "
+            f"{n.get('BIST', 0)} BIST, {n.get('ABD', 0)} US · closed candles")
+    if not ev:
+        return head + "\nNo new level event." if empty else None
+    lines = [head]
+    for mkt, title in (("KRIPTO", "🪙 Crypto (1-hour candle)"), ("BIST", "🇹🇷 BIST (1-hour candle, delayed ~15 min)"), ("ABD", "🇺🇸 US (daily candle)")):
+        rows = sorted((e for e in ev if e["piyasa"] == mkt), key=lambda e: (ORDER[e["tur"]], not e["hacim"], -e["dokunma"]))
+        if not rows:
+            continue
+        lines += ["", title]
+        for e in rows[:ROWS_PER_MARKET]:
+            nxt = "" if e["sonraki"] is None else f" · next level {_g(e['sonraki'])}"
+            lines.append(f"{e['kod']} {_g(e['kapanis'])} — {LABEL_EN[e['tur']]} {_g(e['alt'])}–{_g(e['ust'])} "
+                         f"({e['dokunma']} touches{', with volume' if e['hacim'] else ''}){nxt}")
+        if len(rows) > ROWS_PER_MARKET:
+            lines.append(f"+{len(rows) - ROWS_PER_MARKET} more events")
+    if res["hata"]:
+        lines += ["", f"(no data for {res['hata']} assets)"]
+    return "\n".join(lines + ["", NOTE_EN])

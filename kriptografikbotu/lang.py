@@ -4,7 +4,8 @@ The bot's texts are written in Turkish. A text that has an English version is ch
 stays Turkish until it is translated, so switching to English never breaks a message. Numbers, tickers and dates are
 the same in both languages: they come from code, never from a translation step.
 
-Translated so far: the notification switches, the monthly report, the stock table, the command menu.
+Translated so far: the notification switches, the monthly report, the stock table, the command menu, the stock cards
+(US and BIST), the US portfolio report and the level digest. Notes a card stores (warnings, source names) stay Turkish.
 Stored per chat in settings.json under "dil" (kept in MongoDB in the cloud).
 """
 import alerts_store
@@ -80,7 +81,7 @@ def label(code: str, value):
 
 def status(chat_id) -> str:
     code = get(chat_id)
-    return pick(code, f"🌐 Dil: {LANGS[code]}\nDeğiştir: /dil tr · /dil en\nÇeviri aşamalı ilerliyor: bildirim tercihleri, aylık rapor, hisse tablosu ve "
-                      "komut menüsü İngilizce; diğer mesajlar şimdilik Türkçe.",
+    return pick(code, f"🌐 Dil: {LANGS[code]}\nDeğiştir: /dil tr · /dil en\nÇeviri aşamalı ilerliyor: bildirim tercihleri, aylık rapor, hisse tablosu, hisse kartları, "
+                      "ABD portföyü, seviye özeti ve komut menüsü İngilizce; diğer mesajlar şimdilik Türkçe.",
                 f"🌐 Language: {LANGS[code]}\nChange: /dil tr · /dil en\nTranslation is in progress: notification settings, the monthly report, "
-                "the stock table and the command menu are in English; other messages are still Turkish for now.")
+                "the stock table, the stock cards, the US portfolio, the level digest and the command menu are in English; other messages are still Turkish for now.")

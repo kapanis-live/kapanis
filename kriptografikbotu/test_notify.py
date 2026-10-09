@@ -222,5 +222,48 @@ class DigestTest(Base):
         self.assertNotIn("SOL", self.sent[0])
 
 
+class EnglishTextTest(unittest.TestCase):
+    """Cards, the US portfolio report and the level digest have an English text; the Turkish one is unchanged by default."""
+    CARD = {"hisse": "NVDA", "fiyat": 131.2, "sektor": "Technology", "endustri": "Semiconductors", "temel": {"skor": 82, "durum": "GÜÇLÜ"},
+            "bilanco": {"gun": 4, "risk": "YÜKSEK", "tarih": "2026-10-13", "kaynak": "Yahoo"},
+            "degerleme": {"etiket": "PAHALI", "ileri_fk": 38.1, "peg": None, "fcf_verimi_yuzde": 2.1},
+            "guc": {"spy_6a": 14.2, "spy": "GÜÇLÜ", "qqq_6a": None, "qqq": "BİLİNMİYOR"},
+            "trend": {"günlük": "↗ güçlü", "haftalık": "→ karışık", "hizalama": "fiyat > SMA50", "zirveye_uzaklik_yuzde": 6.4},
+            "revizyon": {"etiket": "YUKARI", "eps_30g_yuzde": 2.4, "eps_90g_yuzde": None, "yukari_30g": 12, "asagi_30g": None},
+            "son_bilanco": {"surpriz_yuzde": None, "not": "", "tepki": None}, "dikkat": [], "kaynaklar": [], "uretildi": "2026-10-09T19:00:00"}
+    SCAN = {"taranan": {"KRIPTO": 40, "BIST": 30, "ABD": 100}, "hata": 0,
+            "olaylar": [{"piyasa": "ABD", "tur": "KIRILIM", "hacim": True, "dokunma": 3, "kod": "NVDA", "kapanis": 131.2, "alt": 128, "ust": 130, "sonraki": 140}]}
+
+    def test_us_card(self):
+        import us_card
+        en, tr = us_card.text(self.CARD, "en"), us_card.text(self.CARD)
+        self.assertIn("Strength (6 months, points): SPY +14.2 STRONG · QQQ — UNKNOWN", en)
+        self.assertIn("risk HIGH", en)
+        self.assertIn("not a BUY/SELL suggestion", en)
+        self.assertIn("Güç (6 ay, puan farkı): SPY +14.2 GÜÇLÜ", tr)
+        self.assertEqual(tr, us_card.text(self.CARD, "tr"))
+
+    def test_level_digest(self):
+        import levels_scan
+        en = levels_scan.text(self.SCAN, code="en")
+        self.assertIn("NVDA 131.2 — 🟢 resistance broken 128–130 (3 touches, with volume) · next level 140", en)
+        self.assertIn("not a BUY/SELL suggestion", en)
+        self.assertIsNone(levels_scan.text({**self.SCAN, "olaylar": []}, code="en"))
+        self.assertIn("No new level event.", levels_scan.text({**self.SCAN, "olaylar": []}, empty=True, code="en"))
+        self.assertIn("direnç kırıldı", levels_scan.text(self.SCAN))
+
+    def test_us_portfolio(self):
+        import us_portfolio
+        r = {"toplam_usd": 12000, "agirlik_yuzde": {"NVDA": 60, "MSFT": 40}, "sektor_yuzde": {"Technology": 100},
+             "tema": {"Mega teknoloji": {"agirlik_yuzde": 100, "hisseler": ["NVDA", "MSFT"]}},
+             "korelasyon": {"ortalama": None, "en_bagli": [], "en_bagimsiz": []}, "beta": {"SPY": 1.4, "QQQ": 1.2}, "vix": 17.2, "tnx": 4.21,
+             "senaryolar": [{"senaryo": "S&P 500 %10 düşerse", "portfoy_yuzde": -14.0, "tutar_usd": -1680, "en_cok_etkilenen": [[-16.2, "NVDA"]]}],
+             "dikkat": [], "kapsam_yuzde": 100, "kaynaklar": []}
+        en = us_portfolio.text(r, "en")
+        self.assertIn("· Mega tech: 100% (NVDA, MSFT)", en)
+        self.assertIn("· If the S&P 500 falls 10%: portfolio -14% (-1,680 USD) · most affected: NVDA -16.2%", en)
+        self.assertIn("S&P 500 %10 düşerse: portföy %-14", us_portfolio.text(r))
+
+
 if __name__ == "__main__":
     unittest.main()

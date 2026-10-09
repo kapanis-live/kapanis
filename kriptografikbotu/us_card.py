@@ -17,6 +17,7 @@ import httpx
 import alerts_store
 import config
 import db_backup
+import lang
 import us
 import us_events
 import us_fund
@@ -157,7 +158,9 @@ def _n(x, suffix="") -> str:
     return "—" if x is None else f"{x:+g}{suffix}"
 
 
-def text(c: dict) -> str:
+def text(c: dict, code: str = "tr") -> str:
+    if code == "en":
+        return text_en(c)
     g, e, r, v, s = c["guc"], c["bilanco"], c["revizyon"], c["degerleme"], c["son_bilanco"]
     tr = c["trend"]
     lines = [f"🇺🇸 {c['hisse']} — {c['fiyat']:g} $" + (f" · {c['sektor']} / {c['endustri']}" if c.get("sektor") else ""),
@@ -180,4 +183,32 @@ def text(c: dict) -> str:
     lines += ["", "Kaynaklar:", *(f"· {x['veri']}: {x['kaynak']} — {x['tarih']}" for x in c["kaynaklar"]),
               f"Üretildi {c['uretildi'][:16].replace('T', ' ')}" + (f" · kod {c['kod']}" if c.get("kod") else ""),
               "Karar desteği: AL/SAT önerisi değildir. ABD'de test edilen zamanlama kurallarının hiçbiri al-tut'u geçemedi."]
+    return "\n".join(lines)
+
+
+def text_en(c: dict) -> str:
+    """The same card in English. Labels are translated; notes and source names the card stores stay as written."""
+    L = lambda v: lang.label("en", v)
+    g, e, r, v, s = c["guc"], c["bilanco"], c["revizyon"], c["degerleme"], c["son_bilanco"]
+    tr = c["trend"]
+    dash = lambda x: "—" if x is None else x
+    lines = [f"🇺🇸 {c['hisse']} — {c['fiyat']:g} $" + (f" · {c['sektor']} / {c['endustri']}" if c.get("sektor") else ""),
+             "Trend: " + " · ".join(f"{n} {L(tr[k])}" for k, n in (("günlük", "daily"), ("haftalık", "weekly"), ("aylık", "monthly")) if k in tr)
+             + f" · {tr['hizalama']} · {tr['zirveye_uzaklik_yuzde']}% below the high",
+             f"Strength (6 months, points): SPY {_n(g['spy_6a'])} {L(g['spy'])} · QQQ {_n(g['qqq_6a'])} {L(g['qqq'])}"
+             + (f" · sector {g['sektor_etf']} {_n(g['sektor_6a'])} {L(g['sektor'])}" if g.get("sektor_etf") else ""),
+             ("Earnings: " + (f"{e['tarih']} ({e['gun']} days) · risk {L(e['risk'])} · {e['kaynak']}" if e["tarih"] else "date unknown"))]
+    rc = s["tepki"]
+    if rc:
+        lines.append(f"Last earnings: {rc['aciklama']} · first session {rc['tepki_yuzde']:+g}% ({_n(rc['spy_gore_yuzde'], ' points')} against SPY) · "
+                     f"since then {rc['o_gunden_beri_yuzde']:+g}%" + (f" · EPS surprise {s['surpriz_yuzde']:+g}%" if s["surpriz_yuzde"] is not None else ""))
+        lines.append("   Context, not a signal: in the history test a good earnings reaction was not followed by a return above the market.")
+    lines += [f"Analyst revisions: {L(r['etiket'])} · EPS estimate 30 days {_n(r['eps_30g_yuzde'])}%, 90 days {_n(r['eps_90g_yuzde'])}% · "
+              f"up {dash(r['yukari_30g'])} / down {dash(r['asagi_30g'])}",
+              f"Fundamental score: {c['temel']['skor']}/100 ({L(c['temel']['durum'])})",
+              f"Valuation: {L(v['etiket'])} (coarse) · forward P/E {dash(v['ileri_fk'])} · PEG {dash(v['peg'])} · FCF yield {dash(v['fcf_verimi_yuzde'])}%"]
+    lines += ["", *(f"⚠️ {n}" for n in c["dikkat"])] if c["dikkat"] else []
+    lines += ["", "Sources:", *(f"· {x['veri']}: {x['kaynak']} — {x['tarih']}" for x in c["kaynaklar"]),
+              f"Generated {c['uretildi'][:16].replace('T', ' ')}" + (f" · code {c['kod']}" if c.get("kod") else ""),
+              "Decision support: not a BUY/SELL suggestion. No timing rule tested on US stocks beat buy-and-hold."]
     return "\n".join(lines)

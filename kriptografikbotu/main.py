@@ -4914,7 +4914,7 @@ async def levels_job(context: ContextTypes.DEFAULT_TYPE):
     try:
         res = await levels_scan.scan()
         on = [e for e in res["olaylar"] if notify_prefs.notifications_enabled(config.ALLOWED_CHAT_ID, e["piyasa"])]
-        said = levels_scan.text({**res, "olaylar": on})    # the digest lists only the markets that are switched on
+        said = levels_scan.text({**res, "olaylar": on}, code=lang.get(config.ALLOWED_CHAT_ID))    # the digest lists only the markets that are switched on
         levels_scan.record(res["olaylar"])   # the long setups go to the Signals page as information, never as AL
     except Exception:
         log.exception("Level scan failed")
@@ -4945,8 +4945,9 @@ async def seviye_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status = await update.message.reply_text("⏳ seviyeler taranıyor (kripto, BIST, ABD)...")
     res = await levels_scan.scan(remember=False)
     await status.delete()
-    await send_long(context.bot, update.effective_chat.id, levels_scan.text(res, empty=True)
-                    + ("" if levels_scan.enabled() else "\n\nOtomatik tarama kapalı (/seviye ac)."))
+    await send_long(context.bot, update.effective_chat.id, levels_scan.text(res, empty=True, code=lang.get(update.effective_chat.id))
+                    + ("" if levels_scan.enabled() else lang.pick(update.effective_chat.id, "\n\nOtomatik tarama kapalı (/seviye ac).",
+                                                                  "\n\nThe automatic scan is off (/seviye ac).")))
 
 
 async def risk_news_job(context: ContextTypes.DEFAULT_TYPE):
@@ -6503,7 +6504,7 @@ async def us_card_cmd(update, context, t: str):
         await status.edit_text(f"❌ {t}: {str(e)[:150]}")
         return
     await status.delete()
-    await send_long(context.bot, update.effective_chat.id, us_card.text(c))
+    await send_long(context.bot, update.effective_chat.id, us_card.text(c, lang.get(update.effective_chat.id)))
 
 
 async def stock_card_cmd(update, context, mkt: str, code: str):
@@ -6515,7 +6516,7 @@ async def stock_card_cmd(update, context, mkt: str, code: str):
         await status.edit_text(f"❌ {code}: {str(e)[:150]}")
         return
     await status.delete()
-    await send_long(context.bot, update.effective_chat.id, bist_card.text(c))
+    await send_long(context.bot, update.effective_chat.id, bist_card.text(c, lang.get(update.effective_chat.id)))
 
 
 async def build_scan(bot, mkt: str, chat_id: int | None = None):
@@ -6567,7 +6568,9 @@ async def us_portfolio_cmd(update, context):
         return
     await status.delete()
     await send_long(context.bot, update.effective_chat.id,
-                    us_portfolio.text(r) if r else "Açık ABD pozisyonu yok. Eklemek için: /portfoy ekle NVDA 2 230")
+                    us_portfolio.text(r, lang.get(update.effective_chat.id)) if r
+                    else lang.pick(update.effective_chat.id, "Açık ABD pozisyonu yok. Eklemek için: /portfoy ekle NVDA 2 230",
+                                   "No open US position. To add one: /portfoy ekle NVDA 2 230"))
 
 
 async def us_fundamentals_cmd(update, context, t: str):

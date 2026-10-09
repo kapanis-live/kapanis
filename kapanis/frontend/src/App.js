@@ -5,6 +5,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PanelLayout } from "@/components/PanelLayout";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider, useTheme } from "@/lib/theme";
+import { LangProvider } from "@/lib/i18n";
 
 import Iletisim from "@/pages/public/Iletisim";
 import Gizlilik from "@/pages/public/Gizlilik";
@@ -69,6 +70,7 @@ function ThemedToaster() {
 function App() {
   return (
     <ThemeProvider>
+      <LangProvider>
     <BrowserRouter>
       <AuthProvider>
         <Routes>
@@ -122,6 +124,7 @@ function App() {
       </AuthProvider>
       <ThemedToaster />
     </BrowserRouter>
+      </LangProvider>
     </ThemeProvider>
   );
 }

@@ -6,6 +6,7 @@ import { useData } from "@/lib/useData";
 import { DataView, Panel } from "@/components/DataView";
 import { useAuth } from "@/context/AuthContext";
 import { TEXTS } from "@/lib/texts";
+import { useLang, LANGS } from "@/lib/i18n";
 import { Check, ShieldCheck } from "lucide-react";
 
 function Row({ label, value }) {
@@ -63,7 +64,32 @@ function ParamsPanel({ d }) {
 }
 
 // Piyasa bazlı otomatik bildirimler: Telegram'daki /kripto, /bist, /abd ac|kapat ile aynı kayıt
+// Dil: site bu tarayıcıda, Telegram bot üzerinden aynı seçime geçer
+function LanguagePanel() {
+  const { t, lang, setLang } = useLang();
+  const pick = async (value) => {
+    if (value === lang) return;
+    setLang(value);
+    await sendAction("settings.set", { dil: value }, value === "en" ? "Language set to English." : "Dil Türkçe yapıldı.");
+  };
+  return (
+    <Panel title={t("Dil")} testid="settings-language">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-t-1">{t("Site ve Telegram dili")}</span>
+        <span className="inline-flex gap-0.5 rounded-[10px] border border-hairline bg-ink p-[3px]">
+          {LANGS.map((l) => (
+            <button key={l.value} type="button" onClick={() => pick(l.value)} aria-pressed={lang === l.value} data-testid={`settings-lang-${l.value}`}
+              className={`h-9 rounded-[7px] px-4 text-sm font-semibold transition-colors duration-150 ${lang === l.value ? "bg-raised text-t-1" : "text-t-3 hover:text-t-1"}`}>{l.label}</button>
+          ))}
+        </span>
+      </div>
+      <p className="mt-3 text-xs text-t-3">{t("Seçim bu tarayıcıda saklanır ve bota iletilir: Telegram mesajları da aynı dile geçer. Çeviri aşamalı ilerliyor; henüz çevrilmemiş yerler Türkçe görünür.")}</p>
+    </Panel>
+  );
+}
+
 function NotificationsPanel({ d }) {
+  const { t } = useLang();
   const rows = d.bildirimler || [];
   const [busy, setBusy] = useState(null);
   const [local, setLocal] = useState({});
@@ -76,24 +102,23 @@ function NotificationsPanel({ d }) {
     setBusy(null);
   };
   return (
-    <Panel title="Bildirimler" testid="settings-notifications">
+    <Panel title={t("Bildirimler")} testid="settings-notifications">
       <div className="flex flex-col gap-3">
         {rows.map((r) => {
           const on = local[r.piyasa] ?? r.acik;
           return (
             <div key={r.piyasa} className="flex items-center justify-between gap-3">
-              <span className="text-sm text-t-1">{r.etiket} bildirimleri</span>
+              <span className="text-sm text-t-1">{r.etiket} {t("bildirimleri")}</span>
               <button type="button" role="switch" aria-checked={on} aria-label={`${r.etiket} bildirimleri`} disabled={busy === r.piyasa}
                 onClick={() => flip(r, !on)} data-testid={`notify-${r.piyasa}`}
                 className={`inline-flex h-7 w-[3.25rem] shrink-0 items-center rounded-full border px-0.5 transition-colors duration-150 disabled:opacity-50 ${on ? "justify-end border-up/50 bg-up/20" : "justify-start border-hairline bg-raised"}`}>
-                <span className={`grid h-[1.375rem] w-[1.375rem] place-items-center rounded-full text-[9px] font-bold ${on ? "bg-up text-ink" : "bg-t-3 text-ink"}`}>{on ? "AÇ" : "KP"}</span>
+                <span className={`grid h-[1.375rem] w-[1.375rem] place-items-center rounded-full text-[9px] font-bold ${on ? "bg-up text-ink" : "bg-t-3 text-ink"}`}>{t(on ? "AÇ" : "KP")}</span>
               </button>
             </div>
           );
         })}
       </div>
-      <p className="mt-3 text-xs text-t-3">Kapalı piyasadan otomatik mesaj gelmez (alarm, sinyal, seviye özeti, çıkış uyarısı). Yazdığın komutlar
-        yine cevaplanır, kayıtlı alarmlar silinmez; kapalıyken oluşan bildirimler sonradan gönderilmez. Telegram: /bildirimler</p>
+      <p className="mt-3 text-xs text-t-3">{t("Kapalı piyasadan otomatik mesaj gelmez (alarm, sinyal, seviye özeti, çıkış uyarısı). Yazdığın komutlar yine cevaplanır, kayıtlı alarmlar silinmez; kapalıyken oluşan bildirimler sonradan gönderilmez. Telegram: /bildirimler")}</p>
     </Panel>
   );
 }
@@ -110,6 +135,8 @@ export default function Settings() {
             <ParamsPanel d={d} />
 
             <NotificationsPanel d={d} />
+
+            <LanguagePanel />
 
             <Panel title="Hesap" testid="settings-account">
               <Row label="E-posta" value={user?.email || "—"} />

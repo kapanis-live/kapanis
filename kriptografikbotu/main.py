@@ -13,7 +13,7 @@ from datetime import datetime, time as dtime, timedelta
 from logging.handlers import RotatingFileHandler
 
 import httpx
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, ContextTypes, ExtBot, TypeHandler,
                           MessageHandler, filters)
@@ -40,6 +40,7 @@ import fundamentals
 import exits
 import gate
 import journal
+import lang
 import levels_scan
 import oi_store
 import pf_alarm
@@ -250,6 +251,7 @@ BOT_MENU = [
     ("seviye", "Destek/direnç taraması (30 dk'da bir; kapat/ac)"),
     ("bildirimler", "Piyasa bildirimleri: /kripto /bist /abd ac|kapat"),
     ("aylik", "Aylık rapor: getiri, endekse göre fark, işlemler"),
+    ("dil", "Dil / Language: /dil tr · /dil en"),
     ("ne", "Elindeki bir varlık için plan: /ne ASTOR"),
     ("pozisyon", "Plan için pozisyon işareti: /pozisyon BTC acik"),
     ("sil", "Plan sil: /sil BTC"),
@@ -4518,7 +4520,7 @@ async def monthly_report(bot, chat_id: int, month: str | None = None) -> dict | 
                                                    "gecmis": monthly.history()[:12]}])
         except Exception as e:
             log.warning("Monthly report not pushed to the panel: %s", e)
-    await send_long(bot, chat_id, monthly.text(doc))
+    await send_long(bot, chat_id, monthly.text(doc, lang.get(chat_id)))
     return doc
 
 
@@ -5882,6 +5884,11 @@ def register_panel_actions(bot):
 
     async def settings_set(p):
         """Owner's parameters from the panel's "Düzenle" form (panel_settings.SPEC + quiet windows)."""
+        if p.get("dil"):                            # the site's language switch: the same store as /dil
+            try:
+                return "⚙️ " + await apply_language(bot, config.ALLOWED_CHAT_ID, p["dil"])
+            except ValueError as e:
+                return f"❌ Panel: {e}"
         if isinstance(p.get("bildirim"), dict):     # the three market switches: the same store as /kripto ac|kapat
             try:
                 notify_prefs.set_enabled(config.ALLOWED_CHAT_ID, p["bildirim"].get("piyasa"), bool(p["bildirim"].get("acik")))
@@ -6375,6 +6382,34 @@ async def fundamentals_ai(update, context, tick: str):
 
 # --- US stocks: /abd, fundamentals, ranking, plan follow-up after the New York close -----------------------
 
+def menu_commands(code: str) -> list:
+    """The command menu in one language (a command with no English text keeps its Turkish one)."""
+    return [BotCommand(c, lang.MENU_EN.get(c, d) if code == "en" else d) for c, d in BOT_MENU]
+
+
+async def apply_language(bot, chat_id: int, value: str) -> str:
+    """Store the chat's language and show the command menu of that chat in it. Returns the status text."""
+    code = lang.set_lang(chat_id, value)
+    try:
+        await bot.set_my_commands(menu_commands(code), scope=BotCommandScopeChat(chat_id))
+    except Exception as e:
+        log.warning("Command menu not set for chat %s: %s", chat_id, e)
+    return lang.status(chat_id)
+
+
+@authorized
+async def dil_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/dil tr | en (also /language): the language of this chat; the site's switch sets the same value."""
+    chat = update.effective_chat.id
+    if not context.args:
+        await update.message.reply_text(lang.status(chat))
+        return
+    try:
+        await update.message.reply_text(await apply_language(context.bot, chat, context.args[0]))
+    except ValueError as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
 @authorized
 async def bildirimler_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(notify_prefs.text(update.effective_chat.id))
@@ -6498,14 +6533,14 @@ async def build_scan(bot, mkt: str, chat_id: int | None = None):
         except Exception as e:
             log.warning("Stock scan %s not pushed to the panel: %s", mkt, e)
     if chat_id:
-        await send_long(bot, chat_id, stock_scan.text(doc))
+        await send_long(bot, chat_id, stock_scan.text(doc, code=lang.get(chat_id)))
 
 
 async def stock_scan_cmd(update, context, mkt: str):
     """/abd tara, /bist tara: today's table if it exists, else build it in the background and send it when ready."""
     doc = stock_scan.fresh(mkt)
     if doc:
-        await send_long(context.bot, update.effective_chat.id, stock_scan.text(doc))
+        await send_long(context.bot, update.effective_chat.id, stock_scan.text(doc, code=lang.get(update.effective_chat.id)))
     elif stock_scan.running(mkt):
         await update.message.reply_text("⏳ Tablo şu an hazırlanıyor; bitince buraya gelecek.")
     else:
@@ -6888,6 +6923,8 @@ def main():
     async def start_engine(app: Application):
         try:
             await app.bot.set_my_commands([BotCommand(c, d) for c, d in BOT_MENU])
+            if config.ALLOWED_CHAT_ID and lang.get(config.ALLOWED_CHAT_ID) == "en":      # the owner chose English earlier
+                await app.bot.set_my_commands(menu_commands("en"), scope=BotCommandScopeChat(config.ALLOWED_CHAT_ID))
         except Exception as e:
             log.warning("Could not set the Telegram command menu: %s", e)
         if config.ALLOWED_CHAT_ID:
@@ -6949,6 +6986,7 @@ def main():
     app.add_handler(CommandHandler("midas", midas_cmd))
     app.add_handler(CommandHandler("seviye", seviye_cmd))
     app.add_handler(CommandHandler("bildirimler", bildirimler_cmd))
+    app.add_handler(CommandHandler(["dil", "language"], dil_cmd))
     app.add_handler(CommandHandler("aylik", aylik))
     app.add_handler(CommandHandler("kripto", kripto_cmd))
     app.add_handler(CommandHandler(["ne", "neyapayim"], ne_yapayim))

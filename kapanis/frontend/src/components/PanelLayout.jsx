@@ -6,6 +6,8 @@ import { Disclaimer } from "@/components/Disclaimer";
 import { useAuth } from "@/context/AuthContext";
 import { useData, usePendingCommands } from "@/lib/useData";
 import { useTheme } from "@/lib/theme";
+import { useLang, LANGS } from "@/lib/i18n";
+import api from "@/lib/api";
 import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +23,7 @@ const NAV = [
       { to: "/app/portfoy", label: "Portföy", icon: PieChart },
       { to: "/app/takip", label: "Takip Listem", icon: Eye },
       { to: "/app/pozisyonlar", label: "Pozisyonlar", icon: Wallet },
+      { to: "/app/saglik", label: "Portföy sağlığı", icon: HeartPulse },
     ],
   },
   {
@@ -41,6 +44,7 @@ const NAV = [
     group: "Performans",
     items: [
       { to: "/app/disiplin", label: "Disiplin & Günlük", icon: ShieldCheck },
+      { to: "/app/karnem", label: "Karnem & aylık rapor", icon: ClipboardCheck },
       { to: "/app/rapor", label: "Rapor & Kural Karnesi", icon: FileBarChart },
       { to: "/app/backtest", label: "Backtest", icon: FlaskConical },
     ],
@@ -144,17 +148,18 @@ function StatusStrip() {
   const m = useMarketStatus();
   const last = bot.data?.last_ingest;
   const online = last && Date.now() - new Date(last).getTime() < BOT_FRESH_MINUTES * 60_000;
-  const closedNote = m.weekendTR ? "kapalı · son seans Cuma" : "kapalı";
+  const { t } = useLang();
+  const closedNote = t(m.weekendTR ? "kapalı · son seans Cuma" : "kapalı");
   return (
     <div className="flex min-w-0 items-center gap-3 overflow-x-auto whitespace-nowrap text-sm text-t-2" data-testid="status-strip">
-      <span className={cn("inline-flex items-center gap-1.5 font-medium", online ? "text-up" : "text-down")} title={last ? `Son veri: ${relativeTime(last)}` : "Bot henüz veri göndermedi"}>
+      <span className={cn("inline-flex items-center gap-1.5 font-medium", online ? "text-up" : "text-down")} title={last ? `${t("Son veri")}: ${relativeTime(last)}` : t("Bot henüz veri göndermedi")}>
         <Dot tone={online ? "up" : "down"} />
-        {online ? "Bot çevrimiçi" : `Bot yanıt vermiyor${last ? ` (son veri ${relativeTime(last)})` : ""}`}
+        {online ? t("Bot çevrimiçi") : `${t("Bot yanıt vermiyor")}${last ? ` (${t("son veri")} ${relativeTime(last)})` : ""}`}
       </span>
       <span className="text-hairline">|</span>
-      <span className="inline-flex items-center gap-1.5"><Dot tone={m.BIST ? "up" : "none"} />BIST {m.BIST ? "açık" : closedNote}</span>
-      <span className="hidden items-center gap-1.5 sm:inline-flex"><Dot tone={m.ABD ? "up" : "none"} />NYSE {m.ABD ? "açık" : closedNote}</span>
-      <span className="hidden items-center gap-1.5 md:inline-flex"><Dot tone="up" />Kripto 7/24</span>
+      <span className="inline-flex items-center gap-1.5"><Dot tone={m.BIST ? "up" : "none"} />BIST {m.BIST ? t("açık") : closedNote}</span>
+      <span className="hidden items-center gap-1.5 sm:inline-flex"><Dot tone={m.ABD ? "up" : "none"} />NYSE {m.ABD ? t("açık") : closedNote}</span>
+      <span className="hidden items-center gap-1.5 md:inline-flex"><Dot tone="up" />{t("Kripto 7/24")}</span>
     </div>
   );
 }
@@ -169,6 +174,13 @@ const USER_MENU = [
 function TopActions({ onLogout }) {
   const { theme, toggle } = useTheme();
   const { user, owner } = useAuth();
+  const { t, lang, setLang } = useLang();
+  // Dil değişince sistem sahibi için bota da iletilir: Telegram mesajları aynı dile geçer
+  const pickLang = (value) => {
+    if (value === lang) return;
+    setLang(value);
+    if (owner) api.post("/actions", { type: "settings.set", payload: { dil: value } }).catch(() => {});
+  };
   const overview = useData("overview", "/overview", { refetchInterval: 30_000, enabled: owner });
   const pend = usePendingCommands();
   const decisions = overview.data?.pending_decisions || 0;
@@ -185,15 +197,15 @@ function TopActions({ onLogout }) {
     <div className="flex shrink-0 items-center gap-2">
       {pend.pending.length > 0 && (
         <span className="hidden items-center gap-1.5 rounded-lg border border-info/40 bg-info/10 px-2.5 py-1.5 text-xs font-semibold text-info sm:inline-flex" data-testid="pending-commands">
-          <Clock className="h-3.5 w-3.5" /> {pend.pending.length} işlem bota iletildi
+          <Clock className="h-3.5 w-3.5" /> {pend.pending.length} {t("işlem bota iletildi")}
         </span>
       )}
       {decisions > 0 && (
         <Link to="/app/sinyaller" className="inline-flex items-center gap-1.5 rounded-lg border border-wait/40 bg-wait/10 px-2.5 py-1.5 text-xs font-semibold text-wait hover:bg-wait/15" data-testid="pending-decisions">
-          <Zap className="h-3.5 w-3.5" /> {decisions}<span className="hidden sm:inline"> bekleyen karar</span>
+          <Zap className="h-3.5 w-3.5" /> {decisions}<span className="hidden sm:inline"> {t("bekleyen karar")}</span>
         </Link>
       )}
-      <button onClick={toggle} aria-label="Temayı değiştir" data-testid="theme-toggle"
+      <button onClick={toggle} aria-label={t("Temayı değiştir")} data-testid="theme-toggle"
         className="rounded-lg p-2 text-t-2 transition-colors duration-150 hover:bg-raised hover:text-t-1">
         {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>
@@ -216,13 +228,22 @@ function TopActions({ onLogout }) {
               return (
                 <Link key={i.to} to={i.to} role="menuitem" onClick={() => setMenu(false)}
                   className="mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-t-1 hover:bg-raised">
-                  <Icon className="h-4 w-4 text-t-3" /> {i.label}
+                  <Icon className="h-4 w-4 text-t-3" /> {t(i.label)}
                 </Link>
               );
             })}
+            <div className="mt-1 flex items-center justify-between gap-2 border-t border-hairline px-3 py-2" data-testid="lang-switch">
+              <span className="text-sm text-t-3">{t("Dil")}</span>
+              <span className="inline-flex gap-0.5 rounded-lg border border-hairline bg-ink p-0.5">
+                {LANGS.map((l) => (
+                  <button key={l.value} type="button" onClick={() => pickLang(l.value)} aria-pressed={lang === l.value} data-testid={`lang-${l.value}`}
+                    className={cn("rounded-md px-2.5 py-1 text-xs font-semibold transition-colors duration-150", lang === l.value ? "bg-raised text-t-1" : "text-t-3 hover:text-t-1")}>{l.label}</button>
+                ))}
+              </span>
+            </div>
             <button role="menuitem" onClick={onLogout} data-testid="logout-btn"
               className="mt-1 flex w-full items-center gap-2.5 rounded-lg border-t border-hairline px-3 py-2 text-left text-sm text-down hover:bg-raised">
-              <LogOut className="h-4 w-4" /> Çıkış yap
+              <LogOut className="h-4 w-4" /> {t("Çıkış yap")}
             </button>
           </div>
         )}
@@ -234,11 +255,12 @@ function TopActions({ onLogout }) {
 function SideNav({ onClick }) {
   const prefetch = usePrefetch();
   const { owner } = useAuth();
+  const { t } = useLang();
   return (
     <nav className="space-y-5">
       {(owner ? NAV : USER_NAV).map((g) => (
         <div key={g.group}>
-          <p className="eyebrow mb-2 px-3 text-[10px] text-t-3">{g.group}</p>
+          <p className="eyebrow mb-2 px-3 text-[10px] text-t-3">{t(g.group)}</p>
           <div className="space-y-0.5">
             {g.items.map((n) => {
               const Icon = n.icon;
@@ -261,7 +283,7 @@ function SideNav({ onClick }) {
                   }
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  {n.label}
+                  {t(n.label)}
                 </NavLink>
               );
             })}
@@ -281,9 +303,10 @@ function Brand() {
 }
 
 function SideFooter() {
+  const { t } = useLang();
   return (
     <div className="rounded-lg border border-hairline bg-ink/60 p-3">
-      <p className="text-[11px] leading-4 text-t-2">Bu panel fikir üretir; karar senindir. Bot işlem yapmaz.</p>
+      <p className="text-[11px] leading-4 text-t-2">{t("Bu panel fikir üretir; karar senindir.")} {t("Bot işlem yapmaz.")}</p>
     </div>
   );
 }
@@ -297,6 +320,7 @@ export function PanelLayout({ children }) {
   const prefetch = usePrefetch();
   const mainRef = useRef(null);
   usePullToRefresh(mainRef);
+  const { t } = useLang();
   const tabs = owner ? MOBILE_NAV : USER_MOBILE_NAV;
   const tabIndex = tabs.findIndex((n) => (n.end ? loc.pathname === n.to : loc.pathname === n.to || loc.pathname.startsWith(n.to + "/")));
   const lastTab = useRef(tabIndex);
@@ -323,7 +347,7 @@ export function PanelLayout({ children }) {
           <div className="absolute inset-y-0 left-0 flex w-72 flex-col border-r border-hairline bg-side animate-fade-in">
             <div className="flex items-center justify-between px-5 pb-6 pt-5">
               <Brand />
-              <button onClick={() => setOpen(false)} aria-label="Kapat"><X className="h-5 w-5 text-t-1" /></button>
+              <button onClick={() => setOpen(false)} aria-label={t("Kapat")}><X className="h-5 w-5 text-t-1" /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-3 pb-4"><SideNav onClick={() => setOpen(false)} /></div>
             <div className="p-4"><SideFooter /></div>
@@ -334,7 +358,7 @@ export function PanelLayout({ children }) {
       <div className="lg:pl-64">
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-3 border-b border-hairline bg-ink/90 px-4 backdrop-blur md:px-7">
           <div className="flex min-w-0 items-center gap-3">
-            <button onClick={() => setOpen(true)} data-testid="panel-menu-toggle" aria-label="Menü" className="rounded-lg p-2 hover:bg-raised lg:hidden">
+            <button onClick={() => setOpen(true)} data-testid="panel-menu-toggle" aria-label={t("Menü")} className="rounded-lg p-2 hover:bg-raised lg:hidden">
               <Menu className="h-5 w-5 text-t-1" />
             </button>
             <StatusStrip />
@@ -343,7 +367,7 @@ export function PanelLayout({ children }) {
         </header>
 
         {myPortfolio.data?.risk_mode === "defansif" && <Link to="/app/kriz" className="kp-defensive-banner block px-4 py-2 text-sm font-semibold md:px-7">
-          Defansif mod açık · risk hedefi %{myPortfolio.data.risk_target_pct} · Planı gör →
+          {t("Defansif mod açık")} · {t("risk hedefi")} %{myPortfolio.data.risk_target_pct} · {t("Planı gör")} →
         </Link>}
 
         <main ref={mainRef} key={loc.pathname} className={cn("kp-main mx-auto max-w-[1400px] px-4 pb-28 pt-7 md:px-7 lg:px-10 lg:pb-10", enter)}>
@@ -353,14 +377,14 @@ export function PanelLayout({ children }) {
       </div>
 
       {/* cam görünümlü, kenarlardan ayrık alt çubuk; seçili sekmenin arkasındaki vurgu sekmeler arasında kayar */}
-      <nav className="kp-tabbar lg:hidden" aria-label="Ana sekmeler" data-testid="tabbar" style={{ "--tabs": tabs.length, "--tab": Math.max(tabIndex, 0) }}>
+      <nav className="kp-tabbar lg:hidden" aria-label={t("Ana sekmeler")} data-testid="tabbar" style={{ "--tabs": tabs.length, "--tab": Math.max(tabIndex, 0) }}>
         <span className="kp-tabbar__pill" aria-hidden="true" style={{ opacity: tabIndex < 0 ? 0 : 1 }} />
         {tabs.map((n) => {
           const Icon = n.icon;
           return (
             <NavLink key={n.to} to={n.to} end={n.end} onTouchStart={() => prefetch(n.to)} onClick={haptic}
               className={({ isActive }) => cn("kp-tabbar__item", isActive && "is-active")}>
-              <Icon className="h-5 w-5" /><span>{n.label}</span>
+              <Icon className="h-5 w-5" /><span>{t(n.label)}</span>
             </NavLink>
           );
         })}

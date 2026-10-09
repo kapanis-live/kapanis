@@ -151,6 +151,63 @@ class CommandTest(Base):
         self.assertIn("🪙 Kripto: AÇIK", np_.text(OWNER))                                         # and Telegram shows the same
 
 
+class LanguageTest(Base):
+    def setUp(self):
+        super().setUp()
+        st = alerts_store.load_settings()
+        st.pop("dil", None)
+        alerts_store.save_settings(st)
+
+    async def test_dil_switches_this_chat_and_its_menu(self):
+        import lang
+        update = types.SimpleNamespace(effective_chat=types.SimpleNamespace(id=OWNER, type="private"), message=types.SimpleNamespace(reply_text=AsyncMock()))
+        bot = types.SimpleNamespace(set_my_commands=AsyncMock())
+        ask = lambda *args: main.dil_cmd(update, types.SimpleNamespace(args=list(args), bot=bot, user_data={}))
+        said = lambda: update.message.reply_text.await_args.args[0]
+        self.assertEqual(lang.get(OWNER), "tr")                                        # Turkish until chosen otherwise
+        await ask()
+        self.assertIn("Dil: Türkçe", said())
+        await ask("english")
+        self.assertIn("Language: English", said())
+        self.assertEqual((lang.get(OWNER), lang.get(999)), ("en", "tr"))               # per chat
+        menu = {c.command: c.description for c in bot.set_my_commands.await_args.args[0]}
+        self.assertEqual(menu["aylik"], "Monthly report: return, vs indexes, trades")
+        self.assertEqual(bot.set_my_commands.await_args.kwargs["scope"].chat_id, OWNER)
+        self.assertIn("Notification settings", np_.text(OWNER))
+        self.assertIn("🪙 Crypto: OFF", np_.text(OWNER))
+        await ask("xx")
+        self.assertIn("❌", said())
+        await ask("tr")
+        self.assertIn("🪙 Kripto: KAPALI", np_.text(OWNER))
+        self.assertEqual({c.command for c in main.menu_commands("en")}, {c for c, _ in main.BOT_MENU})
+        self.assertEqual([c for c, _ in main.BOT_MENU if c not in lang.MENU_EN], [])   # every command has an English line
+
+    async def test_translated_reports_keep_the_same_numbers(self):
+        import monthly
+        import stock_scan
+        d = {"ay": "2026-09", "ad": "Eylül 2026", "bas_gun": "2026-08-31", "son_gun": "2026-09-30", "varlik": 2, "hesaplanamayan": [],
+             "getiri": {"tl_yuzde": 3.5, "usd_yuzde": 2.2, "kazanc_tl": 5416.0, "kazanc_usd": 70.0, "izlenen_tl": 155000.0},
+             "kiyas": {"BIST 100": -16.7, "BTC": 6.4}, "usdtry_yuzde": 1.6,
+             "en_iyi": [{"ad": "ETH", "piyasa": "KRIPTO", "para": "USD", "kazanc_tl": 8000.0, "kazanc": 216.0, "yuzde": 17.5}], "en_kotu": [],
+             "islemler": {"alim": 1, "satim": 1, "gerceklesen": {"USD": 200.0}, "alinan": ["SOL"], "satilan": ["ETH"]},
+             "yogunlasma": {"ay_basi": {"ad": "ETH", "yuzde": 44.5, "toplam_tl": 1.0}, "ay_sonu": {"ad": "THYAO", "yuzde": 31.3, "toplam_tl": 1.0}}}
+        tr, en = monthly.text(d), monthly.text(d, "en")
+        self.assertIn("AYLIK RAPOR — Eylül 2026", tr)
+        self.assertIn("MONTHLY REPORT — September 2026", en)
+        self.assertIn("Return: TL %+3.5 (+5,416 TL) · USD %+2.2 (+70 USD)", en)
+        self.assertIn("New money is not counted as return", en)
+        import re
+        nums = lambda t: sorted(re.findall(r"[+-]\d[\d,.]*", t))
+        self.assertEqual(nums(tr), nums(en))                                           # only the words differ
+        row = {"kod": "NVDA", "fiyat": 230.0, "gun_yuzde": 1.0, "hafta_yuzde": 1.0, "trend": "↗ güçlü", "guc": "GÜÇLÜ", "guc_6a": 11.5, "rsi": 54,
+               "puan": 95, "puan_etiket": "x", "degerleme": "UCUZ", "sektor": "Technology", "revizyon": None, "bilanco_tarih": None,
+               "bilanco_gun": 4, "bilanco_risk": "YÜKSEK"}
+        doc = {"piyasa": "ABD", "zaman": "2026-10-09T18:00:00+03:00", "temeli_eksik": 0, "satirlar": [row]}
+        self.assertIn("NVDA 230$ · puan 95 · ↗ güçlü · güç GÜÇLÜ · UCUZ · bilanço 4g ⚠️", stock_scan.text(doc))
+        self.assertIn("NVDA 230$ · score 95 · ↗ strong · strength STRONG · CHEAP · earnings 4d ⚠️", stock_scan.text(doc, code="en"))
+        self.assertIn("a ranking, not a suggestion", stock_scan.text(doc, code="en"))
+
+
 class DigestTest(Base):
     async def test_level_digest_lists_only_open_markets(self):
         ev = lambda mkt, kod: {"piyasa": mkt, "kod": kod, "tf": "1s", "mum": 1, "kapanis": 10.0, "tur": "KIRILIM", "alt": 9.0,

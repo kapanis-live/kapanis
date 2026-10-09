@@ -19,6 +19,7 @@ import bist
 import bist_card
 import config
 import fundamentals
+import lang
 import universe
 import us
 import us_card
@@ -118,18 +119,32 @@ async def run(mkt: str, only: list[str] | None = None) -> dict:
         _running.discard(mkt)
 
 
-def text(doc: dict, top: int = 12) -> str:
+def text(doc: dict, top: int = 12, code: str = "tr") -> str:
+    en = code == "en"
+    L = lambda v: lang.label(code, v)
     rows = doc["satirlar"]
     scored = sorted((r for r in rows if r["puan"] is not None), key=lambda r: -r["puan"])
     unit = "$" if doc["piyasa"] == "ABD" else "₺"
 
     def line(r):
-        return (f"{r['kod']} {watchlist._p(r['fiyat'])}{unit} · puan {r['puan']} · {r['trend']}"
-                + (f" · güç {r['guc']}" if r.get("guc") else "") + (f" · {r['degerleme']}" if r.get("degerleme") else "")
-                + (f" · bilanço {r['bilanco_gun']}g" + (" ⚠️" if r["bilanco_risk"] == "YÜKSEK" else "") if r.get("bilanco_gun") is not None and r["bilanco_gun"] <= 14 else ""))
+        return (f"{r['kod']} {watchlist._p(r['fiyat'])}{unit} · {'score' if en else 'puan'} {r['puan']} · {L(r['trend'])}"
+                + (f" · {'strength' if en else 'güç'} {L(r['guc'])}" if r.get("guc") else "") + (f" · {L(r['degerleme'])}" if r.get("degerleme") else "")
+                + (f" · {'earnings' if en else 'bilanço'} {r['bilanco_gun']}{'d' if en else 'g'}" + (" ⚠️" if r["bilanco_risk"] == "YÜKSEK" else "")
+                   if r.get("bilanco_gun") is not None and r["bilanco_gun"] <= 14 else ""))
     soon = sorted((r for r in rows if r.get("bilanco_risk") == "YÜKSEK"), key=lambda r: r["bilanco_gun"])
     strong = sum(r.get("guc") == "GÜÇLÜ" for r in rows)
     up = sum(str(r["trend"]).startswith("↗") for r in rows)
+    if en:
+        market = {"ABD": "🇺🇸 US (S&P 100)", "BIST": "🇹🇷 BIST"}[doc["piyasa"]]
+        lines = [f"{market} — STOCK TABLE · {len(rows)} stocks · {doc['zaman'][:16].replace('T', ' ')}",
+                 f"Trend up: {up} · stronger than the index: {strong} · earnings within 5 days: {len(soon)}", "",
+                 f"Highest fundamental score, top {min(top, len(scored))} (a ranking, not a suggestion):", *[line(r) for r in scored[:top]]]
+        if soon:
+            lines += ["", "Earnings within 5 days (gap risk): " + ", ".join(f"{r['kod']} ({r['bilanco_gun']}d)" for r in soon[:15])]
+        if doc.get("temeli_eksik"):
+            lines.append(f"({doc['temeli_eksik']} stocks have no fundamentals data)")
+        return "\n".join(lines + ["", f"Full table and sorting: {config.PUBLIC_URL}/app/tarama",
+                                  "A table to look up and sort. No timing rule tested on stocks beat buy & hold; the score is not a return forecast."])
     lines = [f"{MARKETS[doc['piyasa']]} — HİSSE TABLOSU · {len(rows)} hisse · {doc['zaman'][:16].replace('T', ' ')}",
              f"Trend yukarı: {up} · endeksten güçlü: {strong} · bilançosu 5 gün içinde: {len(soon)}", "",
              f"Temel puanı en yüksek {min(top, len(scored))} (sıralama, öneri değil):", *[line(r) for r in scored[:top]]]

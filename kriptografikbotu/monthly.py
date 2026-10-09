@@ -26,6 +26,7 @@ import assets
 import benchmark
 import bist
 import config
+import lang
 import market
 import positions
 import risk
@@ -214,7 +215,40 @@ def _m(v: float, cur: str) -> str:
     return f"{v:+,.0f} {cur}"
 
 
-def text(d: dict) -> str:
+def text_en(d: dict) -> str:
+    g, t, y = d["getiri"], d["islemler"], d["yogunlasma"]
+    name = f"{lang.MONTHS_EN[int(d['ay'][5:7]) - 1]} {d['ay'][:4]}"
+    if not d["varlik"]:
+        return f"🗓 MONTHLY REPORT — {name}\nNo position was followed inside this month." + (
+            f"\nNo price history for: {', '.join(d['hesaplanamayan'])}" if d["hesaplanamayan"] else "")
+    lines = [f"🗓 MONTHLY REPORT — {name}",
+             f"Return: TL {_p(g['tl_yuzde'])} ({_m(g['kazanc_tl'], 'TL')}) · USD {_p(g['usd_yuzde'])} ({_m(g['kazanc_usd'], 'USD')})",
+             "Same month: " + " · ".join(f"{k} {_p(v)}" for k, v in d["kiyas"].items()) + f" · USD/TRY {_p(d['usdtry_yuzde'])}"]
+    gaps = [f"{k} {gap:+.1f} ({cur})" for k, gap, cur in differences(d)]
+    if gaps:
+        lines.append("Against the index (points): " + " · ".join(gaps))
+    row = lambda a: f"{a['ad']} {_p(a['yuzde'])} ({_m(a['kazanc'], a['para'])})"
+    lines += ["", "Added most: " + (" · ".join(row(a) for a in d["en_iyi"]) or "none"),
+              "Cost most: " + (" · ".join(row(a) for a in d["en_kotu"]) or "none"), "",
+              f"Trades: {t['alim']} buys" + (f" ({', '.join(t['alinan'][:8])})" if t["alinan"] else "")
+              + f" · {t['satim']} sells" + (f" ({', '.join(t['satilan'][:8])})" if t["satilan"] else ""),
+              "Realized P/L: " + (" · ".join(_m(v, k) for k, v in t["gerceklesen"].items()) or "no sale")]
+    a, b = y["ay_basi"], y["ay_sonu"]
+    if a or b:
+        lines.append("Largest holding: " + " → ".join(
+            f"{w['ad']} {w['yuzde']:g}% ({label})" for w, label in ((a, "start"), (b, "end")) if w))
+    if d["hesaplanamayan"]:
+        lines.append(f"Left out, no price history: {', '.join(d['hesaplanamayan'])}")
+    lines += ["", f"Measured only over the days each position was held (close of {d['bas_gun'][8:10]}.{d['bas_gun'][5:7]} → close of "
+                  f"{d['son_gun'][8:10]}.{d['son_gun'][5:7]}; bought inside the month: from the buy price, sold inside: to the sell price). "
+                  "New money is not counted as return.",
+              "A summary of the past; no forecast and no suggestion."]
+    return "\n".join(lines)
+
+
+def text(d: dict, code: str = "tr") -> str:
+    if code == "en":
+        return text_en(d)
     g, t, y = d["getiri"], d["islemler"], d["yogunlasma"]
     if not d["varlik"]:
         return f"🗓 AYLIK RAPOR — {d['ad']}\nBu ay içinde izlenen pozisyon yok." + (

@@ -20,6 +20,7 @@ import logging
 
 import alerts_store
 import config
+import lang
 
 log = logging.getLogger(__name__)
 
@@ -122,6 +123,11 @@ def blocked(chat_id, text=None, user_turn: bool = False) -> bool:
 
 def text(chat_id) -> str:
     p = prefs(chat_id)
+    if lang.get(chat_id) == "en":
+        names = {KRIPTO: "🪙 Crypto", BIST: "🇹🇷 BIST", ABD: "🇺🇸 US"}
+        return ("🔔 Notification settings\n\n" + "\n".join(f"{names[m]}: {'ON' if p[m] else 'OFF'}" for m in MARKETS)
+                + "\n\nA market that is off sends no automatic messages; commands you type are still answered and saved alerts are kept."
+                  "\nChange: /kripto ac · /kripto kapat · /bist ac · /bist kapat · /abd ac · /abd kapat")
     return ("🔔 Bildirim tercihleri\n\n" + "\n".join(f"{LABELS[m]}: {'AÇIK' if p[m] else 'KAPALI'}" for m in MARKETS)
             + "\n\nKapalı piyasadan otomatik mesaj gelmez; yazdığın komutlar yine cevaplanır, kayıtlı alarmlar silinmez."
               "\nDeğiştir: /kripto ac · /kripto kapat · /bist ac · /bist kapat · /abd ac · /abd kapat")

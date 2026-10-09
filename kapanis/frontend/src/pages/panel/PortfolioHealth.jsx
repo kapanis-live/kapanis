@@ -28,7 +28,7 @@ function RegimeStrip() {
 
 // "Kaç adet alayım?": risk matematiği (portföy × risk %, oynaklık, korelasyon, yoğunlaşma), tahmin değil
 function SizeCalc() {
-  const { t } = useLang();
+  const { t, td } = useLang();
   const [f, setF] = useState({ piyasa: "BIST", kod: "", stop: "", risk: "" });
   const [r, setR] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -54,9 +54,9 @@ function SizeCalc() {
     </div>
     {r && <div className="mt-3 flex flex-col gap-2">
       <p className="m-0 text-lg text-t-1">{t("En fazla")} <b>{U.fmtNum(r.adet, r.piyasa === "BIST" ? 0 : 6)} {t("adet")}</b> ({r.para === "TL" ? "₺" : "$"}{U.fmtNum(r.tutar, 2)}) ·
-        stop {px(r.stop)} ({r.stop_kaynagi}) · {t("stop kırılırsa kayıp")} ≈ ₺{U.fmtNum(r.risk_tl, 0)}</p>
-      <ul className="m-0 pl-5 text-t-2">{r.satirlar.map((x) => <li key={x}>{x}</li>)}</ul>
-      <p className="kp-note">{r.not}</p>
+        stop {px(r.stop)} ({td(r.stop_kaynagi)}) · {t("stop kırılırsa kayıp")} ≈ ₺{U.fmtNum(r.risk_tl, 0)}</p>
+      <ul className="m-0 pl-5 text-t-2">{r.satirlar.map((x) => <li key={x}>{td(x)}</li>)}</ul>
+      <p className="kp-note">{td(r.not)}</p>
     </div>}
   </K.Card>;
 }
@@ -85,7 +85,7 @@ function StressCard() {
 
 // Portföy sağlığı: ağırlık, tepeden düşüş, test edilmiş trend kuralı, birlikte hareket edenler
 export default function PortfolioHealth() {
-  const { t } = useLang();
+  const { t, td } = useLang();
   const q = useData("health", "/portfolio/health", { refetchInterval: 300_000 });
   const { owner } = useAuth();
   const d = q.data;
@@ -100,7 +100,7 @@ export default function PortfolioHealth() {
       <K.Card title={t("Açık pozisyon yok")}><p className="kp-note m-0">{t("Portföyüm'e pozisyon ekleyince burada sağlık özeti çıkar.")}</p></K.Card>
     ) : <>
       {d.uyarilar?.length ? <K.Callout tone="warn" title={t("{n} dikkat noktası", { n: d.uyarilar.length })}>
-        <ul className="m-0 pl-5">{d.uyarilar.map((w) => <li key={w}>{w}</li>)}</ul>
+        <ul className="m-0 pl-5">{d.uyarilar.map((w) => <li key={w}>{td(w)}</li>)}</ul>
       </K.Callout> : <K.Callout tone="info" title={t("Belirgin sorun yok")}>{t("Yoğunlaşma, birlikte hareket eden çift ya da stopsuz pozisyon görünmüyor.")}</K.Callout>}
       <K.Card title={`${t("Pozisyonlar")}${d.toplam_tl ? ` · ${t("toplam")} ≈ ₺${U.fmtNum(d.toplam_tl, 0)}` : ""}`}>
         <K.DataTable rows={rows} rowKey="id" columns={[

@@ -31,7 +31,7 @@ function Line({ label, children }) {
 }
 
 function Card({ c }) {
-  const { t } = useLang();
+  const { t, td } = useLang();
   const us = c.piyasa !== "BIST";
   const g = c.guc, e = c.bilanco, r = c.revizyon, v = c.degerleme, s = c.son_bilanco, tr = c.trend;
   const rc = s?.tepki;
@@ -50,14 +50,14 @@ function Card({ c }) {
 
       {c.dikkat?.length > 0 && (
         <K.Callout tone="warn" title={t("{n} dikkat noktası", { n: c.dikkat.length })}>
-          <ul className="m-0 pl-5">{c.dikkat.map((x) => <li key={x}>{x}</li>)}</ul>
+          <ul className="m-0 pl-5">{c.dikkat.map((x) => <li key={x}>{td(x)}</li>)}</ul>
         </K.Callout>
       )}
 
       <div className="kp-grid kp-g-2">
         <K.Card title={t("Trend ve güç")}>
           <Line label={us ? t("Günlük / haftalık / aylık") : t("Günlük / haftalık")}>{(us ? ["günlük", "haftalık", "aylık"] : ["günlük", "haftalık"]).map((k) => t(tr[k] || "—")).join(" · ")}</Line>
-          <Line label={t("Ortalamalar")}>{tr.hizalama}</Line>
+          <Line label={t("Ortalamalar")}>{td(tr.hizalama)}</Line>
           <Line label={t("52 hafta zirvesine uzaklık")}>%{U.fmtNum(tr.zirveye_uzaklik_yuzde, 1)}</Line>
           {us ? (
             <>
@@ -68,7 +68,7 @@ function Card({ c }) {
           ) : (
             <>
               <Line label={t("BIST 100'e göre (6 ay)")}>{sign(g.endeks_6a, points)} · <Label v={g.etiket} /></Line>
-              {c.stage && <Line label={t("Haftalık evre")}>{c.stage}</Line>}
+              {c.stage && <Line label={t("Haftalık evre")}>{td(c.stage)}</Line>}
             </>
           )}
           <p className="kp-note">{t("Güç: 6 aylık getirinin endeksten farkı. 10 puan üstü GÜÇLÜ, 10 puan altı ZAYIF.")}</p>
@@ -76,7 +76,7 @@ function Card({ c }) {
 
         <K.Card title={us ? t("Bilanço") : t("Bilanço ve temettü")}>
           <Line label={t("Sonraki bilanço")}>{e.tarih ? `${e.tarih} · ${e.gun >= 0 ? t("{n} gün sonra", { n: e.gun }) : t("tarih geçmiş")}` : t("bilinmiyor")} · risk <Label v={e.risk} /></Line>
-          {e.kaynak && <Line label={t("Tarihin kaynağı")}>{e.kaynak}</Line>}
+          {e.kaynak && <Line label={t("Tarihin kaynağı")}>{td(e.kaynak)}</Line>}
           {us && (rc ? (
             <>
               <Line label={t("Son açıklama")}>{rc.aciklama}</Line>
@@ -126,7 +126,7 @@ function Card({ c }) {
       </div>
 
       <K.Card title={t("Kaynaklar ve denetim izi")}>
-        <K.DataTable rows={c.kaynaklar.map((x, i) => ({ ...x, _k: i }))} rowKey="_k" columns={[
+        <K.DataTable rows={c.kaynaklar.map((x, i) => ({ veri: td(x.veri), kaynak: td(x.kaynak), tarih: td(x.tarih), _k: i }))} rowKey="_k" columns={[
           { key: "veri", label: t("Veri") }, { key: "kaynak", label: t("Kaynak") }, { key: "tarih", label: t("Tarih / dönem") },
         ]} />
         <p className="kp-note">{t("Üretildi {z}", { z: String(c.uretildi).slice(0, 16).replace("T", " ") })}{c.kod ? ` · ${t("kod sürümü {k}", { k: c.kod })}` : ""}.{" "}

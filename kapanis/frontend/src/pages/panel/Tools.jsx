@@ -51,7 +51,7 @@ function CheckCard() {
       {!waiting && d.kurallar && (
         <div className="mt-5 flex flex-col gap-4">
           <K.Callout tone={d.ok ? "info" : "warn"} title={`${d.kod} (${t(d.piyasa === "KRIPTO" ? "Kripto" : d.piyasa)}) · ${t("KAPI")}: ${t(d.ok ? "GEÇTİ" : "KALDI")}`}>
-            {d.ok ? t("Kurallara uygun. Emir fiyatını aracı kurumdan kontrol et.") : t("Kalan kurallar: {r}. Bu fiyattan alım yok.", { r: d.kalan.join(", ") })}
+            {d.ok ? t("Kurallara uygun. Emir fiyatını aracı kurumdan kontrol et.") : t("Kalan kurallar: {r}. Bu fiyattan alım yok.", { r: d.kalan.map((k) => t(`${k}§kural`)).join(", ") })}
             {" · "}{relDay(d.zaman)}
           </K.Callout>
           <div className="kp-grid kp-g-4">
@@ -65,7 +65,7 @@ function CheckCard() {
             {d.kurallar.map((c, i) => (
               <li key={i} className="flex gap-3 text-[0.9375rem] leading-snug">
                 <b className={`w-4 shrink-0 text-center ${RULE_CLS[c.durum] || ""}`}>{RULE_ICON[c.durum] || "•"}</b>
-                <span><b className="text-t-1">{c.kural}</b> <span className="text-t-2">{c.detay}</span></span>
+                <span><b className="text-t-1">{t(`${c.kural}§kural`)}</b> <span className="text-t-2">{c.detay}</span></span>
               </li>
             ))}
           </ul>
@@ -84,7 +84,7 @@ const ROWS = [
 ];
 
 function CompareCard() {
-  const { t } = useLang();
+  const { t, td } = useLang();
   const [piyasa, setPiyasa] = useState("BIST");
   const [codes, setCodes] = useState("");
   const { d, waiting, markAsked } = useResult("karsilastirma");
@@ -98,7 +98,7 @@ function CompareCard() {
   const cell = (r, key, dec, suf) => {
     const v = r[key];
     if (v == null) return "—";
-    return typeof v === "number" ? `${U.fmtNum(v, dec)}${suf}` : String(v);
+    return typeof v === "number" ? `${U.fmtNum(v, dec)}${suf}` : td(String(v));
   };
   return (
     <K.Card title={t("Hisse karşılaştırma")}>
@@ -140,7 +140,7 @@ function CompareCard() {
             </tbody>
           </table>
           {rows.filter((r) => r.uyarilar?.length).map((r) => (
-            <p key={r.kod} className="kp-note"><b>{r.kod}:</b> {r.uyarilar.join("; ")}</p>
+            <p key={r.kod} className="kp-note"><b>{r.kod}:</b> {r.uyarilar.map(td).join("; ")}</p>
           ))}
           {d.hatalar?.map((e) => <p key={e} className="kp-note">{e}</p>)}
         </div>
@@ -151,7 +151,7 @@ function CompareCard() {
 }
 
 function FundamentalsCard() {
-  const { t } = useLang();
+  const { t, td } = useLang();
   const [kod, setKod] = useState("");
   const { d, waiting, markAsked } = useResult("temel");
   const run = async () => {
@@ -178,8 +178,8 @@ function FundamentalsCard() {
               <span key={k} className="rounded-lg border border-hairline px-3 py-1 text-[0.9375rem] text-t-2">{k}: <b className="num text-t-1">{v}</b></span>
             ))}
           </div>
-          {d.olumlular?.length > 0 && <K.Callout tone="info" title={t("Olumlu")}>{d.olumlular.join("; ")}</K.Callout>}
-          {d.uyarilar?.length > 0 && <K.Callout tone="warn" title={t("Uyarılar")}>{d.uyarilar.join("; ")}</K.Callout>}
+          {d.olumlular?.length > 0 && <K.Callout tone="info" title={t("Olumlu")}>{d.olumlular.map(td).join("; ")}</K.Callout>}
+          {d.uyarilar?.length > 0 && <K.Callout tone="warn" title={t("Uyarılar")}>{d.uyarilar.map(td).join("; ")}</K.Callout>}
           <details>
             <summary className="cursor-pointer text-[0.9375rem] font-semibold text-t-1">{t("Tüm rakamlar")}</summary>
             <pre className="mt-3 whitespace-pre-wrap text-[0.875rem] leading-relaxed text-t-2" style={{ fontFamily: "inherit" }}>

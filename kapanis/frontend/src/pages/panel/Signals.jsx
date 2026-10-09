@@ -24,6 +24,7 @@ const DECISION = (v) => {
 };
 
 // Botun kapı kuralları: yeni kayıtlar {kural, durum, detay}, eskiler "✅ Kural: detay" metni
+const ruleName = (k) => (k ? tx(`${k}§kural`) : k);   // botun sabit kural adları sözlükten geçer
 function gateItems(gate) {
   const rules = gate?.kurallar || [];
   return rules.map((r) => {
@@ -31,9 +32,9 @@ function gateItems(gate) {
       const status = r.startsWith("✅") ? "gecti" : r.startsWith("❌") ? "kaldi" : "uyari";
       const body = r.replace(/^\S+\s*/, "");
       const [rule, ...rest] = body.split(":");
-      return { status, rule: rule.trim(), detail: rest.join(":").trim() };
+      return { status, rule: ruleName(rule.trim()), detail: rest.join(":").trim() };
     }
-    return { status: r.durum || "uyari", rule: r.kural, detail: r.detay, blocking: r.durum === "uyari" ? false : undefined };
+    return { status: r.durum || "uyari", rule: ruleName(r.kural), detail: r.detay, blocking: r.durum === "uyari" ? false : undefined };
   });
 }
 

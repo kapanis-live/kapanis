@@ -1726,6 +1726,99 @@ const EN = {
   "{n} pozitif bir sayı olmalı.": "{n} must be a positive number.",
   "Karar desteğidir, yatırım tavsiyesi değildir. Kırılım ve geri test kuralları geçmiş veride kazandıran bir üstünlük göstermedi; planlar ARAŞTIRMA durumundadır. Hiçbir borsaya ya da aracı kuruma emir gönderilmez.": "This is decision support, not investment advice. The breakout and retest rules showed no winning edge in past data; the plans are in RESEARCH status. No order is sent to any exchange or broker.",
   "Öneri§eylem": "Action",
+  // gate rule names sent by the bot
+  "mum güncelliği§kural": "candle freshness",
+  "haftalık trend§kural": "weekly trend",
+  "hacim§kural": "volume",
+  "disiplin§kural": "discipline",
+  "bütçe§kural": "budget",
+  "bilanço riski§kural": "earnings risk",
+  "yapı (4h)§kural": "structure (4h)",
+  "makro§kural": "macro",
+  "göreceli güç§kural": "relative strength",
+  "endeks kapısı§kural": "index gate",
+  "emir§kural": "order",
+  "BTC kapı§kural": "BTC gate",
+  "BIST 100 kapı§kural": "BIST 100 gate",
+  "yön§kural": "direction",
+  "tavan§kural": "limit-up",
+  "seans§kural": "session",
+  "portföy§kural": "portfolio",
+  "likidite§kural": "liquidity",
+  "kovalama§kural": "chasing",
+  "konfluens§kural": "confluence",
+  "kapanış teyidi§kural": "close confirmation",
+  "işlem riski§kural": "trade risk",
+  "günlük trend§kural": "daily trend",
+  "duygu§kural": "sentiment",
+  "bütçe/adet§kural": "budget / quantity",
+  "boşluk§kural": "gap",
+  "bekleme§kural": "cooldown",
+  "TR veri§kural": "TR data",
+  "KRIPTO§kural": "CRYPTO",
+  "ABD§kural": "US",
+  // texts that arrive with the data (bot / server)
+  "fiyat > 50G > 200G (güçlü)": "price > 50D > 200D (strong)",
+  "fiyat < 50G < 200G (zayıf)": "price < 50D < 200D (weak)",
+  "karışık": "mixed",
+  "Stage 2 — yükseliş (30h ortalama üstünde ve yükseliyor)": "Stage 2 — advance (above the 30-week average, which is rising)",
+  "Stage 4 — düşüş (30h ortalama altında ve düşüyor): biriktirme için erken": "Stage 4 — decline (below the 30-week average, which is falling): early for accumulating",
+  "yatay; tepe sonrası ise Stage 3 (dağıtım), dip sonrası Stage 1 (taban)": "sideways; Stage 3 (distribution) if after a top, Stage 1 (base) if after a bottom",
+  "Stage 1 — taban oluşumu ihtimali (30h ortalama yatay)": "Stage 1 — a base may be forming (30-week average flat)",
+  "şirket takvimi (Yahoo)": "company calendar (Yahoo)",
+  "tahmin: önceki açıklamaların aralığı (SEC)": "estimate: the interval of earlier announcements (SEC)",
+  "Sonraki bilanço tarihi bilinmiyor: şirketin yatırımcı sayfasından teyit et.": "The next earnings date is unknown: confirm it on the company's investor page.",
+  "Sonraki bilanço tarihi bilinmiyor: KAP ya da şirketin yatırımcı sayfasından teyit et.": "The next earnings date is unknown: confirm it on KAP or the company's investor page.",
+  "Fiyat 50 ve 200 günlük ortalamaların altında (zayıf yapı).": "Price is below the 50- and 200-day averages (weak structure).",
+  "Analist kâr tahminleri son 30 günde aşağı çekildi.": "Analyst earnings estimates were cut in the last 30 days.",
+  "Değerleme kaba ölçüyle pahalı: beklentinin altında bir bilanço daha sert düşürür.": "Valuation is expensive by a coarse measure: earnings below expectations would hit harder.",
+  "Değerleme kaba ölçüyle pahalı.": "Valuation is expensive by a coarse measure.",
+  "esas faaliyet zararı (TTM)": "operating loss (TTM)",
+  "bilanço, marjlar, nakit akışı": "financial statements, margins, cash flow",
+  "SEC EDGAR (10-K / 10-Q, resmi)": "SEC EDGAR (10-K / 10-Q, official)",
+  "fiyat, ortalamalar, göreli güç": "price, averages, relative strength",
+  "analist tahminleri, revizyonlar, sürprizler, bilanço takvimi": "analyst estimates, revisions, surprises, earnings calendar",
+  "alınamadı": "not available",
+  "son bilanço açıklama zamanı": "time of the last earnings release",
+  "SEC EDGAR (8-K madde 2.02, resmi)": "SEC EDGAR (8-K item 2.02, official)",
+  "bulunamadı": "not found",
+  "mali tablolar, marjlar, borç, temel puan": "financial statements, margins, debt, fundamental score",
+  "İş Yatırım (şirketin KAP'a bildirdiği tablolar)": "İş Yatırım (the statements the company filed with KAP)",
+  "fiyat, ortalamalar, BIST 100'e göre güç": "price, averages, strength against BIST 100",
+  "Yahoo Finance (~15 dk gecikmeli)": "Yahoo Finance (~15 min delayed)",
+  "bilanço ve temettü takvimi": "earnings and dividend calendar",
+  "kesin tarih için KAP": "KAP for the exact date",
+  "günlük kapanışlar (1 yıl), SPY, QQQ, 10Y faiz, VIX": "daily closes (1 year), SPY, QQQ, 10Y yield, VIX",
+  "sektör": "sector",
+  "Yahoo Finance şirket profili": "Yahoo Finance company profile",
+  "6 saatlik önbellek": "6-hour cache",
+  "temalar": "themes",
+  "koddaki sabit listeler (us_portfolio.THEMES)": "fixed lists in the code (us_portfolio.THEMES)",
+  "elle güncellenir": "updated by hand",
+  "RİSK-ON (makro rüzgar arkada)": "RISK-ON (macro wind at your back)",
+  "RİSK-OFF (makro rüzgar karşıda)": "RISK-OFF (macro wind against you)",
+  "hesaplanamadı": "could not be calculated",
+  "FRED geniş dolar endeksi, klasik DXY değil": "FRED broad dollar index, not the classic DXY",
+  "Net likidite": "Net liquidity",
+  "Geniş dolar endeksi": "Broad dollar index",
+  "HY kredi spreadi": "HY credit spread",
+  "10Y reel faiz": "10Y real yield",
+  "soğuyor": "cooling",
+  "ısınıyor": "heating up",
+  "yatay": "flat",
+  "seans VWAP (her gün sıfırlanır)": "session VWAP (resets every day)",
+  "20 mumluk hareketli VWAP": "20-candle moving VWAP",
+  "Son mum henüz kapanmamış olabilir; botun kuralları yalnız kapanmış mumu sayar.": "The last candle may not be closed yet; the bot's rules count only closed candles.",
+  "senin": "yours",
+  "Bu bir risk hesabıdır, alım önerisi değildir: stop kırılırsa kaybın yaklaşık risk tutarı kadar olur (boşluklu açılışta daha fazla olabilir).": "This is a risk calculation, not a suggestion to buy: if the stop breaks, your loss is about the risk amount (it can be more on a gap open).",
+  "10 kapalı işlemden az: oranlar henüz tesadüfe açık.": "Fewer than 10 closed trades: the ratios can still be chance.",
+  // calendar events and trend words (data)
+  "NFP (tarım dışı istihdam)": "NFP (non-farm payrolls)",
+  "FOMC faiz kararı": "FOMC rate decision",
+  "TCMB faiz kararı (PPK)": "CBRT rate decision (MPC)",
+  "TÜİK enflasyon (TÜFE)": "TurkStat inflation (CPI)",
+  "zayıf": "weak",
+  "güçlü": "strong",
 };
 
 const DAYS = { tr: ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"], en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] };
@@ -1745,7 +1838,64 @@ export function translate(lang, text, vars) {
   return out;
 }
 
-const LangContext = createContext({ lang: "tr", setLang: () => {}, t: (s) => s, dayName: (i) => DAYS.tr[i], monthName: (i) => MONTHS.tr[i] });
+// ---- Veriyle gelen cümleler ----
+// Bot ve sunucu bazı cümleleri sayılarla birlikte Türkçe yazar (kart uyarıları, kaynak satırları, makro notu). Bunlar sözlükte
+// tek tek duramaz; kalıpla çevrilir. Kalıba uymayan metin olduğu gibi (Türkçe) kalır: yanlış çeviri yerine çevirisiz metin.
+// Üretici taraf: us_card.py, bist_card.py, fundamentals.py, us_portfolio.py, web_sync.build_macro, backend/insights.py.
+const PATTERNS = [
+  [/^Bilanço (-?\d+) gün sonra: açılış boşluğu (?:\(gap\) )?riski yüksek\. Yeni pozisyon bilanço sonrasına bırakılabilir ya da küçük tutulabilir\.$/,
+    "Earnings in $1 days: the risk of an opening gap is high. A new position can wait until after earnings or be kept small."],
+  [/^Kırmızı bayrak: (.*)$/, (m, tr) => `Red flag: ${tr(m[1])}`],
+  [/^vergi öncesi kârın %(\S+)'i yatırım faaliyeti geliri \(tek seferlik olabilir\)$/, "$1% of pre-tax profit is investment income (may be one-off)"],
+  [/^ticari alacaklar \(%(\S+)\) satıştan \(%(\S+)\) çok hızlı büyüyor$/, "trade receivables ($1%) are growing much faster than sales ($2%)"],
+  [/^stoklar \(%(\S+)\) satıştan \(%(\S+)\) çok hızlı büyüyor$/, "inventories ($1%) are growing much faster than sales ($2%)"],
+  [/^finansal borç yılda %(\S+) arttı$/, "financial debt rose $1% in a year"],
+  [/^faaliyet marjı düşüyor \(%(\S+) → %(\S+)\)$/, "operating margin is falling ($1% → $2%)"],
+  [/^net borç\/FAVÖK (\S+) \(yüksek\)$/, "net debt/EBITDA $1 (high)"],
+  [/^faaliyet kârı finansman giderini ancak (\S+) kat karşılıyor$/, "operating profit covers finance costs only $1 times"],
+  [/^(.*) \(tarih geçmiş, yenisi açıklanmamış\)$/, (m, tr) => `${tr(m[1])} (the date has passed; the new one is not announced)`],
+  [/^son çeyrek (.*)$/, "latest quarter $1"],
+  [/^son dönem (.*)$/, "latest period $1"],
+  [/^son kapanan gün (.*)$/, "last closed day $1"],
+  [/^son gün (.*)$/, "last day $1"],
+  [/^(\S+) portföyünün %(\S+)'i: tek varlığa çok bağlısın\.$/, "$1 is $2% of your portfolio: you depend heavily on one asset."],
+  [/^(\S+): trend kuralına göre dışarıda \(10 günün dibi (\S+)\)\.$/, "$1: out by the trend rule (10-day low $2)."],
+  [/^(\S+): stop yok\.$/, "$1: no stop."],
+  [/^(\S+) ile (\S+) birlikte hareket ediyor \(90 günlük korelasyon (\S+)\): risk açısından tek pozisyon say\.$/,
+    "$1 and $2 move together (90-day correlation $3): count them as one position for risk."],
+  [/^4h (\S+)%$/, "4w $1%"],
+  [/^4h (\S+) puan$/, "4w $1 pts"],
+  [/^Normal risk bütçesi: portföy ≈ ₺(\S+) × %(\S+) = ₺(\S+)$/, "Normal risk budget: portfolio ≈ ₺$1 × $2% = ₺$3"],
+  [/^Oynaklık ×(\S+): günlük ATR %(\S+), son 1 yıl ortancası %(\S+?)( \(her zamankinden hareketli\))?$/,
+    (m) => `Volatility ×${m[1]}: daily ATR ${m[2]}%, median of the last year ${m[3]}%${m[4] ? " (more active than usual)" : ""}`],
+  [/^Korelasyon ×(\S+): (\S+) ile 90 günlük korelasyon (\S+)$/, "Correlation ×$1: 90-day correlation with $2 is $3"],
+  [/^Korelasyon ×(\S+): elindekilerle ölçülecek ortak geçmiş yok$/, "Correlation ×$1: no shared history to measure against your holdings"],
+  [/^Yoğunlaşma ×(\S+): (\S+) şu an portföyün %(\S+)'i$/, "Concentration ×$1: $2 is now $3% of the portfolio"],
+  [/^Son risk bütçesi: ₺(\S+) · stop mesafesi (\S+) \((\S+)%\)$/, "Final risk budget: ₺$1 · stop distance $2 ($3%)"],
+  [/^Tek pozisyon portföyün %(\S+)'ini geçmesin diye sınırlandı\.$/, "Capped so that one position does not exceed $1% of the portfolio."],
+];
+// Birkaç cümlenin birleştiği uzun notlar (makro notu): her cümle kendi kalıbıyla, sırayla değiştirilir
+const PARTS = [
+  [/Rejim skoru net likidite, dolar, kredi spreadi, VIX ve reel faizin 4 haftalık yönünden kodla hesaplanır; rüzgarın yönünü anlatır, tahmin değildir\./,
+    "The regime score is calculated in code from the 4-week direction of net liquidity, the dollar, the credit spread, VIX and the real yield; it describes the direction of the wind, it is not a forecast."],
+  [/CPI (\S+): yıllık %(\S+), core %(\S+), core 3 ay yıllıklandırılmış %(\S+) \(([^)]*)\)\./, (m0, a, b, c, d, e) => `CPI ${a}: yearly ${b}%, core ${c}%, core 3-month annualised ${d}% (${translateData("en", e)}).`],
+  [/NFP son 3 ay \(bin\): ([^;]*); işsizlik %(\S+)\./, "NFP last 3 months (thousand): $1; unemployment $2%."],
+  [/COT (\S+) \(([^)]*)\): kaldıraçlı fon net (\S+) \(52h yüzdelik (\S+)\); çoğu ETF baz işlemidir\./g,
+    "COT $1 ($2): leveraged funds net $3 (52-week percentile $4); mostly the ETF basis trade."],
+];
+
+// Veriyle gelen metin: önce sözlük, sonra kalıplar. Türkçede ve tanınmayan metinde girdi aynen döner.
+export function translateData(lang, text) {
+  if (lang !== "en" || typeof text !== "string" || !text) return text;
+  if (Object.prototype.hasOwnProperty.call(EN, text)) return EN[text];
+  for (const [re, out] of PATTERNS) {
+    const m = text.match(re);
+    if (m) return typeof out === "function" ? out(m, (s) => translateData("en", s)) : text.replace(re, out);
+  }
+  return PARTS.reduce((s, [re, out]) => s.replace(re, out), text);
+}
+
+const LangContext = createContext({ lang: "tr", setLang: () => {}, t: (s) => s, td: (s) => s, dayName: (i) => DAYS.tr[i], monthName: (i) => MONTHS.tr[i] });
 
 export function LangProvider({ children }) {
   const [lang, setState] = useState(read);
@@ -1759,6 +1909,7 @@ export function LangProvider({ children }) {
   useEffect(() => { window.__kpSetLang = setLang; return () => { delete window.__kpSetLang; }; }, [setLang]);
   const value = useMemo(() => ({
     lang, setLang, t: (text, vars) => translate(lang, text, vars),
+    td: (text) => translateData(lang, text),      // veriyle gelen cümle (bkz. PATTERNS)
     dayName: (i) => DAYS[lang][i], monthName: (i) => MONTHS[lang][i],
   }), [lang, setLang]);
   return <LangContext.Provider value={value}>{children}</LangContext.Provider>;

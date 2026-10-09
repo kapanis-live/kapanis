@@ -56,7 +56,7 @@ export default function Report() {
                       <tbody className="divide-y divide-hairline">
                         {d.rule_stats.map((r) => (
                           <tr key={r.kural}>
-                            <td className="py-2.5 font-medium text-t-1">{r.kural}</td>
+                            <td className="py-2.5 font-medium text-t-1">{t(`${r.kural}§kural`)}</td>
                             <td className="py-2.5 text-right"><RuleBar n={r.gectiginde.n} pct={r.gectiginde.isabet_yuzde} tone="up" /></td>
                             <td className="py-2.5 text-right"><RuleBar n={r.kaldiginda.n} pct={r.kaldiginda.isabet_yuzde} tone="down" /></td>
                           </tr>

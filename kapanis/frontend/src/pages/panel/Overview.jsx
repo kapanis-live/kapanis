@@ -37,7 +37,7 @@ function BtcCard() {
 }
 
 export default function Overview() {
-  const { t, lang } = useLang();
+  const { t, td, lang } = useLang();
   const navigate = useNavigate();
   const q = useData("overview", "/overview");
   const extras = useData("extras", "/extras", LIVE);
@@ -103,8 +103,8 @@ export default function Overview() {
                 <BtcCard />
                 {m && (
                   <K.Card title={t("Makro rejim")}>
-                    <K.RegimeGauge score={m.regime_score ?? d.regime_score} label={m.regime_label}
-                      components={(m.components || []).map((c) => ({ name: c.name, value: Math.max(-1, Math.min(1, Math.round(c.score || 0))), detail: c.value }))}
+                    <K.RegimeGauge score={m.regime_score ?? d.regime_score} label={td(m.regime_label)}
+                      components={(m.components || []).map((c) => ({ name: td(c.name), value: Math.max(-1, Math.min(1, Math.round(c.score || 0))), detail: td(c.value) }))}
                       note={t("Rüzgârı anlatır, tahmin değildir. Kaynak: FRED.")} />
                   </K.Card>
                 )}

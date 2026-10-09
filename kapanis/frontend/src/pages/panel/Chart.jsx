@@ -18,12 +18,13 @@ import { toast } from "sonner";
 import { formatNumber, formatCompact } from "@/lib/format";
 import { px, baseCode, MARKET_LABEL } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
-import { useLang, currentLang, translate } from "@/lib/i18n";
+import { useLang, currentLang, translate, translateData } from "@/lib/i18n";
 
 const TFS = [["15m", "15 dk"], ["1h", "1 saat"], ["4h", "4 saat"], ["1d", "Günlük§mum"], ["1w", "Haftalık§mum"]];
 // Dönem düğmeleri (TradingView gibi): gösterilecek zaman aralığı + o aralığa uygun mum
 // React dışı yardımcılar (grafik çizimi, okuma kartları) için çeviri
 const tx = (text, vars) => translate(currentLang(), text, vars);
+const td = (text) => translateData(currentLang(), text);   // sunucunun veriyle gönderdiği not
 const DAY = 86400;
 const RANGES = [["1G", "1 gün", DAY, "15m"], ["1H", "1 hafta", 7 * DAY, "1h"], ["1A", "1 ay", 30 * DAY, "4h"],
   ["3A", "3 ay", 91 * DAY, "1d"], ["6A", "6 ay", 182 * DAY, "1d"], ["YTD", "yıl başından beri", "ytd", "1d"],
@@ -328,7 +329,7 @@ function readings(d) {
   }
   if (L.vwap != null) {
     out.push({ title: "VWAP", tone: above(L.vwap) ? "up" : "down", verdict: above(L.vwap) ? t("VWAP üstünde") : t("VWAP altında"),
-      detail: `${above(L.vwap) ? t("Ortalama alıcı kârda; fiyat güçlü.") : t("Ortalama alıcı zararda; fiyat zayıf.")} (${d.vwap_note})` });
+      detail: `${above(L.vwap) ? t("Ortalama alıcı kârda; fiyat güçlü.") : t("Ortalama alıcı zararda; fiyat zayıf.")} (${td(d.vwap_note)})` });
   }
   return out;
 }
@@ -525,7 +526,7 @@ export default function ChartPage() {
               <CandleChart data={d} on={on} overlay={overlay} onPick={(v) => setPicked(v)} range={range} />
               <AlarmBar d={d} code={code} market={market} chartTf={tf} picked={picked} setPicked={setPicked} alarms={myAlarms} />
               <p className="m-0 text-sm text-t-3">
-                {t("Saatler İstanbul saati.")} {d.note} VWAP: {d.vwap_note}. {t("Hacim altta gösterilir; seçtiğin diğer göstergeler ayrı bölmelerde açılır.")}
+                {t("Saatler İstanbul saati.")} {td(d.note)} VWAP: {td(d.vwap_note)}. {t("Hacim altta gösterilir; seçtiğin diğer göstergeler ayrı bölmelerde açılır.")}
               </p>
             </section>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))" }}>

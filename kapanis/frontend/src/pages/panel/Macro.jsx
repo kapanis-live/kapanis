@@ -41,7 +41,7 @@ const IMP = { high: "bg-down/15 text-down", medium: "bg-wait/15 text-wait", low:
 const IMP_LABEL = { high: "Yüksek", medium: "Orta", low: "Düşük" };
 
 export default function Macro() {
-  const { t } = useLang();
+  const { t, td } = useLang();
   const q = useData("macro", "/macro");
   return (
     <div>
@@ -51,14 +51,14 @@ export default function Macro() {
           <div className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-3">
               <Panel title={t("Rejim skalası")} testid="macro-regime" action={d.stale ? <StaleBadge /> : <span className="text-xs text-t-3">{t("Güncel")} · {relativeTime(d.updated_at)}</span>}>
-                <RegimeScale score={d.regime_score} label={d.regime_label} />
+                <RegimeScale score={d.regime_score} label={td(d.regime_label)} />
               </Panel>
 
               <Panel title={t("Dolar endeksi (alt)")} testid="macro-dxy">
                 <div className="flex items-center gap-2">
                   <span className="num text-2xl font-bold text-t-1">{formatNumber(d.dxy_alt.value)}</span>
                   <span className="inline-flex items-center rounded bg-info/12 px-1.5 py-0.5 text-xs font-medium text-info" data-testid="dxy-alt-tag">
-                    {d.dxy_alt.label}
+                    {td(d.dxy_alt.label)}
                   </span>
                 </div>
                 <p className="mt-3 text-xs leading-relaxed text-t-2">
@@ -75,7 +75,7 @@ export default function Macro() {
                     <li key={c.name} className="flex items-center justify-between text-sm">
                       <span className="text-t-2">{t(c.name)}</span>
                       <span className="flex items-center gap-2">
-                        <span className="text-t-1">{c.value}</span>
+                        <span className="text-t-1">{td(c.value)}</span>
                         <span className={cn("num w-7 text-right text-xs font-semibold", c.score > 0 ? "text-up" : c.score < 0 ? "text-down" : "text-t-3")}>
                           {c.score > 0 ? "+" : ""}{c.score}
                         </span>
@@ -107,7 +107,7 @@ export default function Macro() {
                       {d.calendar.map((e, i) => (
                         <tr key={i} className="text-t-1" data-testid={`calendar-row-${i}`}>
                           <td className="num py-2.5 text-t-2 whitespace-nowrap">{formatTime(e.time)}</td>
-                          <td className="py-2.5">{e.title}</td>
+                          <td className="py-2.5">{td(e.title)}</td>
                           <td className="py-2.5 text-t-2">{e.country}</td>
                           <td className="py-2.5">
                             <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium", IMP[e.importance])}>
@@ -125,7 +125,7 @@ export default function Macro() {
               )}
             </Panel>
 
-            <p className="text-xs leading-relaxed text-t-3">{d.note}</p>
+            <p className="text-xs leading-relaxed text-t-3">{td(d.note)}</p>
           </div>
         )}
       </DataView>

@@ -29,7 +29,7 @@ function Bars({ rows }) {
 }
 
 export default function UsBook() {
-  const { t } = useLang();
+  const { t, td } = useLang();
   const q = useData(["sonuclar", "abd_portfoy"], "/sonuclar/abd_portfoy", LIVE);
   const [asked, setAsked] = useState(null);
   const d = q.data || {};
@@ -106,7 +106,7 @@ export default function UsBook() {
           </section>
 
           {d.kaynaklar?.length > 0 && (
-            <p className="kp-note m-0">{t("Kaynaklar")}: {d.kaynaklar.map((x) => `${x.veri}: ${x.kaynak} (${x.tarih})`).join(" · ")}
+            <p className="kp-note m-0">{t("Kaynaklar")}: {d.kaynaklar.map((x) => `${td(x.veri)}: ${td(x.kaynak)} (${td(x.tarih)})`).join(" · ")}
               {d.kapsam_yuzde < 99.9 ? ` · ${t("beta ve senaryolar portföyün %{n}'ini kapsar", { n: U.fmtNum(d.kapsam_yuzde, 0) })}` : ""}</p>
           )}
         </div>

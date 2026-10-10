@@ -82,7 +82,7 @@ Bu bölüm 28 Eylül'den sonra eklenenleri özetler. Alttaki "28 Eylül 2026" b�
 - Sağ üstte isme basınca menü (hesap, alarmlar, bot ayarları, çıkış). A−/A+ yazı boyutu düğmesi kaldırıldı.
 - Mobil: cam görünümlü yüzen alt çubuk, kayan vurgu, yönlü sayfa geçişi; çevrimdışı ekranı; uygulama yeni sürümde kendini yeniler.
 
-**Android:** Trusted Web Activity paketi (`live.kapanis.twa`, sürüm 1.1.0). Play Store'da değil; APK doğrudan kurulur. İmza anahtarı depoda değildir.
+**Android:** Trusted Web Activity paketi (`live.kapanis.twa`, sürüm 1.2.0). Play Store'da değil; APK doğrudan kurulur. İmza anahtarı depoda değildir.
 
 **Depo:** GitHub `kapanis-live/kapanis` (organizasyon, gizli).
 

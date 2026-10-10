@@ -17,8 +17,8 @@
   "maskableIconUrl": "https://kapanis.live/icon-maskable.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": { "path": "D:/Kapanis-gizli-yedek/android/kapanis-upload.keystore", "alias": "kapanis" },
-  "appVersionName": "1.1.0",
-  "appVersionCode": 2,
+  "appVersionName": "1.2.0",
+  "appVersionCode": 3,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://kapanis.live/manifest.json",
@@ -34,5 +34,5 @@
   "fingerprints": [],
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
-  "appVersion": "1.1.0"
+  "appVersion": "1.2.0"
 }

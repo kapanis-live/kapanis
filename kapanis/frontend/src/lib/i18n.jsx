@@ -1825,6 +1825,11 @@ const EN = {
   "Portföyünde açık ABD hissesi yok.": "No open US stock in your portfolio.",
   "Önceki ABD portföy analizin sürüyor.": "Your previous US portfolio analysis is still running.",
   "Günde en fazla 5 ABD portföy analizi yapılabilir.": "At most 5 US portfolio analyses a day.",
+  // data sentences found by review (us_portfolio notes, bank red flags, bare trend words)
+  "Hisseler birbirine çok bağlı hareket ediyor: çeşitlendirme göründüğünden az.": "The stocks move very closely together: there is less diversification than it looks.",
+  "özkaynak negatif": "negative equity",
+  "net kâr var ama serbest nakit akımı negatif": "net profit is positive but free cash flow is negative",
+  "yükseliş": "uptrend", "düşüş": "downtrend", "karışık/yatay": "mixed / sideways", "belirsiz": "unclear",
 };
 
 const DAYS = { tr: ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"], en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] };
@@ -1865,6 +1870,12 @@ const PATTERNS = [
   [/^son kapanan gün (.*)$/, "last closed day $1"],
   [/^son gün (.*)$/, "last day $1"],
   [/^(\S+) portföyünün %(\S+)'i: tek varlığa çok bağlısın\.$/, "$1 is $2% of your portfolio: you depend heavily on one asset."],
+  [/^(\S+) portföyün %(\S+)'i: tek hisse riski yüksek\.$/, "$1 is $2% of the portfolio: single-stock risk is high."],
+  [/^(.+) sektörü portföyün %(\S+)'i\.$/, "The $1 sector is $2% of the portfolio."],
+  [/^'(.+)' temasında %(\S+) \((.*)\): bu hisseler aynı habere birlikte tepki verir\.$/,
+    (m, tr) => `${m[2]}% in the '${tr(m[1])}' theme (${m[3]}): these stocks react together to the same news.`],
+  [/^kredi\/mevduat (\S+) \(fonlama baskısı\)$/, "loans/deposits $1 (funding pressure)"],
+  [/^risk maliyeti %(\S+) \(karşılık yükü\)$/, "cost of risk $1% (provision burden)"],
   [/^(\S+): trend kuralına göre dışarıda \(10 günün dibi (\S+)\)\.$/, "$1: out by the trend rule (10-day low $2)."],
   [/^(\S+): stop yok\.$/, "$1: no stop."],
   [/^(\S+) ile (\S+) birlikte hareket ediyor \(90 günlük korelasyon (\S+)\): risk açısından tek pozisyon say\.$/,

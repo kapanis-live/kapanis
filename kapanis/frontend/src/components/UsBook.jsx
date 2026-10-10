@@ -74,7 +74,7 @@ export default function UsBook() {
 
           {d.dikkat?.length > 0 && (
             <K.Callout tone="warn" title={t("{n} yoğunlaşma notu", { n: d.dikkat.length })}>
-              <ul className="m-0 pl-5">{d.dikkat.map((x) => <li key={x}>{x}</li>)}</ul>
+              <ul className="m-0 pl-5">{d.dikkat.map((x) => <li key={x}>{td(x)}</li>)}</ul>
             </K.Callout>
           )}
 

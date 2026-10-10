@@ -7,6 +7,7 @@ nearest support/resistance zone. The web panel gets the same rows (refreshed at 
 import asyncio
 import json
 import logging
+import re
 import time
 
 import httpx
@@ -162,6 +163,54 @@ async def rows(mkt: str, codes: list[str]) -> list[dict]:
                     out[code] = {"kod": code, "hata": str(e)[:60]}
         await asyncio.gather(*(one(c) for c in codes))
     return [out[c] for c in codes if c in out]
+
+
+MAX_ACCOUNT_CODES = 30
+_ACCOUNT_CODE = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,9}$")
+
+
+def clean_lists(raw) -> dict[str, list[str]]:
+    """The lists a site account sent with its command: known markets, plain codes, no repeats, a bounded total. Pure."""
+    out: dict[str, list[str]] = {m: [] for m in MARKETS}
+    left = MAX_ACCOUNT_CODES
+    for mkt in MARKETS:
+        codes = raw.get(mkt) if isinstance(raw, dict) else None
+        for c in codes if isinstance(codes, list) else []:
+            c = str(c).strip().upper()
+            if left and _ACCOUNT_CODE.match(c) and c not in out[mkt]:
+                out[mkt].append(c)
+                left -= 1
+    return out
+
+
+async def account_rows(raw_lists, meta: dict) -> dict | None:
+    """The quick status of one site account's watchlist (the same rows the owner's list has), stored under its id.
+
+    Earnings days and fundamental scores are filled only for stocks the bot already keeps them for: no extra requests."""
+    uid = meta.get("user_id")
+    if not uid:
+        return None
+    markets: dict[str, list[dict]] = {}
+    for mkt, codes in clean_lists(raw_lists).items():
+        if not codes:
+            markets[mkt] = []
+            continue
+        try:
+            markets[mkt] = await rows(mkt, codes)
+        except Exception as e:      # one unknown crypto code fails the whole bulk price request: ask one by one
+            log.warning("Account watchlist %s failed in bulk (%s); asking one by one", mkt, e)
+            got = []
+            for c in codes:
+                try:
+                    got += await rows(mkt, [c])
+                except Exception as e2:
+                    got.append({"kod": c, "hata": str(e2)[:60]})
+            markets[mkt] = got
+    import features
+    watch_cards.enrich(markets, features.calendar_for_panel(120), watch_cards.load_scores().get("puanlar") or {},
+                       alerts_store.now_tr().date())
+    return {"id": f"takip:{uid}", "tur": "takip", "user_id": uid, "zaman": alerts_store.now_tr().isoformat(timespec="seconds"),
+            "piyasalar": markets}
 
 
 def _p(x) -> str:

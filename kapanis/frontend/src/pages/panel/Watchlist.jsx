@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PanelLayout";
@@ -10,11 +10,13 @@ import { Segmented, Chip, SearchField, KButton, ChangeBadge, Trend, RsiMeter, Ra
 import { formatPct, formatTime } from "@/lib/format";
 import { MARKET_LABEL, px, baseCode } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
-import { Plus, Sparkles } from "lucide-react";
+import { Plus, RefreshCw, Sparkles } from "lucide-react";
 import { K, U } from "@/ds";
 import { sendAction } from "@/lib/actions";
 import { AiPanel } from "@/pages/panel/Chart";
 import { useLang } from "@/lib/i18n";
+import { useAuth } from "@/context/AuthContext";
+import api, { formatApiErrorDetail } from "@/lib/api";
 
 const RULE_FIELDS = [
   ["destek_yakin", "Desteğe yaklaşınca (%)", "Fiyat desteğe bu yüzdeden yakınsa"],
@@ -134,8 +136,12 @@ function HeldTag() {
 }
 
 export default function Watchlist() {
-  const { t } = useLang();
-  const q = useData("extras", "/extras", LIVE);
+  const { t, td } = useLang();
+  // Sistem sahibi: botun kendi listesi (30 dakikada bir yenilenir). Diğer hesaplar: sitedeki kendi listesi; satırları bot istek üzerine hesaplar.
+  const { owner } = useAuth();
+  const q = useData(owner ? "extras" : ["my-watchlist"], owner ? "/extras" : "/watchlist", owner ? LIVE : { refetchInterval: 10000 });
+  const [waitSince, setWaitSince] = useState(null);
+  const autoAsked = useRef(false);
   const navigate = useNavigate();
   const [tab, setTab] = useState("KRIPTO");
   const [sort, setSort] = useState("liste");
@@ -151,10 +157,46 @@ export default function Watchlist() {
       toast.error(t("Eklenecek kodu yaz."));
       return;
     }
-    if (await sendAction("watch.add", { kodlar, piyasa: tab }, t("{k} takip listesine ekleniyor.", { k: kodlar.join(", ") }))) setDraft("");
+    if (owner) {
+      if (await sendAction("watch.add", { kodlar, piyasa: tab }, t("{k} takip listesine ekleniyor.", { k: kodlar.join(", ") }))) setDraft("");
+      return;
+    }
+    if (await mine("/watchlist/add", { kodlar, piyasa: tab })) {
+      setDraft("");
+      refresh(true);
+    }
   };
+  const mine = async (path, body) => {
+    try {
+      await api.post(path, body);
+      await q.refetch();
+      return true;
+    } catch (e) {
+      toast.error(td(formatApiErrorDetail(e.response?.data?.detail)) || t("İşlem yapılamadı"));
+      return false;
+    }
+  };
+  // quiet: sayfanın kendi isteği (kod eklendi, veri eski); sınır dolduysa sessiz kalır
+  const refresh = async (quiet) => {
+    try {
+      await api.post("/watchlist/refresh");
+      setWaitSince(Date.now());
+      if (!quiet) toast.success(t("Takip listesi yenileniyor."));
+    } catch (e) {
+      if (!quiet) toast.error(td(formatApiErrorDetail(e.response?.data?.detail)) || t("İşlem yapılamadı"));
+    }
+  };
+  const stamp = !owner && q.data?.zaman ? new Date(q.data.zaman).getTime() : 0;
+  const waiting = !owner && waitSince && stamp < waitSince - 2000 && Date.now() - waitSince < 180000;
+  const total = owner ? 0 : Object.values(q.data?.listeler || {}).reduce((n, v) => n + v.length, 0);
+  useEffect(() => {      // sayfa açıldığında veri bir saatten eskiyse bir kez kendiliğinden yenile
+    if (owner || autoAsked.current || !q.data) return;
+    autoAsked.current = true;
+    if (total && Date.now() - stamp > 3600000) refresh(true);
+  });
   const removePicked = async () => {
-    if (await sendAction("watch.remove", { kodlar: picked }, t("{k} listeden çıkarılıyor.", { k: picked.join(", ") }))) setPicked([]);
+    if (owner ? await sendAction("watch.remove", { kodlar: picked }, t("{k} listeden çıkarılıyor.", { k: picked.join(", ") }))
+      : await mine("/watchlist/remove", { kodlar: picked, piyasa: tab })) setPicked([]);
   };
   const toggleFilter = (k) => setFilters((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k]));
   const togglePick = (k) => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
@@ -166,16 +208,26 @@ export default function Watchlist() {
       <PageHeader title={t("Takip listesi")} testid="page-watchlist"
         subtitle={t("İzlediğin kodların kodla hesaplanmış hızlı durumu. Satıra tıkla, grafiği açılsın.")}
         action={(
-          <span className="flex items-center gap-2">
+          <span className="flex flex-wrap items-center justify-end gap-2">
             <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCodes()}
               placeholder={`${t(MARKET_LABEL[tab])}: ${t("kod ekle")}`} aria-label={t("Takip listesine eklenecek kod")}
               className="h-11 w-44 rounded-[10px] border border-hairline bg-ink px-3 text-base text-t-1 outline-none focus:border-info" />
             <KButton icon={<Plus className="h-4 w-4" />} onClick={addCodes}>{t("Ekle")}</KButton>
+            {!owner && <KButton variant="ghost" icon={<RefreshCw className="h-4 w-4" />} disabled={!!waiting || !total} onClick={() => refresh(false)}
+              data-testid="wl-refresh">{waiting ? t("Yenileniyor…") : t("Yenile")}</KButton>}
           </span>
         )} />
       <DataView query={q} loadingText={t("Takip listesi yükleniyor...")}>
         {(d) => {
-          const tl = d.takip_listesi;
+          // kendi listem: kodlar sitede durur; bot henüz hesaplamadığı kod "bekliyor" satırı olarak görünür
+          const tl = owner ? d.takip_listesi : {
+            zaman: d.zaman, piyasalar: Object.fromEntries(MARKETS.map((m) => {
+              const by = Object.fromEntries(((d.piyasalar || {})[m] || []).map((r) => [r.kod, r]));
+              return [m, ((d.listeler || {})[m] || []).map((k) => by[k] || { kod: k, hata: "bekliyor", bekliyor: true })];
+            })),
+          };
+          const when = !tl?.zaman ? null : typeof tl.zaman === "number" ? new Date(tl.zaman * 1000) : new Date(tl.zaman);
+          const shown = Object.entries(FILTERS).filter(([k]) => owner || k !== "elimde");
           if (!tl?.piyasalar) return <EmptyState text={t("Bot takip listesi verisini henüz göndermedi (30 dakikada bir yeniler). Yukarıdan kod ekleyebilirsin.")} />;
           const all = tl.piyasalar[tab] || [];
           const ok = all.filter((r) => !r.hata);
@@ -185,11 +237,11 @@ export default function Watchlist() {
           rows = sortRows(rows, sort);
           return (
             <div className="space-y-4">
-              <RulesCard key={JSON.stringify(d.takip_kurallari || {})} rules={d.takip_kurallari} />
+              {owner && <RulesCard key={JSON.stringify(d.takip_kurallari || {})} rules={d.takip_kurallari} />}
               <div className="flex flex-wrap items-center gap-3">
                 <Segmented ariaLabel={t("Piyasa")} value={tab} onChange={(m) => { setTab(m); setPicked([]); setAsked(null); }}
                   options={MARKETS.map((m) => ({ value: m, label: `${t(MARKET_LABEL[m])} ${(tl.piyasalar[m] || []).length}` }))} />
-                <SearchField value={search} onChange={setSearch} />
+                <SearchField value={search} onChange={setSearch} placeholder={t("Kod ara")} />
                 <label className="inline-flex h-11 items-center rounded-[10px] border border-hairline bg-ink px-3">
                   <span className="sr-only">{t("Sıralama")}</span>
                   <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label={t("Sıralama")}
@@ -199,20 +251,21 @@ export default function Watchlist() {
                 </label>
               </div>
               <div className="flex flex-wrap gap-2">
-                {Object.entries(FILTERS).map(([k, f]) => (
+                {shown.map(([k, f]) => (
                   <Chip key={k} active={filters.includes(k)} onClick={() => toggleFilter(k)}>{t(f.label)}</Chip>
                 ))}
               </div>
               <p className="m-0 text-[0.9375rem] text-t-2">
                 <b className="num text-up">{ups}</b>/<b className="num text-t-1">{ok.length}</b> {t("yükselişte")} ·{" "}
                 {tab === "KRIPTO" ? t("günlük = 24 saatlik değişim") : t("günlük = son seans")}{tab === "BIST" ? ` · ${t("veri ~15 dk gecikmeli")}` : ""} ·{" "}
-                <span className="text-t-3">{t("güncelleme")} {formatTime(new Date(tl.zaman * 1000).toISOString())}, {t("30 dakikada bir")}</span>
+                <span className="text-t-3">{when ? `${t("güncelleme")} ${formatTime(when.toISOString())}` : t("henüz hesaplanmadı")}, {owner ? t("30 dakikada bir") : t("Yenile ile güncellenir")}{!owner && ` · ${total}/${d.sinir || 30} ${t("kod")}`}</span>
               </p>
               <p className="m-0 text-sm text-t-3">{t("Güç: 6 aylık getirinin {b} getirisinden farkı (puan); 10 puan üstü GÜÇLÜ, altı ZAYIF.", { b: BENCH[tab] })}{" "}
                 {tab !== "KRIPTO" && `${t("Bilanço: sıradaki bilançoya kalan gün (5 gün ve altı kırmızı). Temel puan: bilanço verisinden 100 üzerinden, günde bir kez.")} `}
+                {!owner && tab !== "KRIPTO" && `${t("Bilanço günü ve temel puan yalnız sistemin zaten izlediği hisselerde görünür.")} `}
                 {t("Açıklamadır, öneri değildir.")}</p>
 
-              {!rows.length ? <EmptyState text={t("Bu filtrelere uyan kod yok.")} /> : (
+              {!rows.length ? <EmptyState text={all.length ? t("Bu filtrelere uyan kod yok.") : t("Bu piyasada takip ettiğin kod yok. Yukarıdan ekle.")} /> : (
                 <>
                   <div className="hidden overflow-x-auto rounded-xl border border-hairline bg-surface md:block" data-testid="wl-table">
                     <table className="w-full border-collapse text-[1.0625rem]">
@@ -226,9 +279,12 @@ export default function Watchlist() {
                       <tbody>
                         {rows.map((r) => r.hata ? (
                           <tr key={r.kod} className="border-b border-hairline last:border-0">
-                            <td className="h-16 pl-4 pr-2" />
+                            <td className="h-16 pl-4 pr-2">
+                              <input type="checkbox" checked={picked.includes(r.kod)} onChange={() => togglePick(r.kod)}
+                                aria-label={t("{k} seç", { k: r.kod })} className="h-[1.125rem] w-[1.125rem] cursor-pointer" style={{ accentColor: "rgb(var(--c-brand))" }} />
+                            </td>
                             <td className="px-4 font-bold">{r.kod}</td>
-                            <td colSpan={tab === "KRIPTO" ? 7 : 9} className="px-4 text-t-3">{t("veri alınamadı")}</td>
+                            <td colSpan={tab === "KRIPTO" ? 7 : 9} className="px-4 text-t-3">{r.bekliyor ? (waiting ? t("hesaplanıyor…") : t("henüz hesaplanmadı")) : t("veri alınamadı")}</td>
                           </tr>
                         ) : (
                           <tr key={r.kod} tabIndex={0} onClick={() => open(r.kod)} onKeyDown={(e) => e.key === "Enter" && open(r.kod)}
@@ -265,7 +321,7 @@ export default function Watchlist() {
                       <div key={r.kod} className={cn("p-4", picked.includes(r.kod) && "bg-brand/[0.07]")}>
                         <div className="flex items-center justify-between gap-3">
                           <span className="flex items-center gap-3">
-                            {!r.hata && <input type="checkbox" checked={picked.includes(r.kod)} onChange={() => togglePick(r.kod)}
+                            {<input type="checkbox" checked={picked.includes(r.kod)} onChange={() => togglePick(r.kod)}
                               aria-label={t("{k} seç", { k: r.kod })} className="h-[1.125rem] w-[1.125rem]" style={{ accentColor: "rgb(var(--c-brand))" }} />}
                             <button onClick={() => !r.hata && open(r.kod)} className="flex items-center gap-3 text-left">
                               <AssetLogo code={r.kod} market={tab} />
@@ -273,7 +329,7 @@ export default function Watchlist() {
                             </button>
                             {held.has(r.kod) && <HeldTag />}
                           </span>
-                          {r.hata ? <span className="text-sm text-t-3">{t("veri alınamadı")}</span> : (
+                          {r.hata ? <span className="text-sm text-t-3">{r.bekliyor ? (waiting ? t("hesaplanıyor…") : t("henüz hesaplanmadı")) : t("veri alınamadı")}</span> : (
                             <span className="num text-lg font-bold text-t-1">{px(r.fiyat)} <span className="text-base text-t-3">{UNIT[tab]}</span></span>
                           )}
                         </div>
@@ -298,7 +354,7 @@ export default function Watchlist() {
                 </>
               )}
 
-              {asked && <AiPanel key={asked.join(",")} code={asked[0]} codes={asked} market={tab} auto />}
+              {asked?.length > 0 && <AiPanel key={asked.join(",")} code={asked[0]} codes={asked} market={tab} auto />}
 
               {picked.length > 0 && (
                 <div className="sticky bottom-20 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-strong bg-surface p-4 lg:bottom-4">
@@ -307,7 +363,7 @@ export default function Watchlist() {
                     <KButton variant="ghost" onClick={() => setPicked([])}>{t("Temizle")}</KButton>
                     <KButton variant="ghost" onClick={removePicked}>{t("Listeden çıkar")}</KButton>
                     <KButton variant="primary" icon={<Sparkles className="h-4 w-4" />} disabled={picked.length > 10}
-                      onClick={() => { setAsked(picked); setPicked([]); }}>
+                      onClick={() => { setAsked(picked.filter((k) => !all.find((r) => r.kod === k)?.hata)); setPicked([]); }}>
                       {picked.length > 10 ? t("En fazla 10 kod") : t("Yapay zekâ analizi")}
                     </KButton>
                   </div>

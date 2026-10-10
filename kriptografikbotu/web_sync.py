@@ -833,7 +833,8 @@ SIGNAL_WORDS = {"AL": "alım adayı (karar senin)", "BEKLE": "bekle", "PAS": "pa
 
 # The last three write a result that belongs to one account: the handler stores it under that account's id
 # (account_doc_id), never in the owner's document.
-USER_COMMANDS = {"analysis.request", "strategy.scan", "language.set", "us.portfolio", "fundamentals.request", "monthly.request"}
+USER_COMMANDS = {"analysis.request", "strategy.scan", "language.set", "us.portfolio", "fundamentals.request", "monthly.request",
+                 "watch.request"}
 
 
 def command_meta(cmd: dict) -> dict:
@@ -869,7 +870,8 @@ async def process_commands(refresh_alerts: Callable[[], None], notify: Notify) -
                 log.exception("Command %s failed", cmd.get("id"))
                 result = f"❌ Panel komutu uygulanamadı ({cmd.get('type')}): {e}"
             log.info("Web command %s %s (%s): %s", cmd["id"], cmd["type"], cmd.get("role", "owner"), result[:200])
-            await notify(result, command_meta(cmd))
+            if result:      # an empty result = nothing worth a message (a watchlist refresh, an automatic report with nothing in it)
+                await notify(result, command_meta(cmd))
             # Marked done even when rejected, so the panel stops showing it as queued;
             # the Telegram message explains the rejection.
             (await client.post(f"{config.WEB_URL}/api/commands/{cmd['id']}/done", headers=_headers())).raise_for_status()

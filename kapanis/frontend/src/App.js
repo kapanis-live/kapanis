@@ -102,7 +102,7 @@ function App() {
           <Route path="/app/sinyaller" element={own(<Signals />)} />
           <Route path="/app/pozisyonlar" element={own(<Positions />)} />
           <Route path="/app/portfoy" element={own(<Portfolio />)} />
-          <Route path="/app/takip" element={own(<Watchlist />)} />
+          <Route path="/app/takip" element={panel(<Watchlist />)} />
           <Route path="/app/disiplin" element={own(<Discipline />)} />
           <Route path="/app/planlar" element={own(<Plans />)} />
           <Route path="/app/kontrol" element={own(<Tools />)} />

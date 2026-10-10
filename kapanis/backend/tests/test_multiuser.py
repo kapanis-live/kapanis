@@ -303,6 +303,62 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.c.get("/api/portfolio/monthly", headers=b)).json()["gecmis"], [])
         self.assertEqual((await self.c.get("/api/sonuclar/aylik", headers=a)).status_code, 403)
 
+    async def test_every_account_has_its_own_watchlist(self):
+        a, b = auth("user_a"), auth("user_b")
+        empty = {"KRIPTO": [], "BIST": [], "ABD": []}
+        self.assertEqual((await self.c.get("/api/watchlist", headers=a)).json(), {"listeler": empty, "sinir": server.WATCH_MAX, "zaman": None, "piyasalar": {}})
+        self.assertEqual((await self.c.post("/api/watchlist/refresh", headers=a)).status_code, 400)          # nothing to refresh
+        for bad in ({"kodlar": ["THY AO"], "piyasa": "BIST"}, {"kodlar": ["BTC"], "piyasa": "FX"}, {"kodlar": [], "piyasa": "ABD"}, {"kodlar": ["$x"], "piyasa": "KRIPTO"}):
+            self.assertEqual((await self.c.post("/api/watchlist/add", headers=a, json=bad)).status_code, 400, bad)
+        r = (await self.c.post("/api/watchlist/add", headers=a, json={"kodlar": [" thyao ", "ASELS", "THYAO"], "piyasa": "bist"})).json()
+        self.assertEqual((r["eklenen"], r["listeler"]["BIST"]), (["THYAO", "ASELS"], ["THYAO", "ASELS"]))
+        await self.c.post("/api/watchlist/add", headers=a, json={"kodlar": ["BTC", "THYAO"], "piyasa": "KRIPTO"})
+        self.assertEqual((await self.c.post("/api/watchlist/add", headers=a, json={"kodlar": ["THYAO"], "piyasa": "BIST"})).json()["eklenen"], [])
+        # the total is bounded
+        many = {"kodlar": [f"A{i}" for i in range(server.WATCH_MAX)], "piyasa": "ABD"}
+        self.assertEqual((await self.c.post("/api/watchlist/add", headers=a, json=many)).status_code, 400)
+        # a refresh carries the lists to the bot; one at a time
+        self.assertEqual((await self.c.post("/api/watchlist/refresh", headers=a)).json(), {"ok": True, "kod": 4})
+        self.assertEqual((await self.c.post("/api/watchlist/refresh", headers=a)).status_code, 409)
+        cmd = [c for c in (await self.c.get("/api/commands/pending", headers=BOT)).json() if c["type"] == "watch.request"]
+        self.assertEqual([(c["role"], c["payload"]) for c in cmd], [("user", {"lists": {"KRIPTO": ["BTC", "THYAO"], "BIST": ["THYAO", "ASELS"], "ABD": []}})])
+        uid = cmd[0]["user_id"]
+        rows = {"BIST": [{"kod": "THYAO", "fiyat": 300}], "KRIPTO": [], "ABD": []}
+        await self.c.post("/api/ingest/sonuclar", headers=BOT, json=[{"id": f"takip:{uid}", "tur": "takip", "user_id": uid, "zaman": "2026-10-10T15:00:00+03:00", "piyasalar": rows}])
+        mine = (await self.c.get("/api/watchlist", headers=a)).json()
+        self.assertEqual((mine["zaman"], mine["piyasalar"], "user_id" in mine), ("2026-10-10T15:00:00+03:00", rows, False))
+        # the same code is removed from one market only; with no market, from all
+        r = (await self.c.post("/api/watchlist/remove", headers=a, json={"kodlar": ["thyao"], "piyasa": "KRIPTO"})).json()
+        self.assertEqual((r["listeler"]["KRIPTO"], r["listeler"]["BIST"]), (["BTC"], ["THYAO", "ASELS"]))
+        self.assertEqual((await self.c.post("/api/watchlist/remove", headers=a, json={"kodlar": ["BTC", "ASELS"]})).json()["listeler"], {"KRIPTO": [], "BIST": ["THYAO"], "ABD": []})
+        # another account sees nothing of it
+        self.assertEqual((await self.c.get("/api/watchlist", headers=b)).json(), {"listeler": empty, "sinir": server.WATCH_MAX, "zaman": None, "piyasalar": {}})
+        # the list leaves with the account
+        with unittest.mock.patch.object(identity, "delete_clerk_user", unittest.mock.AsyncMock(return_value=True)):
+            self.assertEqual((await self.c.request("DELETE", "/api/account", headers=a, json={"onay": "SİL"})).status_code, 200)
+        self.assertEqual(await server.db.watchlists.count_documents({}), 0)
+        self.assertEqual(await server.db.sonuclar.count_documents({"user_id": uid}), 0)
+
+    async def test_the_monthly_report_is_queued_for_every_account_once(self):
+        a, b = auth("user_a"), auth("user_b")
+        await self.c.post("/api/portfolio/positions", headers=a, json={"piyasa": "BIST", "kod": "THYAO", "adet": 10, "maliyet": 290, "stop": 280})
+        await self.c.get("/api/portfolio", headers=b)        # an account with an empty portfolio gets no report
+        tr = lambda *t: datetime(*t, tzinfo=server.TR_OFFSET)
+        self.assertEqual(await server.monthly_auto_once(tr(2026, 11, 1, 9, 59)), 0)       # not before 10:00 on the 1st
+        self.assertEqual(await server.monthly_auto_once(tr(2026, 11, 4, 12, 0)), 0)       # only in the first days
+        self.assertEqual(await server.monthly_auto_once(tr(2026, 11, 1, 10, 0)), 1)
+        self.assertEqual(await server.monthly_auto_once(tr(2026, 11, 2, 8, 0)), 0)        # once per month
+        cmd = [c for c in (await self.c.get("/api/commands/pending", headers=BOT)).json() if c["type"] == "monthly.request"]
+        self.assertEqual([(c["role"], c["payload"]["ay"], c["payload"]["otomatik"], len(c["payload"]["positions"])) for c in cmd], [("user", "2026-10", True, 1)])
+        # it neither blocks nor uses up the account's own requests
+        for c in cmd:
+            await self.c.post(f"/api/commands/{c['id']}/done", headers=BOT)
+        with unittest.mock.patch.dict(server.ACCOUNT_REQUESTS, {"monthly.request": (1, 1, "aylık rapor")}):
+            self.assertEqual((await self.c.post("/api/portfolio/monthly", headers=a)).status_code, 200)
+        self.assertEqual(await server.monthly_auto_once(tr(2027, 1, 1, 10, 0)), 1)        # the next month (January: last month is December)
+        last = [c for c in (await self.c.get("/api/commands/pending", headers=BOT)).json() if c["payload"].get("otomatik")]
+        self.assertEqual([c["payload"]["ay"] for c in last], ["2026-12"])
+
     async def test_partial_sales_reach_the_monthly_report(self):
         h = auth("user_a")
         pid = (await self.c.post("/api/portfolio/positions", headers=h, json={"piyasa": "BIST", "kod": "THYAO", "adet": 10, "maliyet": 290, "stop": 280})).json()["id"]

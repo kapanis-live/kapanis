@@ -130,6 +130,7 @@ class ApplyRiskBody(BaseModel):
 
 async def ensure_indexes(db):
     await db.portfolios.create_index("user_id", unique=True)
+    await db.watchlists.create_index("user_id", unique=True)
     await db.telegram_links.create_index("code_hash", unique=True)
     await db.telegram_links.create_index("expires_at", expireAfterSeconds=3600)
     await db.risk_proposals.create_index("expires_at", expireAfterSeconds=0)
@@ -491,6 +492,7 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
             "uyarilar": await get_db().user_alert_events.find({"user_id": uid}, {"_id": 0, "chat_id": 0}).to_list(5000),
             # what the bot prepared for this account: US book, stock card, monthly reports
             "hesap_sonuclari": await get_db().sonuclar.find({"user_id": uid}, {"_id": 0}).to_list(100),
+            "takip_listesi": await get_db().watchlists.find_one({"user_id": uid}, {"_id": 0}),
         }
 
     @r.get("/account/export")
@@ -518,7 +520,8 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
         await d.user_alerts.delete_many({"user_id": uid})
         await d.push_subscriptions.delete_many({"user_id": uid})
         await d.user_alert_events.delete_many({"user_id": uid})
-        await d.sonuclar.delete_many({"user_id": uid})        # US book, stock card and monthly reports of the account
+        await d.sonuclar.delete_many({"user_id": uid})        # US book, stock card, monthly reports and watchlist rows of the account
+        await d.watchlists.delete_many({"user_id": uid})
         await d.users.delete_one({"_id": ObjectId(uid)})
         return {"ok": True}
 

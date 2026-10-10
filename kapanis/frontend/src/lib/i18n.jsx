@@ -1851,6 +1851,20 @@ const EN = {
   "aylık rapor": "monthly report",
   "Geçersiz hisse kodu ya da piyasa.": "Invalid stock ticker or market.",
   "Portföyünde pozisyon yok.": "No position in your portfolio.",
+  // Watchlist for every account
+  "İşlem yapılamadı": "That could not be done",
+  "Takip listesi yenileniyor.": "The watchlist is being refreshed.",
+  "Yenileniyor…": "Refreshing…",
+  "henüz hesaplanmadı": "not calculated yet",
+  "hesaplanıyor…": "calculating…",
+  "Yenile ile güncellenir": "press Refresh for new data",
+  "kod": "codes",
+  "Bilanço günü ve temel puan yalnız sistemin zaten izlediği hisselerde görünür.": "The earnings day and the fundamental score are shown only for stocks the system already follows.",
+  "Bu piyasada takip ettiğin kod yok. Yukarıdan ekle.": "You follow no code in this market. Add one above.",
+  "takip listesi yenilemesi": "watchlist refresh",
+  "Geçersiz kod ya da piyasa.": "Invalid code or market.",
+  "Takip listen boş.": "Your watchlist is empty.",
+  "Takip listesi en fazla 30 kod alır.": "A watchlist holds at most 30 codes.",
 };
 
 const DAYS = { tr: ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"], en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] };

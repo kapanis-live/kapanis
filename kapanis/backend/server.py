@@ -519,6 +519,7 @@ ACCOUNT_REQUESTS = {      # command type -> (per account per day, all accounts t
     "us.portfolio": (5, int(os.environ.get("GLOBAL_DAILY_US_BOOKS", "100")), "ABD portföy analizi"),
     "fundamentals.request": (10, int(os.environ.get("GLOBAL_DAILY_STOCK_CARDS", "200")), "hisse kartı"),
     "monthly.request": (3, int(os.environ.get("GLOBAL_DAILY_MONTHLY_REPORTS", "100")), "aylık rapor"),
+    "watch.request": (24, int(os.environ.get("GLOBAL_DAILY_WATCHLISTS", "1000")), "takip listesi yenilemesi"),
 }
 # A stock card is market data only (nothing of an account in it), so one built in the last hours is handed to the next
 # account that asks for the same stock instead of making the bot fetch everything again.
@@ -534,11 +535,11 @@ def _account_doc_id(kind: str, user: dict) -> str:
 async def _account_request(cmd_type: str, payload: dict, user: dict) -> dict:
     per_day, all_per_day, what = ACCOUNT_REQUESTS[cmd_type]
     since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
-    if await db.commands.count_documents({"user_id": user["id"], "type": cmd_type, "created_at": {"$gte": since}}) >= per_day:
+    mine = {"type": cmd_type, "created_at": {"$gte": since}, "payload.otomatik": {"$ne": True}}      # what the site prepared by itself is not counted
+    if await db.commands.count_documents({"user_id": user["id"], **mine}) >= per_day:
         raise HTTPException(status_code=429, detail=f"Günde en fazla {per_day} {what} istenebilir.")
     # every account together: however many people sign up, the bot and its data sources see a bounded load (the owner is not counted)
-    if not identity.is_owner(user) and await db.commands.count_documents(
-            {"role": "user", "type": cmd_type, "created_at": {"$gte": since}}) >= all_per_day:
+    if not identity.is_owner(user) and await db.commands.count_documents({"role": "user", **mine}) >= all_per_day:
         raise HTTPException(status_code=429, detail=f"Bugünkü ortak {what} kapasitesi doldu; yarın tekrar dene.")
     if await db.commands.find_one({"user_id": user["id"], "type": cmd_type, "status": "pending"}):
         raise HTTPException(status_code=409, detail=f"Önceki {what} isteğin sürüyor.")
@@ -633,6 +634,106 @@ async def request_monthly(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Portföyünde pozisyon yok.")
     await _account_request("monthly.request", {"positions": rows}, user)
     return {"ok": True, "pozisyon": len(rows)}
+
+
+# The monthly report comes by itself: on the first days of a month the site queues last month's report for every account
+# that has positions (the owner's own report is the bot's job). Once per account and month; an empty month says nothing.
+MONTHLY_AUTO_HOUR = 10          # Turkish time; the owner's report goes out at 09:30
+MONTHLY_AUTO_DAYS = 3           # a server that was down on the 1st still catches up
+
+
+async def monthly_auto_once(now: datetime | None = None) -> int:
+    local = now or datetime.now(TR_OFFSET)
+    if local.day > MONTHLY_AUTO_DAYS or (local.day == 1 and local.hour < MONTHLY_AUTO_HOUR):
+        return 0
+    last = local.replace(day=1) - timedelta(days=1)
+    month = f"{last.year}-{last.month:02d}"
+    queued = 0
+    async for pf in db.portfolios.find({"positions.0": {"$exists": True}}, {"user_id": 1, "positions": 1, "transactions": 1}):
+        uid = pf.get("user_id")
+        if await db.commands.find_one({"user_id": uid, "type": "monthly.request", "payload.ay": month, "payload.otomatik": True}, {"_id": 1}):
+            continue
+        try:
+            account = await db.users.find_one({"_id": ObjectId(uid)})
+        except Exception:
+            account = None
+        if not account or identity.is_owner(account):
+            continue
+        rows = _monthly_rows(pf)
+        if rows:
+            await _queue_command("monthly.request", {"positions": rows, "ay": month, "otomatik": True}, _public_user(account))
+            queued += 1
+    return queued
+
+
+async def _monthly_auto_loop():
+    await asyncio.sleep(60)
+    while True:
+        try:
+            n = await monthly_auto_once()
+            if n:
+                logger.info("Monthly reports queued for accounts: %d", n)
+        except Exception:
+            logger.exception("Automatic monthly reports failed")
+        await asyncio.sleep(900)
+
+
+# ---------------- The account's own watchlist ----------------
+# The codes live here (one document per account); the bot only computes their quick status when asked ("watch.request")
+# and stores the rows under "takip:<account id>". Adding or removing a code never needs the bot.
+WATCH_MAX = 30
+WATCH_CODE = {"KRIPTO": re.compile(r"^[A-Z0-9]{2,10}$"), "BIST": STOCK_CODE, "ABD": STOCK_CODE}
+
+
+async def _watch_lists(user: dict) -> dict[str, list[str]]:
+    doc = await db.watchlists.find_one({"user_id": user["id"]}, {"listeler": 1}) or {}
+    return {m: list((doc.get("listeler") or {}).get(m) or []) for m in WATCH_CODE}
+
+
+class WatchBody(BaseModel):
+    kodlar: list[str]
+    piyasa: str = ""
+
+
+@api.get("/watchlist")
+async def get_watchlist(user: dict = Depends(get_current_user)):
+    res = await db.sonuclar.find_one({"id": _account_doc_id("takip", user)}, {"_id": 0, "zaman": 1, "piyasalar": 1}) or {}
+    return {"listeler": await _watch_lists(user), "sinir": WATCH_MAX, "zaman": res.get("zaman"), "piyasalar": res.get("piyasalar") or {}}
+
+
+@api.post("/watchlist/add")
+async def watchlist_add(body: WatchBody, user: dict = Depends(get_current_user)):
+    mkt = body.piyasa.strip().upper()
+    codes = list(dict.fromkeys(c.strip().upper() for c in body.kodlar if c.strip()))
+    if mkt not in WATCH_CODE or not codes or not all(WATCH_CODE[mkt].match(c) for c in codes):
+        raise HTTPException(status_code=400, detail="Geçersiz kod ya da piyasa.")
+    lists = await _watch_lists(user)
+    new = [c for c in codes if c not in lists[mkt]]
+    if sum(len(v) for v in lists.values()) + len(new) > WATCH_MAX:
+        raise HTTPException(status_code=400, detail=f"Takip listesi en fazla {WATCH_MAX} kod alır.")
+    lists[mkt] += new
+    await db.watchlists.update_one({"user_id": user["id"]}, {"$set": {"listeler": lists}}, upsert=True)
+    return {"ok": True, "eklenen": new, "listeler": lists}
+
+
+@api.post("/watchlist/remove")
+async def watchlist_remove(body: WatchBody, user: dict = Depends(get_current_user)):
+    mkt, gone = body.piyasa.strip().upper(), {c.strip().upper() for c in body.kodlar}
+    lists = await _watch_lists(user)
+    for m in lists:
+        if not mkt or m == mkt:
+            lists[m] = [c for c in lists[m] if c not in gone]
+    await db.watchlists.update_one({"user_id": user["id"]}, {"$set": {"listeler": lists}}, upsert=True)
+    return {"ok": True, "listeler": lists}
+
+
+@api.post("/watchlist/refresh")
+async def watchlist_refresh(user: dict = Depends(get_current_user)):
+    lists = await _watch_lists(user)
+    if not any(lists.values()):
+        raise HTTPException(status_code=400, detail="Takip listen boş.")
+    await _account_request("watch.request", {"lists": lists}, user)
+    return {"ok": True, "kod": sum(len(v) for v in lists.values())}
 
 
 @api.get("/strategies")
@@ -967,6 +1068,7 @@ async def startup():
     await db.advisor_plans.create_index("symbol", unique=True)
     if os.environ.get("ALARM_LOOP", "1") == "1":  # users' close-based alarms (tests turn it off)
         asyncio.create_task(user_alerts.loop(lambda: db))
+        asyncio.create_task(_monthly_auto_loop())
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier")
     if identity.legacy_enabled():

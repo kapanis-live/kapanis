@@ -109,6 +109,30 @@ class AccountResultsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(web_sync.account_doc_id("temel", {"role": "user", "user_id": "u1"}), "temel:u1")
         self.assertNotEqual(web_sync.account_doc_id("temel", {"role": "user"}), "temel")                # never the owner's document
 
+    async def test_an_accounts_watchlist_rows_are_its_own(self):
+        import watchlist
+        self.assertTrue(web_sync.allowed({"type": "watch.request", "role": "user"}))
+        raw = {"KRIPTO": ["btc", "BTC", "bad code", 7], "BIST": ["THYAO"], "ABD": "NVDA", "FX": ["EURUSD"]}
+        self.assertEqual(watchlist.clean_lists(raw), {"KRIPTO": ["BTC", "7"], "BIST": ["THYAO"], "ABD": []})
+        self.assertEqual(watchlist.clean_lists(None), {"KRIPTO": [], "BIST": [], "ABD": []})
+        self.assertEqual(sum(len(v) for v in watchlist.clean_lists({"ABD": [f"A{i}" for i in range(100)]}).values()), watchlist.MAX_ACCOUNT_CODES)
+        asked = []
+
+        async def fake_rows(mkt, codes):
+            asked.append((mkt, list(codes)))
+            if mkt == "KRIPTO" and len(codes) > 1:      # one unknown code fails the bulk request
+                raise RuntimeError("400")
+            if codes == ["NOPE"]:
+                raise RuntimeError("no such symbol")
+            return [{"kod": c, "fiyat": 1.0} for c in codes]
+        with unittest.mock.patch.object(watchlist, "rows", fake_rows):
+            self.assertIsNone(await watchlist.account_rows({"BIST": ["THYAO"]}, {}))                # no account, no document
+            doc = await watchlist.account_rows({"KRIPTO": ["BTC", "NOPE"], "BIST": ["THYAO"]}, {"user_id": "u1", "role": "user"})
+        self.assertEqual((doc["id"], doc["tur"], doc["user_id"]), ("takip:u1", "takip", "u1"))
+        self.assertEqual([(r["kod"], "hata" in r) for r in doc["piyasalar"]["KRIPTO"]], [("BTC", False), ("NOPE", True)])
+        self.assertEqual((doc["piyasalar"]["BIST"][0]["kod"], doc["piyasalar"]["ABD"]), ("THYAO", []))
+        self.assertNotIn(("ABD", []), asked)                                                        # an empty market asks nothing
+
     def test_account_positions_are_cleaned_and_shaped(self):
         import monthly
         raw = [{"piyasa": "BIST", "kod": "thyao", "adet": 10, "maliyet": 290, "acilis": "2026-08-20T10:00:00+03:00", "durum": "acik"},

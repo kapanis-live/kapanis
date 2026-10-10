@@ -28,7 +28,8 @@ Bu bölüm 8 Ekim'den sonra eklenenleri özetler. Alttaki bölümler hâlâ geç
 **Her hesaba açılanlar** (sahibin sonucu botun kendi portföyünden; diğer hesaplarınki sitedeki Portföyüm'den):
 - ABD hisselerinin ortak riski (Portföy sağlığı), günde 5.
 - Hisse kartı (BIST ve ABD), günde 10.
-- Aylık rapor (Karnem), istek üzerine, günde 3. Sahibe her ayın ilk günü kendiliğinden gelir.
+- Aylık rapor (Karnem), istek üzerine, günde 3. Ayın ilk günü kendiliğinden hazırlanır: sahibe bot 09:30'da, pozisyonu olan diğer hesaplara site 10:00'da kuyruğa yazar (`monthly_auto_once`, hesap ve ay başına bir kez, ilk 3 gün içinde telafi eder; boş ay mesaj atmaz).
+- Takip listesi (`/app/takip`): kodlar sitede durur (`watchlists`, hesap başına en çok 30 kod), satırları bot istek üzerine hesaplar (`watch.request`, günde 24, Telegram'a mesaj atmaz). Bilanço günü ve temel puan yalnız botun zaten izlediği hisselerde dolar. Takip uyarı kuralları yalnız sahipte.
 - Yük sınırı: hesap başına günlük sınırın yanında bütün hesapların toplamı için de günlük tavan var (`GLOBAL_DAILY_STOCK_CARDS`, `GLOBAL_DAILY_US_BOOKS`, `GLOBAL_DAILY_MONTHLY_REPORTS`). Son 3 saatte hazırlanmış bir hisse kartı aynı hisseyi isteyen sonraki hesaba bota sorulmadan verilir (`CARD_SHARE_HOURS`); kart yalnız piyasa verisidir.
 - Aylık raporda sitedeki kısmi satışlar ayrı satış satırı olarak gider (`server._monthly_rows`, `parca`).
 - Yol: site isteği sunucuda kuyruğa komut olarak yazılır (girdi komutla gider), bot hesaplar, sonucu `sonuclar` içinde `<tür>:<hesap id>` kimliğiyle saklar; sunucu onu yalnız o hesaba verir. Hesap silinince sonuçlar da silinir.

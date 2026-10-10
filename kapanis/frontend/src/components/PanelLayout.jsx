@@ -74,6 +74,7 @@ const NAV = [
 // Sistem sahibi olmayan kullanıcı: kendi portföyü, piyasa sayfaları, hesabı (botun kişisel verisi kapalı)
 const USER_NAV = [
   { group: "Portföy", items: [{ to: "/app/portfoyum", label: "Portföyüm", icon: Briefcase },
+    { to: "/app/takip", label: "Takip Listem", icon: Eye },
     { to: "/app/saglik", label: "Portföy sağlığı", icon: HeartPulse },
     { to: "/app/karnem", label: "Karnem", icon: ClipboardCheck },
     { to: "/app/alarmlarim", label: "Alarmlarım", icon: Bell },

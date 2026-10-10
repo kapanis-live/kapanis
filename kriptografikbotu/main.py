@@ -6092,7 +6092,17 @@ def register_panel_actions(bot):
         doc, reply = await monthly.account_report(p.get("positions"), meta, p.get("ay"))
         if doc:
             await web_sync.push_docs("sonuclar", [doc])
+        # prepared by the site on the first day of the month, not asked for: only a real report is worth a message
+        if p.get("otomatik") and (not doc or doc.get("bos") or doc.get("hata")):
+            return ""
         return reply
+
+    async def watch_req(p):
+        """A site account's own watchlist: the codes come with the command, the rows are stored under its id. No chat message."""
+        doc = await watchlist.account_rows(p.get("lists"), p.get("_komut") or {})
+        if doc:
+            await web_sync.push_docs("sonuclar", [doc])
+        return ""
 
     async def scan_req(p):
         """The panel's stock table asks for a rebuild (once a day is automatic)."""
@@ -6274,7 +6284,7 @@ def register_panel_actions(bot):
         "lesson.request": lesson,
         "check.request": check_req, "ind.create": ind_create_, "ind.delete": ind_delete_, "compare.request": compare_req,
         "dividend.refresh": dividend_refresh,
-        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req, "us.portfolio": us_portfolio_req, "monthly.request": monthly_req, "scan.request": scan_req,
+        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req, "us.portfolio": us_portfolio_req, "monthly.request": monthly_req, "watch.request": watch_req, "scan.request": scan_req,
     })
 
 

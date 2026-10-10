@@ -1326,18 +1326,25 @@ async def run_scanner(bot, announce_empty_to: int | None = None):
         await bot.send_message(announce_empty_to, "Tarama bitti: son kapanan 15m mumda yeni kırılım adayı yok.")
 
 
+def brief_request(is_open) -> str:
+    """The morning brief's request to the model, naming only the markets whose notifications are on."""
+    parts = ["Bugünün makro çerçevesi"] + [name for mkt, name in (("KRIPTO", "BTC durumu"), ("BIST", "BIST 100 kapısı")) if is_open(mkt)]
+    return "[GÜNLÜK MAKRO BRİF] " + (", ".join(parts[:-1]) + " ve " + parts[-1] if len(parts) > 1 else parts[0]) + "."
+
+
 async def brief_job(context: ContextTypes.DEFAULT_TYPE):
     m = await macro.summary(force=True)
     await send_long(context.bot, config.ALLOWED_CHAT_ID, "☀️ MAKRO PANO\n\n" + macro.dashboard(m))
     data, _ = await build_market_data([])
-    try:
-        async with httpx.AsyncClient() as client:
-            data["BIST100_KAPI"] = await bist.index_gate(client)
-        data["BIST_HABERLER"] = await news.bist_for_model(None, hours=24, limit=6)
-    except Exception as e:
-        data["BIST100_KAPI"] = {"hata": str(e)[:80]}
-    await run_analysis(context.bot, config.ALLOWED_CHAT_ID,
-                       "[GÜNLÜK MAKRO BRİF] Bugünün makro çerçevesi, BTC durumu ve BIST 100 kapısı.", [], data=data)
+    is_open = notify_prefs.market_filter(config.ALLOWED_CHAT_ID)     # a market that is switched off is left out of the brief
+    if is_open("BIST"):
+        try:
+            async with httpx.AsyncClient() as client:
+                data["BIST100_KAPI"] = await bist.index_gate(client)
+            data["BIST_HABERLER"] = await news.bist_for_model(None, hours=24, limit=6)
+        except Exception as e:
+            data["BIST100_KAPI"] = {"hata": str(e)[:80]}
+    await run_analysis(context.bot, config.ALLOWED_CHAT_ID, brief_request(is_open) + notify_prefs.model_scope(config.ALLOWED_CHAT_ID), [], data=data)
     await schedule_events(context.application)
 
 
@@ -4484,6 +4491,8 @@ async def gunluk(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def weekly_summary(bot, chat_id: int):
     now = alerts_store.now_tr()
+    # the Sunday summary leaves out the lines of a market that is switched off; /haftalik (typed) shows everything
+    is_open = notify_prefs.market_filter(chat_id, USER_TURN.get())
     since = (now - timedelta(days=7)).isoformat()
     lines = [f"🗓 HAFTALIK ÖZET — {(now - timedelta(days=7)).strftime('%d.%m')}–{now.strftime('%d.%m')}"]
     trades = [t for t in discipline.closed_trades() if t["zaman"] >= since]
@@ -4500,6 +4509,8 @@ async def weekly_summary(bot, chat_id: int):
     if pf:
         lines.append("\nPORTFÖY")
         for mkt, t in pf["toplam"].items():
+            if not is_open(mkt):
+                continue
             real = _real_text(t["reel"], t["para"])
             lines.append(f"{'🇹🇷 BIST' if mkt == 'BIST' else '🪙 Kripto'}: {_money(t['deger'], t['para'])} · toplam "
                          f"%{(t['deger'] / t['maliyet'] - 1) * 100:+.2f}" + (f" · {real}" if real else ""))
@@ -4526,7 +4537,7 @@ async def weekly_summary(bot, chat_id: int):
                       "kiyas": bench},
             "DUYGU": senti}
     lines.append("\nPİYASA")
-    if "deger" in f:
+    if "deger" in f and is_open("KRIPTO"):
         lines.append(f"Kripto duygu: {f['deger']} ({f['etiket']}, 7g {f['7g_degisim']:+d})")
     try:
         m = await macro.summary()
@@ -4537,7 +4548,8 @@ async def weekly_summary(bot, chat_id: int):
         async with httpx.AsyncClient() as client:
             g = await bist.index_gate(client)
         data["BIST100_KAPI"] = g
-        lines.append(f"BIST 100 kapısı: {g['durum']} · USD/TRY {g.get('usdtry')}")
+        if is_open("BIST"):
+            lines.append(f"BIST 100 kapısı: {g['durum']} · USD/TRY {g.get('usdtry')}")
     except Exception as e:
         log.warning("Weekly market part failed: %s", e)
     try:
@@ -4552,7 +4564,8 @@ async def weekly_summary(bot, chat_id: int):
     await send_long(bot, chat_id, "\n".join(lines))
     if pf:
         await portfolio_chart(None, None, chat_id=chat_id, bot=bot)
-    await run_analysis(bot, chat_id, "[HAFTALIK ÖZET] Haftayı değerlendir ve gelecek hafta için plan çıkar.",
+    await run_analysis(bot, chat_id, "[HAFTALIK ÖZET] Haftayı değerlendir ve gelecek hafta için plan çıkar."
+                       + notify_prefs.model_scope(chat_id, USER_TURN.get()),
                        [], data=data, buttons=None, allow_state_update=False)
 
 
@@ -5434,7 +5447,7 @@ async def calendar_job(context: ContextTypes.DEFAULT_TYPE):
         await features.refresh_calendar(watchlist.load())
         # once a day, in the background: fundamental scores for the watch-list columns (slow, never blocks reminders)
         _spawn(watch_cards.refresh_scores(features._calendar_codes(watchlist.load()), alerts_store.now_tr().date().isoformat()))
-        text = features.calendar_reminders()
+        text = features.calendar_reminders(notify_prefs.market_filter(config.ALLOWED_CHAT_ID))
         if text:
             await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=silent())
     except Exception as e:
@@ -5473,7 +5486,7 @@ async def watch_rules_job(context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         rows = (await watchlist.panel_rows()).get("piyasalar", {})
-        text = features.check_watch_rules(rows)
+        text = features.check_watch_rules(rows, notify_prefs.market_filter(config.ALLOWED_CHAT_ID))
         if text:
             await context.bot.send_message(config.ALLOWED_CHAT_ID, text, disable_notification=True)
     except Exception as e:
@@ -6039,6 +6052,8 @@ def register_panel_actions(bot):
     async def us_portfolio_req(p):
         """The panel's Portföy Sağlığı asks for the US book: themes, co-movement, beta, scenarios (us_portfolio.py)."""
         now = alerts_store.now_tr().isoformat()
+        if p.get("holdings") is not None:       # a site account's own US positions (sent by the backend with the command)
+            return await us_portfolio_user(p, now)
         try:
             r = await us_portfolio.report()
         except Exception as e:
@@ -6047,6 +6062,13 @@ def register_panel_actions(bot):
         await web_sync.push_docs("sonuclar", [{"id": "abd_portfoy", "tur": "abd_portfoy", "zaman": now, "bos": r is None,
                                                **(r or {})}])
         return "🇺🇸 Panelden ABD portföy analizi hazır (ayrıntı panelde)" if r else "ℹ️ Panel: açık ABD pozisyonu yok"
+
+    async def us_portfolio_user(p, now):
+        """The same analysis for one site account: its holdings come with the command, the result is stored under its id."""
+        doc, reply = await us_portfolio.account_report(p.get("holdings"), p.get("_komut") or {}, now, f"{config.PUBLIC_URL}/app/saglik")
+        if doc:
+            await web_sync.push_docs("sonuclar", [doc])
+        return reply
 
     async def scan_req(p):
         """The panel's stock table asks for a rebuild (once a day is automatic)."""

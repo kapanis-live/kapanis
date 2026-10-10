@@ -18,6 +18,7 @@ import alerts_store
 import assets
 import bist
 import market
+import notify_prefs
 import positions
 from macro import TR
 
@@ -205,9 +206,12 @@ async def after_sale_check(now: datetime | None = None) -> list[str]:
             name = assets.name(sym) if assets.is_other(group[0]) else bist.ticker(sym) if group[0].get("piyasa") == "BIST" else group[0]["pair"]
             v = verdict(pct)
             icon = {"erken satış": "😬", "iyi çıkış": "👍", "nötr": "➖"}[v]
-            msgs.append(f"{icon} {name}: sattıktan {max(due)} gün sonra %{pct:+.2f} ({sell:g} → {price:g}) — {v}. "
-                        f"Tutsaydın fark {qty * (price - sell):+,.2f} {cur}."
-                        + (" Bir dahaki sefere satmadan önce iz süren stopu kullan." if v == "erken satış" else ""))
+            # tagged with the sold item's market: the send gate drops it when that market is switched off
+            msgs.append(notify_prefs.tag(
+                f"{icon} {name}: sattıktan {max(due)} gün sonra %{pct:+.2f} ({sell:g} → {price:g}) — {v}. "
+                f"Tutsaydın fark {qty * (price - sell):+,.2f} {cur}."
+                + (" Bir dahaki sefere satmadan önce iz süren stopu kullan." if v == "erken satış" else ""),
+                None if assets.is_other(group[0]) else group[0].get("piyasa", "KRIPTO")))
     if changed:
         positions.save(items)
     return msgs

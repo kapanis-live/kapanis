@@ -1819,6 +1819,12 @@ const EN = {
   "TÜİK enflasyon (TÜFE)": "TurkStat inflation (CPI)",
   "zayıf": "weak",
   "güçlü": "strong",
+  // components/UsBook.jsx
+  "Yedi ayrı hisse, aynı hikâyeye bağlıysa tek pozisyon gibi davranır. Bu bölüm portföyündeki ABD hisselerini sektör, tema, birlikte hareket ve dört senaryo üzerinden gösterir. Öneri içermez.": "Seven separate stocks behave like one position when they hang on the same story. This section shows the US stocks in your portfolio by sector, theme, co-movement and four scenarios. It contains no suggestion.",
+  // US book for every account
+  "Portföyünde açık ABD hissesi yok.": "No open US stock in your portfolio.",
+  "Önceki ABD portföy analizin sürüyor.": "Your previous US portfolio analysis is still running.",
+  "Günde en fazla 5 ABD portföy analizi yapılabilir.": "At most 5 US portfolio analyses a day.",
 };
 
 const DAYS = { tr: ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"], en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] };

@@ -5,7 +5,6 @@ import api, { formatApiErrorDetail } from "@/lib/api";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData } from "@/lib/useData";
 import { px } from "@/lib/portfolio";
-import { useAuth } from "@/context/AuthContext";
 import UsBook from "@/components/UsBook";
 import { useLang } from "@/lib/i18n";
 
@@ -87,7 +86,6 @@ function StressCard() {
 export default function PortfolioHealth() {
   const { t, td } = useLang();
   const q = useData("health", "/portfolio/health", { refetchInterval: 300_000 });
-  const { owner } = useAuth();
   const d = q.data;
   const rows = d?.pozisyonlar || [];
   return <div className="kp-page">
@@ -95,7 +93,7 @@ export default function PortfolioHealth() {
     <div className="mb-4"><RegimeStrip /></div>
     <div className="mb-4"><SizeCalc /></div>
     <div className="mb-4"><StressCard /></div>
-    {owner && <div className="mb-4"><UsBook /></div>}
+    <div className="mb-4"><UsBook /></div>
     {q.isLoading ? <div className="kp-skel h-40" aria-busy="true" /> : !rows.length ? (
       <K.Card title={t("Açık pozisyon yok")}><p className="kp-note m-0">{t("Portföyüm'e pozisyon ekleyince burada sağlık özeti çıkar.")}</p></K.Card>
     ) : <>

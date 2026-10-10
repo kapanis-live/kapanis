@@ -4,8 +4,12 @@ import { useData, LIVE } from "@/lib/useData";
 import { sendAction } from "@/lib/actions";
 import { relDay } from "@/lib/dsmap";
 import { useLang } from "@/lib/i18n";
+import { useAuth } from "@/context/AuthContext";
+import api, { formatApiErrorDetail } from "@/lib/api";
+import { toast } from "sonner";
 
 // Portföy sağlığı: ABD hisselerinin ortak yanı (sektör, tema, birlikte hareket, beta, senaryolar). Bot hesaplar.
+// Sistem sahibi: botun kendi portföyü. Diğer hesaplar: sitedeki Portföyüm'deki ABD pozisyonları; sonuç yalnız o hesaba görünür.
 const pct = (v, d = 1) => (v == null ? "—" : `%${U.fmtNum(v, d)}`);
 const signed = (v) => (v == null ? "—" : `${v >= 0 ? "+" : "−"}%${U.fmtNum(Math.abs(v), 1)}`);
 const RULER = "Senaryo cetvelidir, tahmin değildir.";
@@ -30,22 +34,34 @@ function Bars({ rows }) {
 
 export default function UsBook() {
   const { t, td } = useLang();
-  const q = useData(["sonuclar", "abd_portfoy"], "/sonuclar/abd_portfoy", LIVE);
+  const { owner } = useAuth();
+  const q = useData(owner ? ["sonuclar", "abd_portfoy"] : ["us-book"], owner ? "/sonuclar/abd_portfoy" : "/portfolio/us-book", LIVE);
   const [asked, setAsked] = useState(null);
   const d = q.data || {};
   const waiting = asked && (!d.zaman || new Date(d.zaman).getTime() < asked - 2000);
   const run = async () => {
-    if (await sendAction("us.portfolio", {}, t("ABD portföyü hesaplanıyor."))) setAsked(Date.now());
+    if (owner) {
+      if (await sendAction("us.portfolio", {}, t("ABD portföyü hesaplanıyor."))) setAsked(Date.now());
+      return;
+    }
+    try {
+      await api.post("/portfolio/us-book");
+      toast.success(t("ABD portföyü hesaplanıyor."));
+      setAsked(Date.now());
+    } catch (e) {
+      toast.error(td(formatApiErrorDetail(e.response?.data?.detail)) || t("Hesaplanamadı"));
+    }
   };
   const action = <K.Button variant="secondary" onClick={run} disabled={!!waiting} data-testid="us-book-run">{waiting ? t("Hesaplanıyor…") : d.zaman ? t("Yenile") : t("Hesapla")}</K.Button>;
   const ready = !waiting && d.zaman && !d.hata && !d.bos && d.agirlik_yuzde;
   const swings = t("1 = endeks kadar oynar");
   return (
     <K.Card title={t("ABD hisseleri: ortak risk")} actions={action}>
-      <p className="m-0 text-t-2">{t("Yedi ayrı hisse, aynı hikâyeye bağlıysa tek pozisyon gibi davranır. Bu bölüm botun portföyündeki ABD hisselerini sektör, tema, birlikte hareket ve dört senaryo üzerinden gösterir. Öneri içermez.")}</p>
+      <p className="m-0 text-t-2">{t(owner ? "Yedi ayrı hisse, aynı hikâyeye bağlıysa tek pozisyon gibi davranır. Bu bölüm botun portföyündeki ABD hisselerini sektör, tema, birlikte hareket ve dört senaryo üzerinden gösterir. Öneri içermez." : "Yedi ayrı hisse, aynı hikâyeye bağlıysa tek pozisyon gibi davranır. Bu bölüm portföyündeki ABD hisselerini sektör, tema, birlikte hareket ve dört senaryo üzerinden gösterir. Öneri içermez.")}</p>
       {waiting && <p className="kp-note" aria-busy="true">{t("Bot bir yıllık fiyatları ve sektörleri topluyor (10–40 sn)…")}</p>}
       {!waiting && d.hata && <K.Callout tone="warn" title={t("Hesaplanamadı")}>{d.hata}</K.Callout>}
-      {!waiting && d.bos && <p className="kp-note">{t("Botta açık ABD pozisyonu yok.")} Telegram: /portfoy ekle NVDA 2 230</p>}
+      {!waiting && d.bos && (owner ? <p className="kp-note">{t("Botta açık ABD pozisyonu yok.")} Telegram: /portfoy ekle NVDA 2 230</p>
+        : <p className="kp-note">{t("Portföyünde açık ABD hissesi yok.")}</p>)}
       {!waiting && !d.zaman && <p className="kp-note">{t("Henüz hesaplanmadı. \"Hesapla\"ya bas; sonuç burada kalır.")}</p>}
       {ready && (
         <div className="mt-4 flex flex-col gap-5" data-testid="us-book">

@@ -831,7 +831,7 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
 SIGNAL_WORDS = {"AL": "alım adayı (karar senin)", "BEKLE": "bekle", "PAS": "pas", "BİLGİ": "bilgi (öneri değil)"}
 
 
-USER_COMMANDS = {"analysis.request", "strategy.scan", "language.set"}
+USER_COMMANDS = {"analysis.request", "strategy.scan", "language.set", "us.portfolio"}
 
 
 def command_meta(cmd: dict) -> dict:

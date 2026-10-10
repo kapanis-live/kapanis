@@ -489,6 +489,7 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
             "istekler": await get_db().commands.find({"user_id": uid}, {"_id": 0, "telegram_chat_id": 0}).to_list(5000),
             "alarmlar": await get_db().user_alerts.find({"user_id": uid}, {"_id": 0}).to_list(5000),
             "uyarilar": await get_db().user_alert_events.find({"user_id": uid}, {"_id": 0, "chat_id": 0}).to_list(5000),
+            "abd_portfoy_analizi": await get_db().sonuclar.find({"user_id": uid}, {"_id": 0}).to_list(50),
         }
 
     @r.get("/account/export")
@@ -516,6 +517,7 @@ def build_router(get_db, current_user, require_bot_key, require_owner=None) -> A
         await d.user_alerts.delete_many({"user_id": uid})
         await d.push_subscriptions.delete_many({"user_id": uid})
         await d.user_alert_events.delete_many({"user_id": uid})
+        await d.sonuclar.delete_many({"user_id": uid})        # the account's own US book analysis
         await d.users.delete_one({"_id": ObjectId(uid)})
         return {"ok": True}
 

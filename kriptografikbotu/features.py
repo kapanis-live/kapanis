@@ -318,12 +318,15 @@ def calendar_for_panel(days: int = 45) -> list[dict]:
     return [watch_cards.calendar_item(i, today) for i in cal.get("kalemler", []) if _today() <= i["tarih"] <= until][:120]
 
 
-def calendar_reminders() -> str | None:
-    """Events tomorrow (or today, if not yet told) for things the user holds or watches. Marks them as told."""
+def calendar_reminders(is_open=None) -> str | None:
+    """Events tomorrow (or today, if not yet told) for things the user holds or watches. Marks them as told.
+
+    is_open(market) -> bool: events of a market whose notifications are off are left out (and not marked as told)."""
     cal = _load(CALENDAR, {"kalemler": [], "hatirlatilan": []})
     tomorrow = (alerts_store.now_tr().date() + timedelta(days=1)).isoformat()
     due = [i for i in cal.get("kalemler", []) if i["tarih"] in (_today(), tomorrow)
-           and f"{i['kod']}|{i['tur']}|{i['tarih']}" not in cal.get("hatirlatilan", [])]
+           and f"{i['kod']}|{i['tur']}|{i['tarih']}" not in cal.get("hatirlatilan", [])
+           and (is_open is None or is_open(i.get("piyasa")))]
     if not due:
         return None
     lines = ["📅 YAKLAŞAN ŞİRKET OLAYLARI"]
@@ -412,8 +415,10 @@ def set_watch_rules(**kw) -> dict:
     return cur
 
 
-def check_watch_rules(rows_by_market: dict) -> str | None:
-    """Rows from watchlist.rows(); each code+rule is told at most once a day."""
+def check_watch_rules(rows_by_market: dict, is_open=None) -> str | None:
+    """Rows from watchlist.rows(); each code+rule is told at most once a day.
+
+    is_open(market) -> bool: a market whose notifications are off is skipped (nothing is marked as told for it)."""
     rules = watch_rules()
     if not rules["aktif"]:
         return None
@@ -423,6 +428,8 @@ def check_watch_rules(rows_by_market: dict) -> str | None:
     told = {k: v for k, v in told.items() if v == today}
     hits = []
     for mkt, rows in rows_by_market.items():
+        if is_open is not None and not is_open(mkt):
+            continue
         for r in rows:
             if "hata" in r or r.get("kapanis_fiyat") is None:
                 continue

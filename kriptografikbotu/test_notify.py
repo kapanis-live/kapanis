@@ -1,5 +1,6 @@
 """Per-market notification switches. Run: python -m unittest test_notify"""
 import os
+from datetime import timedelta
 import tempfile
 import types
 import unittest
@@ -259,6 +260,54 @@ class DigestTest(Base):
         self.assertEqual(len(self.sent), 1)
         self.assertIn("NVDA", self.sent[0])
         self.assertNotIn("SOL", self.sent[0])
+
+
+class MixedMessageTest(Base):
+    """Messages that mix markets are still sent, without the part of a market that is switched off."""
+
+    async def test_filter_follows_the_switches_and_typed_commands_see_everything(self):
+        is_open = np_.market_filter(OWNER)                       # owner default: crypto off
+        self.assertEqual([is_open(m) for m in ("KRIPTO", "BIST", "ABD", "DIGER", None)], [False, True, True, True, True])
+        self.assertTrue(np_.market_filter(OWNER, user_turn=True)("KRIPTO"))
+        np_.set_enabled(OWNER, "KRIPTO", True)
+        self.assertTrue(np_.market_filter(OWNER)("KRIPTO"))
+
+    async def test_model_request_names_what_to_leave_out(self):
+        scope = np_.model_scope(OWNER)
+        self.assertIn("kripto", scope)
+        self.assertNotIn("BIST", scope)
+        self.assertEqual(np_.model_scope(OWNER, user_turn=True), "")
+        np_.set_enabled(OWNER, "KRIPTO", True)
+        self.assertEqual(np_.model_scope(OWNER), "")
+        self.assertEqual(main.brief_request(lambda m: True), "[GÜNLÜK MAKRO BRİF] Bugünün makro çerçevesi, BTC durumu ve BIST 100 kapısı.")
+        self.assertEqual(main.brief_request(lambda m: m != "KRIPTO"), "[GÜNLÜK MAKRO BRİF] Bugünün makro çerçevesi ve BIST 100 kapısı.")
+        self.assertEqual(main.brief_request(lambda m: False), "[GÜNLÜK MAKRO BRİF] Bugünün makro çerçevesi.")
+
+    async def test_watch_rules_skip_a_closed_market(self):
+        import features
+        s = alerts_store.load_settings()
+        s["takip_kurallari"] = {"aktif": True, "rsi_alti": 30}
+        s.pop("takip_kural_bildirilen", None)
+        alerts_store.save_settings(s)
+        rows = {"KRIPTO": [{"kod": "BTC", "kapanis_fiyat": 84000, "rsi": 25}], "BIST": [{"kod": "THYAO", "kapanis_fiyat": 290, "rsi": 22}]}
+        text = features.check_watch_rules(rows, np_.market_filter(OWNER))
+        self.assertIn("THYAO", text)
+        self.assertNotIn("BTC", text)
+        # nothing was marked as told for the closed market: switching it on tells it
+        np_.set_enabled(OWNER, "KRIPTO", True)
+        self.assertIn("BTC", features.check_watch_rules(rows, np_.market_filter(OWNER)))
+
+    async def test_calendar_leaves_out_a_closed_market(self):
+        import features
+        tomorrow = (alerts_store.now_tr().date() + timedelta(days=1)).isoformat()
+        item = lambda kod, mkt: {"kod": kod, "piyasa": mkt, "tur": "bilanco", "etiket": "bilanço", "tarih": tomorrow, "portfoyde": True}
+        features._save(features.CALENDAR, {"kalemler": [item("NVDA", "ABD"), item("THYAO", "BIST")], "hatirlatilan": []})
+        np_.set_enabled(OWNER, "ABD", False)
+        text = features.calendar_reminders(np_.market_filter(OWNER))
+        self.assertIn("THYAO", text)
+        self.assertNotIn("NVDA", text)
+        np_.set_enabled(OWNER, "ABD", True)
+        self.assertIn("NVDA", features.calendar_reminders(np_.market_filter(OWNER)))     # told once the market is on again
 
 
 class EnglishTextTest(unittest.TestCase):

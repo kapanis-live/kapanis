@@ -11,6 +11,8 @@ Decision support only: nothing here suggests a trade.
 """
 import asyncio
 import logging
+import math
+import re
 from datetime import datetime
 
 import httpx
@@ -99,6 +101,45 @@ def analyze(values: dict[str, float], closes: dict[str, pd.Series], sectors: dic
                            "en_bagimsiz": [{"cift": f"{a}–{b}", "korelasyon": round(c, 2)} for c, a, b in sorted(pairs)[:2]]},
             "beta": beta_p, "senaryolar": scen, "dikkat": notes,
             "kapsam_yuzde": round(covered * 100, 1), "vix": round(vix_now, 1), "tnx": round(tnx_now, 2)}
+
+
+MAX_HOLDINGS = 40
+_TICKER = re.compile(r"^[A-Z][A-Z0-9.-]{0,9}$")
+
+
+def clean_holdings(raw) -> dict[str, float]:
+    """Holdings that arrive from outside (a site account's portfolio): valid tickers, positive finite quantities, a size cap."""
+    out: dict[str, float] = {}
+    for sym, qty in (raw or {}).items() if isinstance(raw, dict) else ():
+        sym = str(sym).strip().upper()
+        try:
+            qty = float(qty)
+        except (TypeError, ValueError):
+            continue
+        if _TICKER.match(sym) and math.isfinite(qty) and qty > 0:
+            out[sym] = out.get(sym, 0.0) + qty
+    if len(out) > MAX_HOLDINGS:
+        raise ValueError(f"en fazla {MAX_HOLDINGS} ABD hissesi analiz edilir")
+    return out
+
+
+async def account_report(raw_holdings, meta: dict, now: str, url: str) -> tuple[dict | None, str]:
+    """The analysis for one site account. Returns (document for the panel or None, reply for the account's chat).
+
+    The document id carries the account id (taken from the command's verified identity, never from the payload), so one
+    account's result cannot overwrite or be read as another's."""
+    uid, en = meta.get("user_id"), meta.get("dil") == "en"
+    if not uid:
+        return None, "❌ Panel ABD portföyü: hesap bilgisi yok"
+    doc = {"id": f"abd_portfoy:{uid}", "tur": "abd_portfoy", "user_id": uid, "zaman": now}
+    try:
+        holdings = clean_holdings(raw_holdings)
+        r = await report(holdings) if holdings else None
+    except Exception as e:
+        return {**doc, "hata": str(e)[:150]}, (f"❌ US portfolio analysis: {str(e)[:150]}" if en else f"❌ ABD portföy analizi: {str(e)[:150]}")
+    if not r:
+        return {**doc, "bos": True}, ("ℹ️ No open US stock in your portfolio." if en else "ℹ️ Portföyünde açık ABD hissesi yok.")
+    return {**doc, "bos": False, **r}, (f"🇺🇸 Your US portfolio analysis is ready: {url}" if en else f"🇺🇸 ABD portföy analizin hazır: {url}")
 
 
 async def report(holdings: dict[str, float] | None = None) -> dict | None:

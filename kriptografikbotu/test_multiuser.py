@@ -55,6 +55,49 @@ class CommandPermissionTest(unittest.TestCase):
         self.assertEqual(meta, {"user_id": "u1", "role": "user", "request_id": "r1", "telegram_chat_id": 42, "own_keys": None, "dil": None})
 
 
+class AccountUsBookTest(unittest.IsolatedAsyncioTestCase):
+    """The US book analysis for a site account: its own holdings, its own result document."""
+
+    def test_any_account_may_ask(self):
+        self.assertTrue(web_sync.allowed({"type": "us.portfolio", "role": "user"}))
+
+    def test_holdings_from_outside_are_cleaned(self):
+        import us_portfolio
+        raw = {"nvda": 2, "AAPL": "3.5", "MSFT": 0, "BAD TICKER": 1, "X" * 20: 1, "AMD": float("nan"), "TSLA": -1, "GOOG": "abc"}
+        self.assertEqual(us_portfolio.clean_holdings(raw), {"NVDA": 2.0, "AAPL": 3.5})
+        self.assertEqual(us_portfolio.clean_holdings(None), {})
+        self.assertEqual(us_portfolio.clean_holdings(["NVDA"]), {})
+        with self.assertRaises(ValueError):
+            us_portfolio.clean_holdings({f"A{i}": 1 for i in range(us_portfolio.MAX_HOLDINGS + 1)})
+
+    async def test_result_is_stored_under_the_account(self):
+        import us_portfolio
+        seen = []
+
+        async def fake_report(holdings=None):
+            seen.append(holdings)
+            return {"toplam_usd": 1000.0, "agirlik_yuzde": {"NVDA": 100.0}}
+        with unittest.mock.patch.object(us_portfolio, "report", fake_report):
+            doc, reply = await us_portfolio.account_report({"NVDA": 2}, {"user_id": "u1", "role": "user"}, "2026-10-10T10:00:00+03:00", "https://x/app/saglik")
+            self.assertEqual(seen, [{"NVDA": 2.0}])                       # the account's holdings, never the bot's own portfolio
+            self.assertEqual((doc["id"], doc["user_id"], doc["bos"], doc["toplam_usd"]), ("abd_portfoy:u1", "u1", False, 1000.0))
+            self.assertIn("hazır", reply)
+            # English account
+            self.assertIn("is ready", (await us_portfolio.account_report({"NVDA": 2}, {"user_id": "u1", "dil": "en"}, "t", "u"))[1])
+            # nothing to analyse: an empty result, the bot's portfolio is not used instead
+            doc, reply = await us_portfolio.account_report({}, {"user_id": "u2"}, "t", "u")
+            self.assertEqual((doc["id"], doc["bos"]), ("abd_portfoy:u2", True))
+            self.assertEqual(len(seen), 2)
+            # no verified account: nothing is written
+            self.assertIsNone((await us_portfolio.account_report({"NVDA": 1}, {}, "t", "u"))[0])
+
+        async def boom(holdings=None):
+            raise RuntimeError("endeks / faiz / VIX verisi alınamadı")
+        with unittest.mock.patch.object(us_portfolio, "report", boom):
+            doc, reply = await us_portfolio.account_report({"NVDA": 2}, {"user_id": "u1"}, "t", "u")
+            self.assertEqual((doc["id"], doc["hata"]), ("abd_portfoy:u1", "endeks / faiz / VIX verisi alınamadı"))
+
+
 class PersonalContextTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         store.save_state({"planlar": {"ETH": {"tetik": 3000, "iptal": 2900}}})

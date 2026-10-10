@@ -509,6 +509,40 @@ async def _queue_strategy_run(strategy: dict, user: dict, top_n: int = 3) -> dic
     return await _queue_command("strategy.scan", {"strategy_id": strategy["id"], "top_n": top_n}, user)
 
 
+# ---------------- US book analysis for every account ----------------
+# The owner's analysis reads the bot's own portfolio (action "us.portfolio", result "abd_portfoy"). Any other account gets the
+# same calculation on the US positions of its site portfolio: the holdings travel with the command, the result is stored
+# under the account's own id and is readable only by that account.
+US_BOOK_DAILY = 5
+
+
+def _us_book_id(user: dict) -> str:
+    return f"abd_portfoy:{user['id']}"
+
+
+@api.get("/portfolio/us-book")
+async def get_us_book(user: dict = Depends(get_current_user)):
+    return await db.sonuclar.find_one({"id": _us_book_id(user)}, {"_id": 0, "user_id": 0}) or {"zaman": None}
+
+
+@api.post("/portfolio/us-book")
+async def request_us_book(user: dict = Depends(get_current_user)):
+    doc = await db.portfolios.find_one({"user_id": user["id"]}, {"positions": 1}) or {}
+    holdings: dict[str, float] = {}
+    for pos in doc.get("positions", []):
+        if pos.get("durum") == "acik" and pos.get("piyasa") == "ABD":
+            holdings[pos["kod"]] = holdings.get(pos["kod"], 0.0) + float(pos["adet"])
+    if not holdings:
+        raise HTTPException(status_code=400, detail="Portföyünde açık ABD hissesi yok.")
+    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    if await db.commands.count_documents({"user_id": user["id"], "type": "us.portfolio", "created_at": {"$gte": since}}) >= US_BOOK_DAILY:
+        raise HTTPException(status_code=429, detail=f"Günde en fazla {US_BOOK_DAILY} ABD portföy analizi yapılabilir.")
+    if await db.commands.find_one({"user_id": user["id"], "type": "us.portfolio", "status": "pending"}):
+        raise HTTPException(status_code=409, detail="Önceki ABD portföy analizin sürüyor.")
+    await _queue_command("us.portfolio", {"holdings": holdings, "result_id": _us_book_id(user)}, user)
+    return {"ok": True, "hisse": len(holdings)}
+
+
 @api.get("/strategies")
 async def list_strategies(user: dict = Depends(get_current_user)):
     return await db.strategies.find({"user_id": user["id"]}, {"_id": 0, "name_key": 0}).sort("created_at", -1).to_list(20)

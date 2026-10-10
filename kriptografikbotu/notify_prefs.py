@@ -9,7 +9,9 @@ One gate for every sender: main.RetryBot asks blocked() before each send_message
 market a message belongs to in one of two ways:
   with notify_prefs.scope(KRIPTO): ...          everything sent inside belongs to that market
   notify_prefs.tag(text, KRIPTO)                one message, for producers that return a list of mixed texts
-A message with no market (macro brief, portfolio totals, system notices) is never suppressed here.
+A message with no market (macro brief, portfolio totals, system notices) is never suppressed here; a message that
+mixes markets (morning brief, weekly summary, company calendar, watch-list rules) is still sent, but its producer
+leaves out the part of a market that is off: it asks market_filter(chat_id) / model_scope(chat_id).
 
 Stored per chat in settings.json under "bildirim_tercihleri"; in the cloud that file is kept in MongoDB by
 cloud_store, so the choice survives restarts and deploys.
@@ -91,6 +93,25 @@ def prefs(chat_id) -> dict:
 def notifications_enabled(chat_id, market: str | None) -> bool:
     m = normalize(market)
     return True if m is None else prefs(chat_id)[m]
+
+
+def market_filter(chat_id, user_turn: bool = False):
+    """market -> bool for the producer of a mixed message: False = leave that market's lines out.
+
+    A report the user asked for by command (user_turn) shows every market, like any other command."""
+    p = prefs(chat_id)
+    return lambda market: user_turn or p.get(normalize(market), True)
+
+
+MODEL_NAMES = {KRIPTO: "kripto (BTC ve coinler)", BIST: "BIST ve Türkiye hisseleri", ABD: "ABD hisseleri"}
+
+
+def model_scope(chat_id, user_turn: bool = False) -> str:
+    """A line appended to a model request for a mixed message: which markets the answer must leave out ("" = none)."""
+    is_open = market_filter(chat_id, user_turn)
+    off = [MODEL_NAMES[m] for m in MARKETS if not is_open(m)]
+    return ("\n\n[KAPSAM] Bu sohbette şu piyasaların bildirimi kapalı: " + "; ".join(off)
+            + ". Bu piyasalar hakkında hiçbir şey yazma (seviye, yorum, plan, haber yok); yalnız açık piyasaları anlat.") if off else ""
 
 
 def set_enabled(chat_id, market: str, on: bool) -> dict:

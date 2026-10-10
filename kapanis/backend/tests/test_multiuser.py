@@ -229,6 +229,35 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         roles = sorted(c["role"] for c in (await self.c.get("/api/commands/pending", headers=BOT)).json())
         self.assertEqual(roles, ["owner", "user"])
 
+    async def test_us_book_is_per_account(self):
+        """US book analysis: the account's own US positions go to the bot; the result is readable only by that account."""
+        a, b = auth("user_a"), auth("user_b")
+        self.assertEqual((await self.c.post("/api/portfolio/us-book", headers=a)).status_code, 400)       # no US position yet
+        for kod, adet in (("NVDA", 2), ("NVDA", 1), ("AAPL", 3)):
+            r = await self.c.post("/api/portfolio/positions", headers=a, json={"piyasa": "ABD", "kod": kod, "adet": adet, "maliyet": 100, "stop": 90})
+            self.assertEqual(r.status_code, 200, r.text)
+        await self.c.post("/api/portfolio/positions", headers=a, json={"piyasa": "BIST", "kod": "THYAO", "adet": 10, "maliyet": 290, "stop": 280})
+        self.assertEqual((await self.c.post("/api/portfolio/us-book", headers=a)).json(), {"ok": True, "hisse": 2})
+        cmd = [c for c in (await self.c.get("/api/commands/pending", headers=BOT)).json() if c["type"] == "us.portfolio"]
+        self.assertEqual(len(cmd), 1)
+        uid = cmd[0]["user_id"]
+        self.assertEqual((cmd[0]["role"], cmd[0]["payload"]), ("user", {"holdings": {"NVDA": 3.0, "AAPL": 3.0}, "result_id": f"abd_portfoy:{uid}"}))
+        self.assertEqual((await self.c.post("/api/portfolio/us-book", headers=a)).status_code, 409)       # one at a time
+        # the bot stores the result under the account's id
+        doc = {"id": f"abd_portfoy:{uid}", "tur": "abd_portfoy", "user_id": uid, "zaman": "2026-10-10T10:00:00+03:00", "bos": False, "toplam_usd": 600.0}
+        self.assertEqual((await self.c.post("/api/ingest/sonuclar", headers=BOT, json=[doc])).status_code, 200)
+        mine = (await self.c.get("/api/portfolio/us-book", headers=a)).json()
+        self.assertEqual((mine["toplam_usd"], "user_id" in mine), (600.0, False))
+        self.assertEqual((await self.c.get("/api/portfolio/us-book", headers=b)).json(), {"zaman": None})   # another account sees nothing
+        self.assertEqual((await self.c.get("/api/sonuclar/abd_portfoy", headers=a)).status_code, 403)       # the owner's result stays the owner's
+        self.assertEqual(len((await self.c.get("/api/account/export", headers=a)).json()["abd_portfoy_analizi"]), 1)
+        # deleting the account removes the result
+        async def gone(cid):
+            return True
+        with unittest.mock.patch.object(identity, "delete_clerk_user", gone):
+            self.assertEqual((await self.c.delete("/api/account", headers=a)).status_code, 200)
+        self.assertIsNone(await server.db.sonuclar.find_one({"user_id": uid}))
+
     async def test_telegram_link_one_time_code(self):
         h = auth("user_a")
         code = (await self.c.post("/api/telegram/link-code", headers=h)).json()["kod"]

@@ -82,6 +82,7 @@ const USER_NAV = [
     group: "Piyasa",
     items: [
       { to: "/app/grafik", label: "Grafik & Analiz", icon: CandlestickChart },
+      { to: "/app/hisse", label: "Hisse kartı", icon: ClipboardCheck },
       { to: "/app/analizlerim", label: "Son Analizlerim", icon: FileBarChart },
       { to: "/app/stratejiler", label: "Strateji Kurucu", icon: FlaskConical },
       { to: "/app/makro", label: "Makro", icon: Globe2 },

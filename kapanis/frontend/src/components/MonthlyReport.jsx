@@ -2,8 +2,12 @@ import { useState } from "react";
 import { K, U } from "@/ds";
 import { useData } from "@/lib/useData";
 import { useLang } from "@/lib/i18n";
+import { useAuth } from "@/context/AuthContext";
+import api, { formatApiErrorDetail } from "@/lib/api";
+import { toast } from "sonner";
 
 // Aylık rapor: bot ayın ilk günü hazırlar (ya da /aylik). Geçmişin özeti; tahmin ya da öneri içermez.
+// Sistem sahibi: botun kendi kaydı. Diğer hesaplar: sitedeki Portföyüm'den, istek üzerine (günde 3), yalnız o hesaba görünür.
 const pct = (v) => (v == null ? "—" : `${v >= 0 ? "+" : "−"}%${U.fmtNum(Math.abs(v), 1)}`);
 const tone = (v) => (v == null ? undefined : v >= 0 ? "up" : "down");
 const cls = (v) => (v == null ? "" : v >= 0 ? "kp-num-up" : "kp-num-down");
@@ -30,16 +34,35 @@ function Movers({ title, rows }) {
 }
 
 export default function MonthlyReport() {
-  const { t, monthName } = useLang();
-  const q = useData(["sonuclar", "aylik"], "/sonuclar/aylik");
+  const { t, td, monthName } = useLang();
+  const { owner } = useAuth();
+  const q = useData(owner ? ["sonuclar", "aylik"] : ["my-monthly"], owner ? "/sonuclar/aylik" : "/portfolio/monthly", owner ? undefined : { refetchInterval: 8000 });
   const [picked, setPicked] = useState(null);
+  const [asked, setAsked] = useState(null);
+  const waiting = !owner && asked && (!q.data?.zaman || new Date(q.data.zaman).getTime() < asked - 2000);
+  const run = async () => {
+    try {
+      await api.post("/portfolio/monthly");
+      toast.success(t("Aylık rapor hazırlanıyor."));
+      setAsked(Date.now());
+    } catch (e) {
+      toast.error(td(formatApiErrorDetail(e.response?.data?.detail)) || t("Rapor hazırlanamadı"));
+    }
+  };
+  const prepare = owner ? null : (
+    <K.Button variant="secondary" onClick={run} disabled={!!waiting} data-testid="monthly-run">{waiting ? t("Hazırlanıyor…") : q.data?.son ? t("Yenile") : t("Hazırla")}</K.Button>
+  );
   const months = q.data?.gecmis?.length ? q.data.gecmis : q.data?.son ? [q.data.son] : [];
   // "2026-09" → Eylül 2026 / September 2026
   const name = (m) => (/^\d{4}-\d{2}$/.test(m.ay || "") ? `${monthName(Number(m.ay.slice(5)) - 1)} ${m.ay.slice(0, 4)}` : m.ad);
   if (!months.length) {
     return (
-      <K.Card title={t("Aylık rapor")}>
-        <p className="kp-note m-0">{t("Henüz rapor yok. Bot her ayın ilk günü geçen ayın raporunu hazırlar; beklemeden görmek için Telegram'da /aylik yaz.")}</p>
+      <K.Card title={t("Aylık rapor")} actions={prepare}>
+        {owner ? <p className="kp-note m-0">{t("Henüz rapor yok. Bot her ayın ilk günü geçen ayın raporunu hazırlar; beklemeden görmek için Telegram'da /aylik yaz.")}</p>
+          : waiting ? <p className="kp-note m-0" aria-busy="true">{t("Bot ay içindeki fiyatları topluyor (10–40 sn)…")}</p>
+          : q.data?.hata ? <K.Callout tone="warn" title={t("Rapor hazırlanamadı")}>{td(q.data.hata)}</K.Callout>
+          : q.data?.bos ? <p className="kp-note m-0">{t("Geçen ay içinde elde tutulan pozisyon yok.")}</p>
+          : <p className="kp-note m-0">{t("Geçen ayın raporu: getiri, endekslere göre fark, en çok kazandıran ve kaybettiren, işlemler. Portföyüm'deki pozisyonlardan hesaplanır; \"Hazırla\"ya bas.")}</p>}
       </K.Card>
     );
   }
@@ -56,7 +79,7 @@ export default function MonthlyReport() {
     </select>
   ) : null;
   return (
-    <K.Card title={`${t("Aylık rapor")} · ${name(d)}`} actions={select}>
+    <K.Card title={`${t("Aylık rapor")} · ${name(d)}`} actions={<span className="flex flex-wrap items-center gap-2">{select}{prepare}</span>}>
       <div className="flex flex-col gap-5" data-testid="monthly-report">
         {!d.varlik ? <p className="kp-note m-0">{t("Bu ay içinde izlenen pozisyon yok.")}</p> : (
           <>
@@ -98,7 +121,7 @@ export default function MonthlyReport() {
         )}
         {d.hesaplanamayan?.length > 0 && <p className="kp-note m-0">{t("Fiyat geçmişi alınamadığı için dışarıda kalan")}: {d.hesaplanamayan.join(", ")}.</p>}
         <p className="kp-note m-0">{t("Ölçüm: her pozisyon yalnız elde tutulduğu günler için sayılır ({a} kapanışı → {b} kapanışı; ay içinde alınan alış fiyatından, satılan satış fiyatından). Yeni giren para getiri sayılmaz. Geçmişin özetidir; tahmin ya da öneri içermez.",
-          { a: day(d.bas_gun), b: day(d.son_gun) })}{" "}Telegram: /aylik</p>
+          { a: day(d.bas_gun), b: day(d.son_gun) })}{" "}{owner ? "Telegram: /aylik" : t("Kısmi satışlar işlem sayısına girmez.")}</p>
       </div>
     </K.Card>
   );

@@ -4,7 +4,29 @@ Son güncelleme: 8 Ekim 2026 (seviye taraması, ABD karar desteği, bildirim ana
 
 ---
 
-## 0. Son eklenen dosyalar (8 Ekim 2026)
+## 0. Son eklenen dosyalar (10 Ekim 2026)
+
+Bot (`kriptografikbotu`):
+- `lang.py` — sohbetin dili (`/dil`, sitedeki seçim), etiket çevirisi (`label`), kartların sakladığı cümlelerin İngilizcesi (`data`, `DATA_EN`, `DATA_PATTERNS`)
+- `bist_card.py` — BIST hisse kartı; `stock_scan.py` — hisse tablosu (S&P 100, BIST); `watch_cards.py` — takip listesi sütunları (güç, bilanço günü, temel puan)
+- `monthly.py` — aylık rapor; `account_items` / `account_report`: bir site hesabının pozisyonlarından rapor
+- `us_portfolio.py` — ek: `clean_holdings`, `account_report` (bir site hesabının ABD hisseleri)
+- `notify_prefs.py` — ek: `market_filter`, `model_scope` (karışık mesajlarda kapalı piyasayı atlama)
+- `web_sync.py` — ek: `USER_COMMANDS` (her hesabın isteyebildiği komutlar), `account_doc_id` (hesaba ait sonuç kimliği)
+- `main.py` — `language_set`, `us_portfolio_user`, `monthly_req`, `brief_request`; `fundamentals_req` hesap sonucunu ayrı kimlikle yazar
+- `test_notify.py`, `test_multiuser.py` — dil, karışık mesaj, hesap sonuçları testleri
+
+Panel (`kapanis`):
+- `frontend/src/lib/i18n.jsx` — sözlük (`EN`), `t`, veriyle gelen cümleler için `PATTERNS` / `PARTS` / `translateData` (`td`), dil sağlayıcısı
+- `frontend/src/ds/bundle.js` — tasarım paketi; kendi yazıları `kt()` ile sözlükten geçer; ziyaretçi dil bağlantısı (`LangLink`)
+- `frontend/src/pages/public/site.jsx`, `Gizlilik.jsx`, `Iletisim.jsx` — tanıtım sayfaları iki dilde
+- `frontend/src/pages/panel/UsCard.jsx` — hisse kartı (iki piyasa, her hesap); `Screener.jsx` — hisse tablosu; `CompanyCalendar.jsx` — şirket takvimi
+- `frontend/src/components/MonthlyReport.jsx` — aylık rapor (her hesap); `UsBook.jsx` — ABD bölümü (her hesap)
+- `backend/server.py` — `PUT /account/language`; hesaba ait istekler: `/portfolio/us-book`, `/stock-card`, `/portfolio/monthly` (ortak sınırlayıcı `_account_request`)
+- `backend/user_alerts.py` — alarm, stop/hedef, haftalık özet mesajları hesabın dilinde
+- `backend/tests/test_multiuser.py` — dil ve hesap sonuçları testleri
+
+## 0a. Önceki eklenenler (8 Ekim 2026)
 
 Bot (`kriptografikbotu`):
 - `levels_scan.py` — 30 dakikalık destek/direnç taraması, olay tespiti, kural kontrolü, "BİLGİ" kayıtları, geçmiş ölçüm tablosu

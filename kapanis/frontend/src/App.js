@@ -113,8 +113,8 @@ function App() {
           <Route path="/app/maliyet" element={own(<Cost />)} />
           <Route path="/app/backtest" element={own(<Backtest />)} />
           <Route path="/app/ayarlar" element={own(<Settings />)} />
-          <Route path="/app/abd" element={own(<UsCard />)} />
-          <Route path="/app/hisse" element={own(<UsCard />)} />
+          <Route path="/app/abd" element={panel(<UsCard />)} />
+          <Route path="/app/hisse" element={panel(<UsCard />)} />
           <Route path="/app/tarama" element={own(<Screener />)} />
           <Route path="/app/takvim" element={own(<CompanyCalendar />)} />
           <Route path="/app/kullanicilar" element={own(<Users />)} />

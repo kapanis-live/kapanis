@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 import alerts_store
+import lang
 import positions
 import us
 import us_fund
@@ -222,6 +223,7 @@ NAMES_EN = {"Mega teknoloji": "Mega tech", "Yarı iletken": "Semiconductors", "Y
 def text_en(r: dict) -> str:
     """The same report in English. Theme and scenario names are translated; concentration notes stay as written."""
     N = lambda k: NAMES_EN.get(k, k)
+    D = lambda v: lang.data("en", v)      # notes and source rows the report stores in Turkish
     lines = [f"🇺🇸 US PORTFOLIO — {r['toplam_usd']:,.0f} USD · {len(r['agirlik_yuzde'])} stocks",
              "Weights: " + " · ".join(f"{t} {x:g}%" for t, x in r["agirlik_yuzde"].items()),
              "Sectors: " + " · ".join(f"{k} {v:g}%" for k, v in r["sektor_yuzde"].items()), "Themes (a stock can be in more than one):"]
@@ -236,11 +238,11 @@ def text_en(r: dict) -> str:
     for s in r["senaryolar"]:
         worst = ", ".join(f"{t} {m:+g}%" for m, t in s["en_cok_etkilenen"])
         lines.append(f"· {N(s['senaryo'])}: portfolio {s['portfoy_yuzde']:+g}% ({s['tutar_usd']:+,.0f} USD)" + (f" · most affected: {worst}" if worst else ""))
-    lines += ["", *(f"⚠️ {n}" for n in r["dikkat"])] if r["dikkat"] else []
+    lines += ["", *(f"⚠️ {D(n)}" for n in r["dikkat"])] if r["dikkat"] else []
     if r.get("fiyat_alinamayan"):
         lines.append("No price for: " + ", ".join(r["fiyat_alinamayan"]))
     if r["kapsam_yuzde"] < 99.9:
         lines.append(f"Beta and scenarios cover {r['kapsam_yuzde']:g}% of the portfolio (the rest have less than 60 days of history).")
-    lines += ["", "Sources:", *(f"· {x['veri']}: {x['kaynak']} — {x['tarih']}" for x in r["kaynaklar"]),
+    lines += ["", "Sources:", *(f"· {D(x['veri'])}: {D(x['kaynak'])} — {D(x['tarih'])}" for x in r["kaynaklar"]),
               "A ruler, not a forecast: in a real sell-off the factors move together and the sensitivities change. It contains no suggestion."]
     return "\n".join(lines)

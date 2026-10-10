@@ -9,9 +9,43 @@ Kişisel kripto ve BIST karar destek sistemi. İşlem **açmaz**, uyarır ve kay
 
 GitHub: `kapanis-live/kapanis` (private, iki klasör birlikte). Bulut kurulumu: o depodaki `BULUT_KURULUM.md`.
 
-Arayüz dili Türkçe. Kod yorumları İngilizce.
+Arayüz Türkçe ve İngilizce (kaynak metin Türkçe). Kod yorumları İngilizce.
 
-## Güncel durum (8 Ekim 2026)
+## Güncel durum (10 Ekim 2026)
+
+Bu bölüm 8 Ekim'den sonra eklenenleri özetler. Alttaki bölümler hâlâ geçerlidir; çeliştiği yerde bu bölüm doğrudur.
+
+**Dil (Türkçe / English):**
+- Sitede sağ üstteki isim menüsünden ya da giriş yapmadan site başlığından seçilir. Seçim hesaba yazılır (`users.dil`); bağlı Telegram komut yazmadan aynı dile geçer. `/dil tr|en` de çalışır.
+- Kural: **kodda metin Türkçe kalır.** Sitede `t("Türkçe metin")` ile sarılır, İngilizcesi `frontend/src/lib/i18n.jsx` içindeki `EN` sözlüğüne eklenir. Çevirisi olmayan metin Türkçe görünür, hiçbir şey bozulmaz.
+- Tek Türkçe kelimenin iki İngilizce anlamı varsa bağlam anahtarı: `t("Açık§tema")`; `§` ve sonrası gösterilmez.
+- Botun ve sunucunun veriyle gönderdiği sayılı cümleler (kart uyarıları, kırmızı bayraklar, kaynak satırları, makro notu) sitede kalıpla çevrilir: `i18n.jsx` içinde `PATTERNS` / `PARTS`, kullanım `td(metin)`. **Botta böyle bir cümlenin yazımı değişirse sitedeki kalıp ve `lang.py` içindeki `DATA_PATTERNS` da değişmeli**; yoksa o cümle sessizce Türkçe kalır.
+- Tasarım paketi (`frontend/src/ds/bundle.js`) kendi küçük yazılarını `kt()` ile aynı sözlükten geçirir.
+- Botta: metin fonksiyonları `code="tr"` alır, İngilizcesi `text_en`. `lang.py`: `get`, `pick`, `label` (etiketler), `data` (kartların sakladığı cümleler).
+- Yapay zekâ analizi: hesap English ise modele İngilizce yazması söylenir (`ENGLISH_NOTE`); çeviri adımı yoktur.
+- İngilizcede hâlâ Türkçe görünenler: kapı kurallarının gerekçe cümleleri, fırsat taraması metni, Genel Bakış'taki bot notları, eski analiz kayıtları (hepsi yalnız sahibin gördüğü veriler).
+
+**Her hesaba açılanlar** (sahibin sonucu botun kendi portföyünden; diğer hesaplarınki sitedeki Portföyüm'den):
+- ABD hisselerinin ortak riski (Portföy sağlığı), günde 5.
+- Hisse kartı (BIST ve ABD), günde 10.
+- Aylık rapor (Karnem), istek üzerine, günde 3. Sahibe her ayın ilk günü kendiliğinden gelir.
+- Yol: site isteği sunucuda kuyruğa komut olarak yazılır (girdi komutla gider), bot hesaplar, sonucu `sonuclar` içinde `<tür>:<hesap id>` kimliğiyle saklar; sunucu onu yalnız o hesaba verir. Hesap silinince sonuçlar da silinir.
+
+**Yeni özellikler (bot):**
+- `/bist kart THYAO` — BIST hisse kartı (İş Yatırım mali tabloları + Yahoo). `/abd tara`, `/bist tara` — hisse tablosu (S&P 100, BIST evreni).
+- `/aylik`, `/aylik 2026-09` — aylık rapor: getiri (TL ve USD), endekslere göre fark, en çok kazandıran / kaybettiren, işlemler, yoğunlaşma.
+- `/dil tr|en`.
+- Karışık bildirimler piyasa anahtarını dinler: sabah brifi, pazar özeti, şirket takvimi, takip kuralları kapalı piyasanın satırlarını atlar; modele hangi piyasayı yazmayacağı söylenir. Yazılan komutlar (`/haftalik`) her piyasayı gösterir.
+
+**Yeni özellikler (site):**
+- Hisse kartı (`/app/hisse`, iki piyasa), Hisse tablosu (`/app/tarama`), Şirket takvimi (`/app/takvim`), Karnem'de aylık rapor.
+- Takip listesinde güç / bilanço günü / temel puan sütunları.
+- Tanıtım sayfaları, giriş ve kayıt İngilizce de açılır.
+- İlk girişte portföy eklemeden bakılabilecek sayfalar kartı.
+
+**Bilinen açıklar:** dil ve "her hesaba açılanlar" canlıda gerçek ikinci hesapla denenmedi. Sabah brifinde modelin kapalı piyasayı gerçekten yazmadığı denenmedi (talimat veriliyor). Aylık raporda sitedeki kısmi satışlar işlem sayısına girmez. Uygulama bildirimi gerçek telefonda doğrulanmadı.
+
+## Önceki durum (8 Ekim 2026)
 
 Bu bölüm 28 Eylül'den sonra eklenenleri özetler. Alttaki "28 Eylül 2026" bölümü hâlâ geçerlidir; çeliştiği yerde bu bölüm doğrudur.
 
@@ -49,7 +83,7 @@ Bu bölüm 28 Eylül'den sonra eklenenleri özetler. Alttaki "28 Eylül 2026" b�
 
 **Depo:** GitHub `kapanis-live/kapanis` (organizasyon, gizli).
 
-**Bilinen açıklar:** karışık içerikli bildirimler (sabah brifi, haftalık özet, şirket takvimi, takip kuralları) piyasa anahtarına bağlı değil. ABD portföy bölümü yalnız sahip için. Uygulama bildirimi gerçek telefonda henüz doğrulanmadı. Analist tahmin geçmişi ve hisse saatlik verisi ücretsiz kaynaklarla sınırlı.
+**O gün bilinen açıklar (ilk ikisi 10 Ekim'de kapandı):** karışık içerikli bildirimler (sabah brifi, haftalık özet, şirket takvimi, takip kuralları) piyasa anahtarına bağlı değil. ABD portföy bölümü yalnız sahip için. Uygulama bildirimi gerçek telefonda henüz doğrulanmadı. Analist tahmin geçmişi ve hisse saatlik verisi ücretsiz kaynaklarla sınırlı.
 
 ## Önceki durum (28 Eylül 2026)
 

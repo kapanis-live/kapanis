@@ -27,7 +27,7 @@ const EN = {
   "Yatırım tavsiyesi değildir. Bot işlem yapmaz.": "Not investment advice. The bot never trades.",
   "Defansif mod açık": "Defensive mode on", "risk hedefi": "risk target", "Planı gör": "See the plan",
   // etiketler (bottan gelen değerler)
-  "GÜÇLÜ": "STRONG", "ZAYIF": "WEAK", "NÖTR": "NEUTRAL", "PAHALI": "EXPENSIVE", "UCUZ": "CHEAP", "MAKUL": "FAIR", "BİLİNMİYOR": "UNKNOWN",
+  "GÜÇLÜ": "STRONG", "ZAYIF": "WEAK", "NÖTR": "NEUTRAL", "PAHALI": "PRICEY", "UCUZ": "CHEAP", "MAKUL": "FAIR", "BİLİNMİYOR": "UNKNOWN",
   "YÜKSEK": "HIGH", "ORTA": "MEDIUM", "DÜŞÜK": "LOW", "YUKARI": "UP", "AŞAĞI": "DOWN", "YATAY": "FLAT",
   "↗ güçlü": "↗ strong", "↘ zayıf": "↘ weak", "→ karışık": "→ mixed", "az veri": "little data",
   // ayarlar: bildirimler ve dil
@@ -98,9 +98,9 @@ const EN = {
   "Etiket": "Label", "İleri F/K": "Forward P/E", "F/K": "P/E", "PD/DD": "P/B", "FD/FAVÖK": "EV/EBITDA", "Serbest nakit akışı verimi": "Free cash flow yield",
   "Kaba yön göstergesidir, adil değer hesabı değildir.": "A coarse pointer, not a fair-value estimate.",
   "Sabit eşikler: ileri F/K 35 üstü ya da PEG 2,5 üstü PAHALI; ileri F/K 15 altı (PEG 1,5 altı) UCUZ.":
-    "Fixed thresholds: forward P/E above 35 or PEG above 2.5 is EXPENSIVE; forward P/E below 15 (PEG below 1.5) is CHEAP.",
+    "Fixed thresholds: forward P/E above 35 or PEG above 2.5 is PRICEY; forward P/E below 15 (PEG below 1.5) is CHEAP.",
   "Sabit eşikler: F/K 25 üstü ya da PD/DD 6 üstü PAHALI; F/K 8 altı (PD/DD 1,5 altı) UCUZ. Enflasyon muhasebesinde F/K dönemden döneme çok oynar.":
-    "Fixed thresholds: P/E above 25 or P/B above 6 is EXPENSIVE; P/E below 8 (P/B below 1.5) is CHEAP. Under inflation accounting the P/E moves a lot from period to period.",
+    "Fixed thresholds: P/E above 25 or P/B above 6 is PRICEY; P/E below 8 (P/B below 1.5) is CHEAP. Under inflation accounting the P/E moves a lot from period to period.",
   "Kaynaklar ve denetim izi": "Sources and audit trail", "Veri": "Data", "Kaynak": "Source", "Tarih / dönem": "Date / period",
   "Üretildi {z}": "Generated {z}", "kod sürümü {k}": "code version {k}",
   "Her kart sunucuda denetim kaydına yazılır. Karar desteğidir; AL/SAT önerisi değildir. Hisselerde test edilen zamanlama kurallarının hiçbiri hisseyi elde tutmayı geçemedi.":
@@ -1830,6 +1830,28 @@ const EN = {
   "özkaynak negatif": "negative equity",
   "net kâr var ama serbest nakit akımı negatif": "net profit is positive but free cash flow is negative",
   "yükseliş": "uptrend", "düşüş": "downtrend", "karışık/yatay": "mixed / sideways", "belirsiz": "unclear",
+  // pages/panel/UsCard.jsx
+  "Günde 10 kart isteyebilirsin.": "You can ask for 10 cards a day.",
+  // components/MonthlyReport.jsx
+  "Aylık rapor hazırlanıyor.": "Preparing the monthly report.",
+  "Rapor hazırlanamadı": "The report could not be prepared",
+  "Hazırla": "Prepare",
+  "Bot ay içindeki fiyatları topluyor (10–40 sn)…": "The bot is collecting the month's prices (10–40 s)…",
+  "Geçen ay içinde elde tutulan pozisyon yok.": "No position was held during last month.",
+  "Geçen ayın raporu: getiri, endekslere göre fark, en çok kazandıran ve kaybettiren, işlemler. Portföyüm'deki pozisyonlardan hesaplanır; \"Hazırla\"ya bas.": "Last month's report: return, difference against the indexes, biggest gainers and losers, trades. It is calculated from the positions in My Portfolio; press \"Prepare\".",
+  "Kısmi satışlar işlem sayısına girmez.": "Partial sales are not counted in the number of trades.",
+  // pages/panel/MyPortfolio.jsx
+  "Portföy eklemeden de bakabileceklerin": "What you can look at before adding a portfolio",
+  "Bir BIST ya da ABD hissesi: trend, endekse göre güç, bilanço riski, temel puan, değerleme.": "One BIST or US stock: trend, strength against the index, earnings risk, fundamental score, valuation.",
+  "Mum grafiği ve göstergeler; istersen kurallara göre yapay zekâ açıklaması.": "Candle chart and indicators; an AI explanation based on the rules if you want one.",
+  "Risk rejimi, ekonomik takvim ve piyasa göstergeleri.": "Risk regime, economic calendar and market indicators.",
+  "Karar desteğidir: açıklar ve uyarır, al/sat demez. Kapanış işlem yapmaz.": "This is decision support: it explains and warns, it does not say buy or sell. Kapanış does not trade.",
+  // per-account requests (backend messages)
+  "ABD portföy analizi": "US portfolio analysis",
+  "hisse kartı": "stock card",
+  "aylık rapor": "monthly report",
+  "Geçersiz hisse kodu ya da piyasa.": "Invalid stock ticker or market.",
+  "Portföyünde pozisyon yok.": "No position in your portfolio.",
 };
 
 const DAYS = { tr: ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"], en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] };
@@ -1876,6 +1898,9 @@ const PATTERNS = [
     (m, tr) => `${m[2]}% in the '${tr(m[1])}' theme (${m[3]}): these stocks react together to the same news.`],
   [/^kredi\/mevduat (\S+) \(fonlama baskısı\)$/, "loans/deposits $1 (funding pressure)"],
   [/^risk maliyeti %(\S+) \(karşılık yükü\)$/, "cost of risk $1% (provision burden)"],
+  [/^Günde en fazla (\d+) (.+) istenebilir\.$/, (m, tr) => `At most ${m[1]} ${tr(m[2])} requests a day.`],
+  [/^Önceki (.+) isteğin sürüyor\.$/, (m, tr) => `Your previous ${tr(m[1])} request is still running.`],
+  [/^(\S+): BIST ya da ABD hissesi değil$/, "$1: not a BIST or US stock"],
   [/^(\S+): trend kuralına göre dışarıda \(10 günün dibi (\S+)\)\.$/, "$1: out by the trend rule (10-day low $2)."],
   [/^(\S+): stop yok\.$/, "$1: no stop."],
   [/^(\S+) ile (\S+) birlikte hareket ediyor \(90 günlük korelasyon (\S+)\): risk açısından tek pozisyon say\.$/,

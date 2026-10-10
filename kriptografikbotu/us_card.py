@@ -187,17 +187,18 @@ def text(c: dict, code: str = "tr") -> str:
 
 
 def text_en(c: dict) -> str:
-    """The same card in English. Labels are translated; notes and source names the card stores stay as written."""
+    """The same card in English: labels, notes and source rows (lang.label / lang.data)."""
     L = lambda v: lang.label("en", v)
+    D = lambda v: lang.data("en", v)      # notes, source rows and labels the card stores in Turkish
     g, e, r, v, s = c["guc"], c["bilanco"], c["revizyon"], c["degerleme"], c["son_bilanco"]
     tr = c["trend"]
     dash = lambda x: "—" if x is None else x
     lines = [f"🇺🇸 {c['hisse']} — {c['fiyat']:g} $" + (f" · {c['sektor']} / {c['endustri']}" if c.get("sektor") else ""),
              "Trend: " + " · ".join(f"{n} {L(tr[k])}" for k, n in (("günlük", "daily"), ("haftalık", "weekly"), ("aylık", "monthly")) if k in tr)
-             + f" · {tr['hizalama']} · {tr['zirveye_uzaklik_yuzde']}% below the high",
+             + f" · {D(tr['hizalama'])} · {tr['zirveye_uzaklik_yuzde']}% below the high",
              f"Strength (6 months, points): SPY {_n(g['spy_6a'])} {L(g['spy'])} · QQQ {_n(g['qqq_6a'])} {L(g['qqq'])}"
              + (f" · sector {g['sektor_etf']} {_n(g['sektor_6a'])} {L(g['sektor'])}" if g.get("sektor_etf") else ""),
-             ("Earnings: " + (f"{e['tarih']} ({e['gun']} days) · risk {L(e['risk'])} · {e['kaynak']}" if e["tarih"] else "date unknown"))]
+             ("Earnings: " + (f"{e['tarih']} ({e['gun']} days) · risk {L(e['risk'])} · {D(e['kaynak'])}" if e["tarih"] else "date unknown"))]
     rc = s["tepki"]
     if rc:
         lines.append(f"Last earnings: {rc['aciklama']} · first session {rc['tepki_yuzde']:+g}% ({_n(rc['spy_gore_yuzde'], ' points')} against SPY) · "
@@ -207,8 +208,8 @@ def text_en(c: dict) -> str:
               f"up {dash(r['yukari_30g'])} / down {dash(r['asagi_30g'])}",
               f"Fundamental score: {c['temel']['skor']}/100 ({L(c['temel']['durum'])})",
               f"Valuation: {L(v['etiket'])} (coarse) · forward P/E {dash(v['ileri_fk'])} · PEG {dash(v['peg'])} · FCF yield {dash(v['fcf_verimi_yuzde'])}%"]
-    lines += ["", *(f"⚠️ {n}" for n in c["dikkat"])] if c["dikkat"] else []
-    lines += ["", "Sources:", *(f"· {x['veri']}: {x['kaynak']} — {x['tarih']}" for x in c["kaynaklar"]),
+    lines += ["", *(f"⚠️ {D(n)}" for n in c["dikkat"])] if c["dikkat"] else []
+    lines += ["", "Sources:", *(f"· {D(x['veri'])}: {D(x['kaynak'])} — {D(x['tarih'])}" for x in c["kaynaklar"]),
               f"Generated {c['uretildi'][:16].replace('T', ' ')}" + (f" · code {c['kod']}" if c.get("kod") else ""),
               "Decision support: not a BUY/SELL suggestion. No timing rule tested on US stocks beat buy-and-hold."]
     return "\n".join(lines)

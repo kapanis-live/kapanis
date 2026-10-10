@@ -241,7 +241,7 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         cmd = [c for c in (await self.c.get("/api/commands/pending", headers=BOT)).json() if c["type"] == "us.portfolio"]
         self.assertEqual(len(cmd), 1)
         uid = cmd[0]["user_id"]
-        self.assertEqual((cmd[0]["role"], cmd[0]["payload"]), ("user", {"holdings": {"NVDA": 3.0, "AAPL": 3.0}, "result_id": f"abd_portfoy:{uid}"}))
+        self.assertEqual((cmd[0]["role"], cmd[0]["payload"]), ("user", {"holdings": {"NVDA": 3.0, "AAPL": 3.0}}))
         self.assertEqual((await self.c.post("/api/portfolio/us-book", headers=a)).status_code, 409)       # one at a time
         # the bot stores the result under the account's id
         doc = {"id": f"abd_portfoy:{uid}", "tur": "abd_portfoy", "user_id": uid, "zaman": "2026-10-10T10:00:00+03:00", "bos": False, "toplam_usd": 600.0}
@@ -250,13 +250,57 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((mine["toplam_usd"], "user_id" in mine), (600.0, False))
         self.assertEqual((await self.c.get("/api/portfolio/us-book", headers=b)).json(), {"zaman": None})   # another account sees nothing
         self.assertEqual((await self.c.get("/api/sonuclar/abd_portfoy", headers=a)).status_code, 403)       # the owner's result stays the owner's
-        self.assertEqual(len((await self.c.get("/api/account/export", headers=a)).json()["abd_portfoy_analizi"]), 1)
+        self.assertEqual(len((await self.c.get("/api/account/export", headers=a)).json()["hesap_sonuclari"]), 1)
         # deleting the account removes the result
         async def gone(cid):
             return True
         with unittest.mock.patch.object(identity, "delete_clerk_user", gone):
             self.assertEqual((await self.c.delete("/api/account", headers=a)).status_code, 200)
         self.assertIsNone(await server.db.sonuclar.find_one({"user_id": uid}))
+
+    async def test_stock_card_and_monthly_report_are_per_account(self):
+        """Any account may ask for a stock card and its monthly report; each result is its own and has a daily limit."""
+        a, b = auth("user_a"), auth("user_b")
+        for bad in ({"kod": "nvda;rm", "piyasa": "ABD"}, {"kod": "NVDA", "piyasa": "KRIPTO"}, {"kod": "", "piyasa": "BIST"}):
+            self.assertEqual((await self.c.post("/api/stock-card", headers=a, json=bad)).status_code, 400, bad)
+        self.assertEqual((await self.c.post("/api/stock-card", headers=a, json={"kod": " nvda ", "piyasa": "abd"})).json(), {"ok": True, "kod": "NVDA", "piyasa": "ABD"})
+        self.assertEqual((await self.c.post("/api/stock-card", headers=a, json={"kod": "MSFT", "piyasa": "ABD"})).status_code, 409)   # one at a time
+        cmd = [c for c in (await self.c.get("/api/commands/pending", headers=BOT)).json() if c["type"] == "fundamentals.request"]
+        self.assertEqual([(c["role"], c["payload"]) for c in cmd], [("user", {"kod": "NVDA", "piyasa": "ABD"})])
+        uid = cmd[0]["user_id"]
+        await self.c.post(f"/api/commands/{cmd[0]['id']}/done", headers=BOT)
+        card = {"id": f"temel:{uid}", "tur": "temel", "user_id": uid, "kod": "NVDA", "piyasa": "ABD", "zaman": "2026-10-10T10:00:00+03:00", "kart": {"hisse": "NVDA"}}
+        await self.c.post("/api/ingest/sonuclar", headers=BOT, json=[card])
+        mine = (await self.c.get("/api/stock-card", headers=a)).json()
+        self.assertEqual((mine["kart"], "user_id" in mine), ({"hisse": "NVDA"}, False))
+        self.assertEqual((await self.c.get("/api/stock-card", headers=b)).json(), {"zaman": None})
+        self.assertEqual((await self.c.get("/api/sonuclar/temel", headers=a)).status_code, 403)          # the owner's card stays the owner's
+        # daily limit: 10 cards
+        for i in range(9):
+            r = await self.c.post("/api/stock-card", headers=a, json={"kod": f"AA{i}", "piyasa": "ABD"})
+            self.assertEqual(r.status_code, 200, r.text)
+            for c in (await self.c.get("/api/commands/pending", headers=BOT)).json():
+                await self.c.post(f"/api/commands/{c['id']}/done", headers=BOT)
+        self.assertEqual((await self.c.post("/api/stock-card", headers=a, json={"kod": "MSFT", "piyasa": "ABD"})).status_code, 429)
+        self.assertEqual((await self.c.post("/api/stock-card", headers=b, json={"kod": "MSFT", "piyasa": "ABD"})).status_code, 200)   # another account's own limit
+
+        # monthly report: the account's positions (open and sold) travel with the command
+        self.assertEqual((await self.c.post("/api/portfolio/monthly", headers=a)).status_code, 400)       # empty portfolio
+        pid = (await self.c.post("/api/portfolio/positions", headers=a, json={"piyasa": "BIST", "kod": "THYAO", "adet": 10, "maliyet": 290, "stop": 280})).json()["id"]
+        await self.c.post("/api/portfolio/positions", headers=a, json={"piyasa": "ABD", "kod": "NVDA", "adet": 2, "maliyet": 100, "stop": 90})
+        await self.c.post(f"/api/portfolio/positions/{pid}/sell", headers=a, json={"fiyat": 300})
+        self.assertEqual((await self.c.post("/api/portfolio/monthly", headers=a)).json(), {"ok": True, "pozisyon": 2})
+        cmd = [c for c in (await self.c.get("/api/commands/pending", headers=BOT)).json() if c["type"] == "monthly.request"]
+        rows = {r["kod"]: r for r in cmd[0]["payload"]["positions"]}
+        self.assertEqual((rows["THYAO"]["durum"], rows["THYAO"]["kapanis_fiyat"], rows["NVDA"]["durum"], rows["NVDA"]["adet"]), ("kapali", 300.0, "acik", 2.0))
+        self.assertEqual((await self.c.get("/api/portfolio/monthly", headers=a)).json()["son"], None)
+        for ay, extra in (("2026-08", {"bos": False, "getiri": {"tl_yuzde": 1.0}}), ("2026-09", {"bos": False, "getiri": {"tl_yuzde": 4.2}})):
+            await self.c.post("/api/ingest/sonuclar", headers=BOT, json=[{"id": f"aylik:{uid}:{ay}", "tur": "aylik", "user_id": uid, "ay": ay,
+                                                                          "zaman": f"{ay}-28T10:00:00+03:00", **extra}])
+        got = (await self.c.get("/api/portfolio/monthly", headers=a)).json()
+        self.assertEqual((got["son"]["ay"], [m["ay"] for m in got["gecmis"]], "user_id" in got["son"]), ("2026-09", ["2026-09", "2026-08"], False))
+        self.assertEqual((await self.c.get("/api/portfolio/monthly", headers=b)).json()["gecmis"], [])
+        self.assertEqual((await self.c.get("/api/sonuclar/aylik", headers=a)).status_code, 403)
 
     async def test_telegram_link_one_time_code(self):
         h = auth("user_a")

@@ -9,6 +9,7 @@ import os
 import hmac
 import logging
 import math
+import re
 import jwt
 import bcrypt
 from datetime import datetime, timezone, timedelta
@@ -509,20 +510,36 @@ async def _queue_strategy_run(strategy: dict, user: dict, top_n: int = 3) -> dic
     return await _queue_command("strategy.scan", {"strategy_id": strategy["id"], "top_n": top_n}, user)
 
 
-# ---------------- US book analysis for every account ----------------
-# The owner's analysis reads the bot's own portfolio (action "us.portfolio", result "abd_portfoy"). Any other account gets the
-# same calculation on the US positions of its site portfolio: the holdings travel with the command, the result is stored
-# under the account's own id and is readable only by that account.
-US_BOOK_DAILY = 5
+# ---------------- Results the bot prepares for one account ----------------
+# The owner's tools read the bot's own portfolio and write plain result ids ("temel", "abd_portfoy", "aylik"). Any other
+# account gets the same calculations on its own input: the request travels as a queued command, the bot stores the
+# result under "<kind>:<account id>" (it takes the id from the command's verified identity), and the result is
+# readable only by that account. Each kind has a daily limit and runs one at a time.
+ACCOUNT_REQUESTS = {      # command type -> (per day, what it is called in the messages)
+    "us.portfolio": (5, "ABD portföy analizi"),
+    "fundamentals.request": (10, "hisse kartı"),
+    "monthly.request": (3, "aylık rapor"),
+}
+STOCK_CODE = re.compile(r"^[A-Z][A-Z0-9.-]{0,6}$")
 
 
-def _us_book_id(user: dict) -> str:
-    return f"abd_portfoy:{user['id']}"
+def _account_doc_id(kind: str, user: dict) -> str:
+    return f"{kind}:{user['id']}"
+
+
+async def _account_request(cmd_type: str, payload: dict, user: dict) -> dict:
+    per_day, what = ACCOUNT_REQUESTS[cmd_type]
+    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    if await db.commands.count_documents({"user_id": user["id"], "type": cmd_type, "created_at": {"$gte": since}}) >= per_day:
+        raise HTTPException(status_code=429, detail=f"Günde en fazla {per_day} {what} istenebilir.")
+    if await db.commands.find_one({"user_id": user["id"], "type": cmd_type, "status": "pending"}):
+        raise HTTPException(status_code=409, detail=f"Önceki {what} isteğin sürüyor.")
+    return await _queue_command(cmd_type, payload, user)
 
 
 @api.get("/portfolio/us-book")
 async def get_us_book(user: dict = Depends(get_current_user)):
-    return await db.sonuclar.find_one({"id": _us_book_id(user)}, {"_id": 0, "user_id": 0}) or {"zaman": None}
+    return await db.sonuclar.find_one({"id": _account_doc_id("abd_portfoy", user)}, {"_id": 0, "user_id": 0}) or {"zaman": None}
 
 
 @api.post("/portfolio/us-book")
@@ -534,13 +551,49 @@ async def request_us_book(user: dict = Depends(get_current_user)):
             holdings[pos["kod"]] = holdings.get(pos["kod"], 0.0) + float(pos["adet"])
     if not holdings:
         raise HTTPException(status_code=400, detail="Portföyünde açık ABD hissesi yok.")
-    since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
-    if await db.commands.count_documents({"user_id": user["id"], "type": "us.portfolio", "created_at": {"$gte": since}}) >= US_BOOK_DAILY:
-        raise HTTPException(status_code=429, detail=f"Günde en fazla {US_BOOK_DAILY} ABD portföy analizi yapılabilir.")
-    if await db.commands.find_one({"user_id": user["id"], "type": "us.portfolio", "status": "pending"}):
-        raise HTTPException(status_code=409, detail="Önceki ABD portföy analizin sürüyor.")
-    await _queue_command("us.portfolio", {"holdings": holdings, "result_id": _us_book_id(user)}, user)
+    await _account_request("us.portfolio", {"holdings": holdings}, user)
     return {"ok": True, "hisse": len(holdings)}
+
+
+class StockCardBody(BaseModel):
+    kod: str
+    piyasa: str
+
+
+@api.get("/stock-card")
+async def get_stock_card(user: dict = Depends(get_current_user)):
+    """The account's last stock card (any BIST or US stock; market data only, nothing from another account)."""
+    return await db.sonuclar.find_one({"id": _account_doc_id("temel", user)}, {"_id": 0, "user_id": 0}) or {"zaman": None}
+
+
+@api.post("/stock-card")
+async def request_stock_card(body: StockCardBody, user: dict = Depends(get_current_user)):
+    kod, piyasa = body.kod.strip().upper(), body.piyasa.strip().upper()
+    if piyasa not in ("ABD", "BIST") or not STOCK_CODE.match(kod):
+        raise HTTPException(status_code=400, detail="Geçersiz hisse kodu ya da piyasa.")
+    await _account_request("fundamentals.request", {"kod": kod, "piyasa": piyasa}, user)
+    return {"ok": True, "kod": kod, "piyasa": piyasa}
+
+
+@api.get("/portfolio/monthly")
+async def get_monthly(user: dict = Depends(get_current_user)):
+    """The account's monthly reports, newest month first (the same shape the owner's report has)."""
+    docs = await db.sonuclar.find({"user_id": user["id"], "tur": "aylik"}, {"_id": 0, "user_id": 0}).sort("ay", -1).to_list(24)
+    ready = [d for d in docs if not d.get("hata") and not d.get("bos")]
+    return {"zaman": docs[0]["zaman"] if docs else None, "son": ready[0] if ready else None, "gecmis": ready[:12],
+            "hata": docs[0].get("hata") if docs else None, "bos": bool(docs and docs[0].get("bos"))}
+
+
+@api.post("/portfolio/monthly")
+async def request_monthly(user: dict = Depends(get_current_user)):
+    """Last month's report on the account's own site portfolio (open and sold positions)."""
+    doc = await db.portfolios.find_one({"user_id": user["id"]}, {"positions": 1}) or {}
+    rows = [{k: pos.get(k) for k in ("piyasa", "kod", "adet", "maliyet", "acilis", "durum", "kapanis_fiyat", "kapanis")}
+            for pos in doc.get("positions", [])]
+    if not rows:
+        raise HTTPException(status_code=400, detail="Portföyünde pozisyon yok.")
+    await _account_request("monthly.request", {"positions": rows}, user)
+    return {"ok": True, "pozisyon": len(rows)}
 
 
 @api.get("/strategies")

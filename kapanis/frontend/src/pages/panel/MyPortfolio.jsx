@@ -103,6 +103,20 @@ function FirstRun({ tg, keys, onAdd }) {
         { title: t("Kendi yapay zekâ anahtarını ekle"), optional: true, done: hasKey, detail: t("Günlük analiz hakkın artar. Eklemesen de olur."),
           action: <K.Button variant="secondary" icon={<K.Icon name="key" size={18} />} onClick={() => navigate("/app/hesap")}>{t("Anahtar ekle")}</K.Button> },
       ]} />
+      <K.Card title={t("Portföy eklemeden de bakabileceklerin")}>
+        <div className="kp-grid kp-g-3">
+          {[["/app/hisse", "chart", t("Hisse kartı"), t("Bir BIST ya da ABD hissesi: trend, endekse göre güç, bilanço riski, temel puan, değerleme.")],
+            ["/app/grafik", "chart", t("Grafik & Analiz"), t("Mum grafiği ve göstergeler; istersen kurallara göre yapay zekâ açıklaması.")],
+            ["/app/makro", "macro", t("Makro"), t("Risk rejimi, ekonomik takvim ve piyasa göstergeleri.")]].map(([to, icon, title, text]) => (
+            <button key={to} type="button" onClick={() => navigate(to)} className="kp-card kp-feature text-left" data-testid={`first-run-${to.slice(5)}`}>
+              <span className="kp-feature__icon"><K.Icon name={icon} size={22} /></span>
+              <h3 className="kp-feature__title">{title}</h3>
+              <div className="kp-feature__text">{text}</div>
+            </button>
+          ))}
+        </div>
+        <p className="kp-note">{t("Karar desteğidir: açıklar ve uyarır, al/sat demez. Kapanış işlem yapmaz.")}</p>
+      </K.Card>
       <section className="kp-card">
         <div className="kp-card__head"><h2 className="kp-card__title">{t("Örnek görünüm")}</h2><span className="kp-alarm__status is-flat">{t("Alım ekleyince dolar")}</span></div>
         <div aria-hidden style={{ opacity: 0.55 }}>

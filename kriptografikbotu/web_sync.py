@@ -831,12 +831,22 @@ async def _apply(cmd: dict, refresh_alerts: Callable[[], None], notify: Notify) 
 SIGNAL_WORDS = {"AL": "alım adayı (karar senin)", "BEKLE": "bekle", "PAS": "pas", "BİLGİ": "bilgi (öneri değil)"}
 
 
-USER_COMMANDS = {"analysis.request", "strategy.scan", "language.set", "us.portfolio"}
+# The last three write a result that belongs to one account: the handler stores it under that account's id
+# (account_doc_id), never in the owner's document.
+USER_COMMANDS = {"analysis.request", "strategy.scan", "language.set", "us.portfolio", "fundamentals.request", "monthly.request"}
 
 
 def command_meta(cmd: dict) -> dict:
     """Who asked (set by the web backend from the verified session, never by the browser)."""
     return {k: cmd.get(k) for k in ("user_id", "role", "request_id", "telegram_chat_id", "own_keys", "dil")}
+
+
+def account_doc_id(kind: str, meta: dict) -> str | None:
+    """The result document of a site account for one tool ("temel:<user id>"), or None for the owner: the owner's
+    results keep their plain ids. The id comes from the command's verified identity, never from its payload."""
+    if meta.get("role", "owner") == "owner":
+        return None
+    return f"{kind}:{meta['user_id']}" if meta.get("user_id") else f"{kind}:?"
 
 
 def allowed(cmd: dict) -> bool:

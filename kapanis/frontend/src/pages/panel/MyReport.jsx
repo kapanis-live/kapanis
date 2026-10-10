@@ -3,7 +3,6 @@ import { relDay } from "@/lib/dsmap";
 import { PageHeader } from "@/components/PanelLayout";
 import { useData } from "@/lib/useData";
 import { px } from "@/lib/portfolio";
-import { useAuth } from "@/context/AuthContext";
 import MonthlyReport from "@/components/MonthlyReport";
 import { useLang } from "@/lib/i18n";
 
@@ -15,12 +14,11 @@ const money = (v, cur) => `${v >= 0 ? "+" : "−"}${cur === "TL" ? "₺" : "$"}$
 export default function MyReport() {
   const { t } = useLang();
   const q = useData("karne", "/karne");
-  const { owner } = useAuth();
   const r = q.data;
   const held = (n) => (n != null ? t("ort. {n} gün tuttun", { n: U.fmtNum(n, 1) }) : "");
   return <div className="kp-page">
     <PageHeader title={t("Karnem")} subtitle={t("Kapattığın işlemlerden: ne kadar isabetli, ne kadar tuttun, stopa uydun mu, erken mi sattın.")} />
-    {owner && <div className="mb-4"><MonthlyReport /></div>}
+    <div className="mb-4"><MonthlyReport /></div>
     {q.isLoading ? <div className="kp-skel h-40" aria-busy="true" /> : !r?.islem ? (
       <K.Card title={t("Henüz kapalı işlem yok")}>
         <p className="kp-note m-0">{t("Portföyüm'de bir pozisyonu \"Sattım\" ile kapattığında karnen burada oluşur.")}</p>

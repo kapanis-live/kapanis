@@ -98,6 +98,60 @@ class AccountUsBookTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((doc["id"], doc["hata"]), ("abd_portfoy:u1", "endeks / faiz / VIX verisi alınamadı"))
 
 
+class AccountResultsTest(unittest.IsolatedAsyncioTestCase):
+    """Stock card and monthly report for a site account: asked by any account, stored under that account only."""
+
+    def test_any_account_may_ask_and_gets_its_own_document(self):
+        for t in ("fundamentals.request", "monthly.request", "us.portfolio"):
+            self.assertTrue(web_sync.allowed({"type": t, "role": "user"}), t)
+        self.assertIsNone(web_sync.account_doc_id("temel", {"role": "owner", "user_id": "o1"}))        # the owner's plain document
+        self.assertIsNone(web_sync.account_doc_id("temel", {}))                                         # commands from before accounts
+        self.assertEqual(web_sync.account_doc_id("temel", {"role": "user", "user_id": "u1"}), "temel:u1")
+        self.assertNotEqual(web_sync.account_doc_id("temel", {"role": "user"}), "temel")                # never the owner's document
+
+    def test_account_positions_are_cleaned_and_shaped(self):
+        import monthly
+        raw = [{"piyasa": "BIST", "kod": "thyao", "adet": 10, "maliyet": 290, "acilis": "2026-08-20T10:00:00+03:00", "durum": "acik"},
+               {"piyasa": "ABD", "kod": "NVDA", "adet": 2, "maliyet": 120, "acilis": "2026-09-05T10:00:00+03:00", "durum": "kapali",
+                "kapanis_fiyat": 131, "kapanis": "2026-09-20T10:00:00+03:00"},
+               {"piyasa": "KRIPTO", "kod": "BTC", "adet": 0.01, "maliyet": 84000, "acilis": "2026-09-01T10:00:00+03:00", "durum": "acik"},
+               {"piyasa": "DIGER", "kod": "ALTIN", "adet": 1, "maliyet": 1, "durum": "acik"},            # not a market of the report
+               {"piyasa": "BIST", "kod": "BAD CODE", "adet": 1, "maliyet": 1, "durum": "acik"},
+               {"piyasa": "BIST", "kod": "ASELS", "adet": -1, "maliyet": 60, "durum": "acik"},
+               {"piyasa": "BIST", "kod": "ASELS", "adet": "x", "maliyet": 60, "durum": "acik"}, "junk", None]
+        items = monthly.account_items(raw)
+        self.assertEqual([(p["symbol"], p["pair"], p["piyasa"], p["durum"], p["giris"]) for p in items],
+                         [("THYAO.IS", "THYAO", "BIST", "acik", 290.0), ("NVDA.US", "NVDA", "ABD", "kapali", 120.0), ("BTCUSDT", "BTC/USDT", "KRIPTO", "acik", 84000.0)])
+        self.assertEqual((items[1]["kapanis_fiyat"], items[1]["kapanis_zamani"][:10]), (131.0, "2026-09-20"))
+        self.assertEqual(monthly.account_items({"not": "a list"}), [])
+        self.assertEqual(len(monthly.account_items([raw[0]] * 1000)), monthly.MAX_ACCOUNT_POSITIONS)
+
+    async def test_monthly_report_is_built_from_the_accounts_positions(self):
+        import monthly
+        seen = []
+
+        async def fake_build(month=None, items=None):
+            seen.append((month, items))
+            return {"ay": month, "ad": "Eylül 2026", "varlik": len(items), "uretildi": "2026-10-10T10:00:00+03:00", "bas_gun": "2026-08-31", "son_gun": "2026-09-30",
+                    "getiri": {"tl_yuzde": 4.2, "usd_yuzde": 1.1, "kazanc_tl": 120.0, "kazanc_usd": 3.0, "izlenen_tl": 2900.0},
+                    "kiyas": {"BIST 100": 2.0}, "usdtry_yuzde": 3.0, "en_iyi": [], "en_kotu": [],
+                    "islemler": {"alim": 0, "satim": 0, "gerceklesen": {}, "alinan": [], "satilan": []},
+                    "yogunlasma": {"ay_basi": None, "ay_sonu": None}, "hesaplanamayan": [], "kaynaklar": []}
+        raw = [{"piyasa": "BIST", "kod": "THYAO", "adet": 10, "maliyet": 290, "acilis": "2026-08-20T10:00:00+03:00", "durum": "acik"}]
+        with unittest.mock.patch.object(monthly, "build", fake_build):
+            doc, reply = await monthly.account_report(raw, {"user_id": "u1", "role": "user"}, "2026-09")
+            self.assertEqual((doc["id"], doc["user_id"], doc["tur"], doc["ay"], doc["bos"]), ("aylik:u1:2026-09", "u1", "aylik", "2026-09", False))
+            self.assertEqual(seen[0][0], "2026-09")
+            self.assertEqual(seen[0][1][0]["symbol"], "THYAO.IS")                       # the account's positions, not the bot's record
+            self.assertIn("Eylül 2026", reply)
+            self.assertIn("September 2026", (await monthly.account_report(raw, {"user_id": "u1", "dil": "en"}, "2026-09"))[1])
+            # a bad month falls back to the month that just ended; no positions = an empty document; no account = nothing written
+            self.assertRegex((await monthly.account_report(raw, {"user_id": "u1"}, "../etc"))[0]["ay"], "^20[0-9][0-9]-[0-9][0-9]$")
+            doc, _ = await monthly.account_report([], {"user_id": "u2"}, "2026-09")
+            self.assertEqual((doc["id"], doc["bos"]), ("aylik:u2:2026-09", True))
+            self.assertIsNone((await monthly.account_report(raw, {}, "2026-09"))[0])
+
+
 class PersonalContextTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         store.save_state({"planlar": {"ETH": {"tetik": 3000, "iptal": 2900}}})

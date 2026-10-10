@@ -331,6 +331,34 @@ class EnglishTextTest(unittest.TestCase):
         self.assertIn("Güç (6 ay, puan farkı): SPY +14.2 GÜÇLÜ", tr)
         self.assertEqual(tr, us_card.text(self.CARD, "tr"))
 
+    def test_card_notes_and_sources_are_english_too(self):
+        import bist_card
+        import us_card
+        card = {**self.CARD, "trend": {**self.CARD["trend"], "hizalama": "fiyat < 50G < 200G (zayıf)"},
+                "bilanco": {"gun": 4, "risk": "YÜKSEK", "tarih": "2026-10-13", "kaynak": "şirket takvimi (Yahoo)"},
+                "dikkat": ["Bilanço 4 gün sonra: açılış boşluğu (gap) riski yüksek. Yeni pozisyon bilanço sonrasına bırakılabilir ya da küçük tutulabilir.",
+                           "Fiyat 50 ve 200 günlük ortalamaların altında (zayıf yapı)."],
+                "kaynaklar": [{"veri": "bilanço, marjlar, nakit akışı", "kaynak": "SEC EDGAR (10-K / 10-Q, resmi)", "tarih": "son çeyrek 2026-06-30"}]}
+        en, tr = us_card.text(card, "en"), us_card.text(card)
+        for part in ("⚠️ Earnings in 4 days: the risk of an opening gap is high.", "⚠️ Price is below the 50- and 200-day averages (weak structure).",
+                     "· financial statements, margins, cash flow: SEC EDGAR (10-K / 10-Q, official) — latest quarter 2026-06-30",
+                     "price < 50D < 200D (weak)", "company calendar (Yahoo)"):
+            self.assertIn(part, en)
+        self.assertIn("⚠️ Bilanço 4 gün sonra", tr)                                  # the Turkish card is untouched
+        self.assertIn("SEC EDGAR (10-K / 10-Q, resmi) — son çeyrek 2026-06-30", tr)
+        b = {"hisse": "THYAO", "fiyat": 290.0, "sektor": None, "temel": {"skor": 61, "durum": "ORTA"},
+             "bilanco": {"gun": None, "risk": "BİLİNMİYOR", "tarih": None, "kaynak": None}, "temettu": {"hak_kullanim": None, "odeme": None},
+             "degerleme": {"etiket": "MAKUL", "fk": 6.1, "pd_dd": 1.1, "fd_favok": 4.2}, "guc": {"endeks_6a": -3.1, "etiket": "NÖTR"},
+             "trend": {"günlük": "→ karışık", "hizalama": "karışık", "zirveye_uzaklik_yuzde": -12.0},
+             "stage": "Stage 1 — taban oluşumu ihtimali (30h ortalama yatay)",
+             "dikkat": ["Kırmızı bayrak: faaliyet marjı düşüyor (%13.4 → %4.3)", "Kırmızı bayrak: bilinmeyen yeni bayrak"],
+             "kaynaklar": [{"veri": "bilanço ve temettü takvimi", "kaynak": "Yahoo Finance", "tarih": "kesin tarih için KAP"}], "uretildi": "2026-10-09T19:00:00"}
+        en = bist_card.text(b, "en")
+        for part in ("⚠️ Red flag: operating margin is falling (13.4% → 4.3%)", "Weekly stage: Stage 1 — a base may be forming",
+                     "· earnings and dividend calendar: Yahoo Finance — KAP for the exact date",
+                     "⚠️ Red flag: bilinmeyen yeni bayrak"):                        # an unknown sentence stays as written
+            self.assertIn(part, en)
+
     def test_level_digest(self):
         import levels_scan
         en = levels_scan.text(self.SCAN, code="en")
@@ -351,6 +379,13 @@ class EnglishTextTest(unittest.TestCase):
         self.assertIn("· Mega tech: 100% (NVDA, MSFT)", en)
         self.assertIn("· If the S&P 500 falls 10%: portfolio -14% (-1,680 USD) · most affected: NVDA -16.2%", en)
         self.assertIn("S&P 500 %10 düşerse: portföy %-14", us_portfolio.text(r))
+        noted = {**r, "dikkat": ["NVDA portföyün %60'i: tek hisse riski yüksek.", "Technology sektörü portföyün %100'i."],
+                 "kaynaklar": [{"veri": "sektör", "kaynak": "Yahoo Finance şirket profili", "tarih": "6 saatlik önbellek"}]}
+        en = us_portfolio.text(noted, "en")
+        self.assertIn("⚠️ NVDA is 60% of the portfolio: single-stock risk is high.", en)
+        self.assertIn("⚠️ The Technology sector is 100% of the portfolio.", en)
+        self.assertIn("· sector: Yahoo Finance company profile — 6-hour cache", en)
+        self.assertIn("⚠️ NVDA portföyün %60'i", us_portfolio.text(noted))
 
 
 class PortfolioTextTest(unittest.IsolatedAsyncioTestCase):

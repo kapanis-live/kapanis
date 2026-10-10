@@ -16,6 +16,8 @@ Sent on the first day of each month; /aylik shows it on request (/aylik 2026-09 
 """
 import asyncio
 import logging
+import math
+import re
 from datetime import date, datetime, timedelta
 
 import httpx
@@ -159,11 +161,42 @@ async def _series(client, p: dict) -> pd.Series | None:
         return None
 
 
-async def build(month: str | None = None) -> dict:
-    """The report of one month (default: the month that just ended), from live price history."""
+MAX_ACCOUNT_POSITIONS = 400
+_CODE = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,11}$")
+
+
+def account_items(raw) -> list[dict]:
+    """A site account's positions (as the web backend sends them) in the shape compute() reads. Rows that are not a
+    valid crypto / BIST / US position are dropped; the size is capped."""
+    out = []
+    for p in (raw if isinstance(raw, list) else [])[:MAX_ACCOUNT_POSITIONS]:
+        try:
+            mkt, code = str(p.get("piyasa", "")).upper(), str(p.get("kod", "")).strip().upper()
+            qty, cost = float(p["adet"]), float(p["maliyet"])
+            sold = p.get("durum") == "kapali"
+            price = float(p["kapanis_fiyat"]) if sold and p.get("kapanis_fiyat") is not None else None
+        except (AttributeError, KeyError, TypeError, ValueError):
+            continue
+        if mkt not in ("KRIPTO", "BIST", "ABD") or not _CODE.match(code) or not (math.isfinite(qty) and qty > 0 and math.isfinite(cost) and cost > 0):
+            continue
+        if price is not None and not (math.isfinite(price) and price > 0):
+            continue
+        pair = f"{code}/USDT" if mkt == "KRIPTO" else code
+        symbol = bist.yahoo_symbol(code) if mkt == "BIST" else us.key(code) if mkt == "ABD" else alerts_store.pair_to_symbol(pair)
+        out.append({"symbol": symbol, "pair": pair, "piyasa": mkt, "adet": qty, "giris": cost, "kaynak": "site",
+                    "acilis": str(p.get("acilis") or ""), "durum": "kapali" if sold else "acik",
+                    "kapanis_fiyat": price, "kapanis_zamani": str(p.get("kapanis") or "") if sold else None})
+    return out
+
+
+async def build(month: str | None = None, items: list[dict] | None = None) -> dict:
+    """The report of one month (default: the month that just ended), from live price history.
+
+    items: the positions to report on (a site account's, from account_items); default: the bot's own record."""
     month = month or previous_month(alerts_store.now_tr().date())
     before, last = bounds(month)
-    items = positions.load()
+    own = items is None
+    items = positions.load() if own else items
     slots = asyncio.Semaphore(6)
     async with httpx.AsyncClient() as client:
         async def one(p):
@@ -181,8 +214,29 @@ async def build(month: str | None = None) -> dict:
                 log.warning("Monthly report: benchmark %s failed: %s", name, e)
     doc = compute(items, closes, fx, bench, month)
     doc.update(uretildi=alerts_store.now_tr().isoformat(timespec="seconds"),
-               kaynaklar=["fiyatlar: Binance (kripto), Yahoo Finance (BIST, ABD, USD/TRY)", "pozisyonlar ve işlemler: botun kendi kaydı"])
+               kaynaklar=["fiyatlar: Binance (kripto), Yahoo Finance (BIST, ABD, USD/TRY)",
+                          "pozisyonlar ve işlemler: botun kendi kaydı" if own else "pozisyonlar ve işlemler: sitedeki portföyün"])
     return doc
+
+
+async def account_report(raw_positions, meta: dict, month: str | None = None) -> tuple[dict | None, str]:
+    """One month's report for a site account. Returns (document for the panel or None, reply for the account's chat)."""
+    uid, en = meta.get("user_id"), meta.get("dil") == "en"
+    if not uid:
+        return None, "❌ Panel aylık rapor: hesap bilgisi yok"
+    month = month if month and re.fullmatch(r"20\d\d-(0[1-9]|1[0-2])", month) else previous_month(alerts_store.now_tr().date())
+    base = {"id": f"aylik:{uid}:{month}", "tur": "aylik", "user_id": uid, "ay": month}
+    items = account_items(raw_positions)
+    try:
+        doc = await build(month, items) if items else None
+    except Exception as e:
+        log.exception("Monthly report for an account failed")
+        return {**base, "zaman": alerts_store.now_tr().isoformat(timespec="seconds"), "hata": str(e)[:150]}, \
+            (f"❌ Monthly report: {str(e)[:150]}" if en else f"❌ Aylık rapor hazırlanamadı: {str(e)[:150]}")
+    if not doc or not doc["varlik"]:
+        return {**base, "zaman": alerts_store.now_tr().isoformat(timespec="seconds"), "bos": True}, \
+            ("ℹ️ No position was held in that month." if en else "ℹ️ O ay içinde elde tutulan pozisyon yok.")
+    return {**base, "zaman": doc["uretildi"], "bos": False, **doc}, text(doc, "en" if en else "tr")
 
 
 def save(doc: dict):

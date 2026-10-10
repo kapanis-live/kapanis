@@ -8,6 +8,8 @@ import { sendAction } from "@/lib/actions";
 import { relDay } from "@/lib/dsmap";
 import { Segmented } from "@/components/kp";
 import { useLang } from "@/lib/i18n";
+import { useAuth } from "@/context/AuthContext";
+import api, { formatApiErrorDetail } from "@/lib/api";
 
 // Hisse kartı (ABD ve BIST): karar desteği. Hiçbir alan AL/SAT demez; her sayının kaynağı ve tarihi altta yazar.
 const TONE = { "GÜÇLÜ": "kp-num-up", ZAYIF: "kp-num-down", YUKARI: "kp-num-up", "AŞAĞI": "kp-num-down", "YÜKSEK": "kp-num-down", ORTA: "text-wait",
@@ -137,8 +139,10 @@ function Card({ c }) {
 }
 
 export default function UsCard() {
-  const { t } = useLang();
-  const q = useData(["sonuclar", "temel"], "/sonuclar/temel", LIVE);
+  const { t, td } = useLang();
+  // Sistem sahibi: botun kendi sonucu. Diğer hesaplar: kendi kartı (günde 10), yalnız o hesaba görünür.
+  const { owner } = useAuth();
+  const q = useData(owner ? ["sonuclar", "temel"] : ["stock-card"], owner ? "/sonuclar/temel" : "/stock-card", LIVE);
   const [params] = useSearchParams();
   const [market, setMarket] = useState(params.get("piyasa") === "BIST" ? "BIST" : "ABD");
   const [kod, setKod] = useState((params.get("kod") || "").toUpperCase());
@@ -148,7 +152,17 @@ export default function UsCard() {
   const run = async () => {
     const code = kod.trim().toUpperCase();
     if (!/^[A-Z][A-Z0-9.-]{0,6}$/.test(code)) return toast.error(market === "ABD" ? t("ABD hisse kodu yaz (ör. NVDA).") : t("BIST hisse kodu yaz (ör. THYAO)."));
-    if (await sendAction("fundamentals.request", { kod: code, piyasa: market }, t("{k} kartı hazırlanıyor.", { k: code }))) setAsked(Date.now());
+    if (owner) {
+      if (await sendAction("fundamentals.request", { kod: code, piyasa: market }, t("{k} kartı hazırlanıyor.", { k: code }))) setAsked(Date.now());
+      return;
+    }
+    try {
+      await api.post("/stock-card", { kod: code, piyasa: market });
+      toast.success(t("{k} kartı hazırlanıyor.", { k: code }));
+      setAsked(Date.now());
+    } catch (e) {
+      toast.error(td(formatApiErrorDetail(e.response?.data?.detail)) || t("Kart hazırlanamadı"));
+    }
   };
   // Hisse tablosundan gelindiyse (?kod=...) kart bir kez kendiliğinden istenir
   const auto = useRef(false);
@@ -168,9 +182,9 @@ export default function UsCard() {
           <K.Button variant="primary" onClick={run} disabled={!!waiting} data-testid="us-card-run">{waiting ? t("Hazırlanıyor…") : t("Kartı getir")}</K.Button>
         </div>
         <p className="kp-note">{t("Veriler istek anında çekilir. ABD: SEC (resmi bilanço ve açıklama zamanı), Yahoo (analist tahminleri, takvim). BIST: İş Yatırım mali tabloları, Yahoo (fiyat ~15 dk gecikmeli, takvim). Hazırlanması 10–40 saniye sürer.")}{" "}
-          Telegram: /abd kart NVDA · /bist kart THYAO</p>
+          {owner ? "Telegram: /abd kart NVDA · /bist kart THYAO" : t("Günde 10 kart isteyebilirsin.")}</p>
         {waiting && <p className="kp-note" aria-busy="true">{t("Bot verileri topluyor…")}</p>}
-        {!waiting && d.hata && <K.Callout tone="warn" title={t("Kart hazırlanamadı")}>{d.hata}</K.Callout>}
+        {!waiting && d.hata && <K.Callout tone="warn" title={t("Kart hazırlanamadı")}>{td(d.hata)}</K.Callout>}
       </K.Card>
       {card ? (
         <>

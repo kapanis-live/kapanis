@@ -6021,6 +6021,10 @@ def register_panel_actions(bot):
         """/temel from the panel: BIST (İş Yatırım) or US (SEC + Yahoo) fundamentals, no AI."""
         tick = bist.ticker(str(p.get("kod", ""))).removesuffix(".US")
         mkt = p.get("piyasa") or ("BIST" if tick in universe.bist_names() else await _detect_market(tick))
+        meta = p.get("_komut") or {}
+        account = web_sync.account_doc_id("temel", meta)        # None = the owner's own card
+        doc_id, who = account or "temel", ({"user_id": meta.get("user_id")} if account else {})
+        en = bool(account) and meta.get("dil") == "en"
         card_doc = None
         try:
             if mkt == "ABD":
@@ -6037,11 +6041,20 @@ def register_panel_actions(bot):
                 flags = (f.get("kirmizi_bayraklar") or [])[:6]
                 good = []
             else:
+                if account:
+                    await web_sync.push_docs("sonuclar", [{"id": doc_id, "tur": "temel", **who, "zaman": alerts_store.now_tr().isoformat(),
+                                                           "hata": f"{tick}: BIST ya da ABD hissesi değil"}])
                 return f"❌ Panel temel analiz: {tick} BIST ya da ABD hissesi değil"
         except Exception as e:
-            await web_sync.push_docs("sonuclar", [{"id": "temel", "tur": "temel", "hata": f"{tick}: {str(e)[:150]}",
+            await web_sync.push_docs("sonuclar", [{"id": doc_id, "tur": "temel", **who, "hata": f"{tick}: {str(e)[:150]}",
                                                    "zaman": alerts_store.now_tr().isoformat()}])
-            return f"❌ Panel temel analiz {tick}: {str(e)[:150]}"
+            return (f"❌ Stock card {tick}: {str(e)[:150]}" if en else f"❌ Hisse kartı {tick}: {str(e)[:150]}") if account \
+                else f"❌ Panel temel analiz {tick}: {str(e)[:150]}"
+        if account:      # the card itself; the long owner-only text is left out
+            await web_sync.push_docs("sonuclar", [{"id": doc_id, "tur": "temel", **who, "kod": tick, "piyasa": mkt,
+                                                   "zaman": alerts_store.now_tr().isoformat(), "kart": card_doc}])
+            url = f"{config.PUBLIC_URL}/app/hisse"
+            return f"📚 Your {tick} stock card is ready: {url}" if en else f"📚 {tick} hisse kartın hazır: {url}"
         await web_sync.push_docs("sonuclar", [{"id": "temel", "tur": "temel", "kod": tick, "piyasa": mkt,
                                                "zaman": alerts_store.now_tr().isoformat(), "fiyat": f.get("fiyat"),
                                                "skor": f["puan"]["skor"], "etiket": label, "parcalar": f["puan"]["parcalar"],
@@ -6052,7 +6065,8 @@ def register_panel_actions(bot):
     async def us_portfolio_req(p):
         """The panel's Portföy Sağlığı asks for the US book: themes, co-movement, beta, scenarios (us_portfolio.py)."""
         now = alerts_store.now_tr().isoformat()
-        if p.get("holdings") is not None:       # a site account's own US positions (sent by the backend with the command)
+        # a site account's own US positions (sent by the backend with the command); a user-role command never reads the bot's portfolio
+        if p.get("holdings") is not None or (p.get("_komut") or {}).get("role") == "user":
             return await us_portfolio_user(p, now)
         try:
             r = await us_portfolio.report()
@@ -6066,6 +6080,16 @@ def register_panel_actions(bot):
     async def us_portfolio_user(p, now):
         """The same analysis for one site account: its holdings come with the command, the result is stored under its id."""
         doc, reply = await us_portfolio.account_report(p.get("holdings"), p.get("_komut") or {}, now, f"{config.PUBLIC_URL}/app/saglik")
+        if doc:
+            await web_sync.push_docs("sonuclar", [doc])
+        return reply
+
+    async def monthly_req(p):
+        """A site account asks for its monthly report: its positions come with the command (monthly.account_report)."""
+        meta = p.get("_komut") or {}
+        if meta.get("role", "owner") == "owner" and p.get("positions") is None:
+            return "ℹ️ Panel: kendi aylık raporun için Telegram'da /aylik"
+        doc, reply = await monthly.account_report(p.get("positions"), meta, p.get("ay"))
         if doc:
             await web_sync.push_docs("sonuclar", [doc])
         return reply
@@ -6250,7 +6274,7 @@ def register_panel_actions(bot):
         "lesson.request": lesson,
         "check.request": check_req, "ind.create": ind_create_, "ind.delete": ind_delete_, "compare.request": compare_req,
         "dividend.refresh": dividend_refresh,
-        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req, "us.portfolio": us_portfolio_req, "scan.request": scan_req,
+        "backtest.run": backtest_req, "settings.set": settings_set, "fundamentals.request": fundamentals_req, "us.portfolio": us_portfolio_req, "monthly.request": monthly_req, "scan.request": scan_req,
     })
 
 

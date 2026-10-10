@@ -59,3 +59,7 @@
   .kp-tabbar__pill, .kp-tabbar__item, .kp-tabbar__item svg { transition: opacity 160ms ease, color 160ms ease; }
 }
 @keyframes kp-fade-only { from { opacity: 0; } to { opacity: 1; } }
+
+/* Büyük rakam kutuları: uzun bir kelime (ör. İngilizce etiket) dar ekranda kutudan taşıp sayfayı yana kaydırmasın */
+.kp-stat { min-width: 0; }
+.kp-stat__value { overflow-wrap: anywhere; }

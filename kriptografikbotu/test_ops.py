@@ -332,6 +332,26 @@ class WatchCardsTest(unittest.TestCase):
 
 
 class MonthlyReportTest(unittest.TestCase):
+    def test_a_partial_sale_is_a_sale_and_not_a_second_buy(self):
+        """A site account bought 10 inside the month and sold 4 of them: one buy, one sale, the profit of the 4."""
+        import pandas as pd
+
+        import monthly
+        raw = [{"piyasa": "BIST", "kod": "AAA", "adet": 6, "maliyet": 100, "acilis": "2026-09-05T10:00:00+03:00", "durum": "acik"},
+               {"piyasa": "BIST", "kod": "AAA", "adet": 4, "maliyet": 100, "acilis": "2026-09-05T10:00:00+03:00", "durum": "kapali",
+                "kapanis_fiyat": 120, "kapanis": "2026-09-20T12:00:00+03:00", "parca": True}]
+        items = monthly.account_items(raw)
+        self.assertEqual([p["parca"] for p in items], [False, True])
+        ser = lambda d: pd.Series(d)
+        fx = ser({"2026-08-31": 40.0, "2026-09-05": 40.0, "2026-09-20": 40.0, "2026-09-30": 40.0})
+        d = monthly.compute(items, {"AAA.IS": ser({"2026-08-31": 90.0, "2026-09-30": 110.0})}, fx, {}, "2026-09")
+        tx = d["islemler"]
+        self.assertEqual((tx["alim"], tx["satim"], tx["gerceklesen"], tx["alinan"], tx["satilan"]), (1, 1, {"TL": 80.0}, ["AAA"], ["AAA"]))
+        # 6 held to the month end (100 -> 110) + 4 sold at 120: 1000 -> 660 + 480
+        self.assertEqual((d["getiri"]["izlenen_tl"], d["getiri"]["kazanc_tl"]), (1000.0, 140.0))
+        # an open row can never be a "part"
+        self.assertFalse(monthly.account_items([{**raw[0], "parca": True}])[0]["parca"])
+
     def test_only_the_days_held_count_and_new_money_is_not_profit(self):
         import pandas as pd
         import monthly

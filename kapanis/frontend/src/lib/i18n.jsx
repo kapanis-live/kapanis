@@ -1839,7 +1839,6 @@ const EN = {
   "Bot ay içindeki fiyatları topluyor (10–40 sn)…": "The bot is collecting the month's prices (10–40 s)…",
   "Geçen ay içinde elde tutulan pozisyon yok.": "No position was held during last month.",
   "Geçen ayın raporu: getiri, endekslere göre fark, en çok kazandıran ve kaybettiren, işlemler. Portföyüm'deki pozisyonlardan hesaplanır; \"Hazırla\"ya bas.": "Last month's report: return, difference against the indexes, biggest gainers and losers, trades. It is calculated from the positions in My Portfolio; press \"Prepare\".",
-  "Kısmi satışlar işlem sayısına girmez.": "Partial sales are not counted in the number of trades.",
   // pages/panel/MyPortfolio.jsx
   "Portföy eklemeden de bakabileceklerin": "What you can look at before adding a portfolio",
   "Bir BIST ya da ABD hissesi: trend, endekse göre güç, bilanço riski, temel puan, değerleme.": "One BIST or US stock: trend, strength against the index, earnings risk, fundamental score, valuation.",
@@ -1899,6 +1898,7 @@ const PATTERNS = [
   [/^kredi\/mevduat (\S+) \(fonlama baskısı\)$/, "loans/deposits $1 (funding pressure)"],
   [/^risk maliyeti %(\S+) \(karşılık yükü\)$/, "cost of risk $1% (provision burden)"],
   [/^Günde en fazla (\d+) (.+) istenebilir\.$/, (m, tr) => `At most ${m[1]} ${tr(m[2])} requests a day.`],
+  [/^Bugünkü ortak (.+) kapasitesi doldu; yarın tekrar dene\.$/, (m, tr) => `Today's shared ${tr(m[1])} capacity is used up; try again tomorrow.`],
   [/^Önceki (.+) isteğin sürüyor\.$/, (m, tr) => `Your previous ${tr(m[1])} request is still running.`],
   [/^(\S+): BIST ya da ABD hissesi değil$/, "$1: not a BIST or US stock"],
   [/^(\S+): trend kuralına göre dışarıda \(10 günün dibi (\S+)\)\.$/, "$1: out by the trend rule (10-day low $2)."],

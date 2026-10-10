@@ -29,6 +29,8 @@ Bu bölüm 8 Ekim'den sonra eklenenleri özetler. Alttaki bölümler hâlâ geç
 - ABD hisselerinin ortak riski (Portföy sağlığı), günde 5.
 - Hisse kartı (BIST ve ABD), günde 10.
 - Aylık rapor (Karnem), istek üzerine, günde 3. Sahibe her ayın ilk günü kendiliğinden gelir.
+- Yük sınırı: hesap başına günlük sınırın yanında bütün hesapların toplamı için de günlük tavan var (`GLOBAL_DAILY_STOCK_CARDS`, `GLOBAL_DAILY_US_BOOKS`, `GLOBAL_DAILY_MONTHLY_REPORTS`). Son 3 saatte hazırlanmış bir hisse kartı aynı hisseyi isteyen sonraki hesaba bota sorulmadan verilir (`CARD_SHARE_HOURS`); kart yalnız piyasa verisidir.
+- Aylık raporda sitedeki kısmi satışlar ayrı satış satırı olarak gider (`server._monthly_rows`, `parca`).
 - Yol: site isteği sunucuda kuyruğa komut olarak yazılır (girdi komutla gider), bot hesaplar, sonucu `sonuclar` içinde `<tür>:<hesap id>` kimliğiyle saklar; sunucu onu yalnız o hesaba verir. Hesap silinince sonuçlar da silinir.
 
 **Yeni özellikler (bot):**
@@ -43,7 +45,7 @@ Bu bölüm 8 Ekim'den sonra eklenenleri özetler. Alttaki bölümler hâlâ geç
 - Tanıtım sayfaları, giriş ve kayıt İngilizce de açılır.
 - İlk girişte portföy eklemeden bakılabilecek sayfalar kartı.
 
-**Bilinen açıklar:** dil ve "her hesaba açılanlar" canlıda gerçek ikinci hesapla denenmedi. Sabah brifinde modelin kapalı piyasayı gerçekten yazmadığı denenmedi (talimat veriliyor). Aylık raporda sitedeki kısmi satışlar işlem sayısına girmez. Uygulama bildirimi gerçek telefonda doğrulanmadı.
+**Bilinen açıklar:** dil ve "her hesaba açılanlar" canlıda gerçek ikinci hesapla denenmedi. Sabah brifinde modelin kapalı piyasayı gerçekten yazmadığı denenmedi (talimat veriliyor). Uygulama bildirimi gerçek telefonda doğrulanmadı.
 
 ## Önceki durum (8 Ekim 2026)
 

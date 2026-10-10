@@ -515,11 +515,15 @@ async def _queue_strategy_run(strategy: dict, user: dict, top_n: int = 3) -> dic
 # account gets the same calculations on its own input: the request travels as a queued command, the bot stores the
 # result under "<kind>:<account id>" (it takes the id from the command's verified identity), and the result is
 # readable only by that account. Each kind has a daily limit and runs one at a time.
-ACCOUNT_REQUESTS = {      # command type -> (per day, what it is called in the messages)
-    "us.portfolio": (5, "ABD portföy analizi"),
-    "fundamentals.request": (10, "hisse kartı"),
-    "monthly.request": (3, "aylık rapor"),
+ACCOUNT_REQUESTS = {      # command type -> (per account per day, all accounts together per day, what it is called in the messages)
+    "us.portfolio": (5, int(os.environ.get("GLOBAL_DAILY_US_BOOKS", "100")), "ABD portföy analizi"),
+    "fundamentals.request": (10, int(os.environ.get("GLOBAL_DAILY_STOCK_CARDS", "200")), "hisse kartı"),
+    "monthly.request": (3, int(os.environ.get("GLOBAL_DAILY_MONTHLY_REPORTS", "100")), "aylık rapor"),
 }
+# A stock card is market data only (nothing of an account in it), so one built in the last hours is handed to the next
+# account that asks for the same stock instead of making the bot fetch everything again.
+CARD_SHARE_HOURS = float(os.environ.get("CARD_SHARE_HOURS", "3"))
+TR_OFFSET = timezone(timedelta(hours=3))      # the bot stamps its results in Turkish time (UTC+3 all year)
 STOCK_CODE = re.compile(r"^[A-Z][A-Z0-9.-]{0,6}$")
 
 
@@ -528,10 +532,14 @@ def _account_doc_id(kind: str, user: dict) -> str:
 
 
 async def _account_request(cmd_type: str, payload: dict, user: dict) -> dict:
-    per_day, what = ACCOUNT_REQUESTS[cmd_type]
+    per_day, all_per_day, what = ACCOUNT_REQUESTS[cmd_type]
     since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     if await db.commands.count_documents({"user_id": user["id"], "type": cmd_type, "created_at": {"$gte": since}}) >= per_day:
         raise HTTPException(status_code=429, detail=f"Günde en fazla {per_day} {what} istenebilir.")
+    # every account together: however many people sign up, the bot and its data sources see a bounded load (the owner is not counted)
+    if not identity.is_owner(user) and await db.commands.count_documents(
+            {"role": "user", "type": cmd_type, "created_at": {"$gte": since}}) >= all_per_day:
+        raise HTTPException(status_code=429, detail=f"Bugünkü ortak {what} kapasitesi doldu; yarın tekrar dene.")
     if await db.commands.find_one({"user_id": user["id"], "type": cmd_type, "status": "pending"}):
         raise HTTPException(status_code=409, detail=f"Önceki {what} isteğin sürüyor.")
     return await _queue_command(cmd_type, payload, user)
@@ -571,8 +579,40 @@ async def request_stock_card(body: StockCardBody, user: dict = Depends(get_curre
     kod, piyasa = body.kod.strip().upper(), body.piyasa.strip().upper()
     if piyasa not in ("ABD", "BIST") or not STOCK_CODE.match(kod):
         raise HTTPException(status_code=400, detail="Geçersiz hisse kodu ya da piyasa.")
+    fresh = (datetime.now(TR_OFFSET) - timedelta(hours=CARD_SHARE_HOURS)).isoformat(timespec="seconds")
+    shared = await db.sonuclar.find_one({"tur": "temel", "kod": kod, "piyasa": piyasa, "kart.uretildi": {"$gte": fresh}},
+                                        {"_id": 0, "kart": 1}, sort=[("kart.uretildi", -1)])
+    if shared and shared.get("kart"):       # the card keeps its own "uretildi" time, so the page shows when it was really built
+        await db.sonuclar.update_one({"id": _account_doc_id("temel", user)}, {"$set": {
+            "id": _account_doc_id("temel", user), "tur": "temel", "user_id": user["id"], "kod": kod, "piyasa": piyasa,
+            "zaman": datetime.now(TR_OFFSET).isoformat(), "kart": shared["kart"]}, "$unset": {"hata": ""}}, upsert=True)
+        return {"ok": True, "kod": kod, "piyasa": piyasa, "hazir": True}
     await _account_request("fundamentals.request", {"kod": kod, "piyasa": piyasa}, user)
     return {"ok": True, "kod": kod, "piyasa": piyasa}
+
+
+def _monthly_rows(doc: dict) -> list[dict]:
+    """The account's positions for the monthly report, plus one closed row for each PARTIAL sale.
+
+    A partial sale only lowers the position's quantity; the sale itself lives in the transaction record. For the report it
+    is a part of the position that was held from the position's buy day to the day of that sale ("parca": it is a sale,
+    not another buy). The sale that closed a position is the position row itself and is not repeated."""
+    keys = ("piyasa", "kod", "adet", "maliyet", "acilis", "durum", "kapanis_fiyat", "kapanis")
+    positions = doc.get("positions", [])
+    rows = [{k: pos.get(k) for k in keys} for pos in positions]
+    by_id = {pos.get("id"): pos for pos in positions}
+    sales: dict[str, list[dict]] = {}
+    for t in doc.get("transactions", []):
+        if t.get("tur") == "satis" and t.get("pozisyon_id") in by_id:
+            sales.setdefault(t["pozisyon_id"], []).append(t)
+    for pid, items in sales.items():
+        pos = by_id[pid]
+        items.sort(key=lambda t: t.get("zaman") or "")
+        for t in (items[:-1] if pos.get("durum") == "kapali" else items):       # the last sale of a closed position closed it
+            rows.append({"piyasa": pos.get("piyasa"), "kod": pos.get("kod"), "adet": t.get("adet"), "maliyet": pos.get("maliyet"),
+                         "acilis": pos.get("acilis"), "durum": "kapali", "kapanis_fiyat": t.get("fiyat"), "kapanis": t.get("zaman"),
+                         "parca": True})
+    return rows
 
 
 @api.get("/portfolio/monthly")
@@ -587,9 +627,8 @@ async def get_monthly(user: dict = Depends(get_current_user)):
 @api.post("/portfolio/monthly")
 async def request_monthly(user: dict = Depends(get_current_user)):
     """Last month's report on the account's own site portfolio (open and sold positions)."""
-    doc = await db.portfolios.find_one({"user_id": user["id"]}, {"positions": 1}) or {}
-    rows = [{k: pos.get(k) for k in ("piyasa", "kod", "adet", "maliyet", "acilis", "durum", "kapanis_fiyat", "kapanis")}
-            for pos in doc.get("positions", [])]
+    doc = await db.portfolios.find_one({"user_id": user["id"]}, {"positions": 1, "transactions": 1}) or {}
+    rows = _monthly_rows(doc)
     if not rows:
         raise HTTPException(status_code=400, detail="Portföyünde pozisyon yok.")
     await _account_request("monthly.request", {"positions": rows}, user)

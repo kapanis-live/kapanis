@@ -121,7 +121,7 @@ export default function MonthlyReport() {
         )}
         {d.hesaplanamayan?.length > 0 && <p className="kp-note m-0">{t("Fiyat geçmişi alınamadığı için dışarıda kalan")}: {d.hesaplanamayan.join(", ")}.</p>}
         <p className="kp-note m-0">{t("Ölçüm: her pozisyon yalnız elde tutulduğu günler için sayılır ({a} kapanışı → {b} kapanışı; ay içinde alınan alış fiyatından, satılan satış fiyatından). Yeni giren para getiri sayılmaz. Geçmişin özetidir; tahmin ya da öneri içermez.",
-          { a: day(d.bas_gun), b: day(d.son_gun) })}{" "}{owner ? "Telegram: /aylik" : t("Kısmi satışlar işlem sayısına girmez.")}</p>
+          { a: day(d.bas_gun), b: day(d.son_gun) })}{owner ? " Telegram: /aylik" : ""}</p>
       </div>
     </K.Card>
   );

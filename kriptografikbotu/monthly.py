@@ -124,7 +124,8 @@ def compute(items: list[dict], closes: dict[str, pd.Series], fx: pd.Series, benc
     def change(s):
         a, b = benchmark._asof(s, before), benchmark._asof(s, last)
         return round((b / a - 1) * 100, 1) if a and b else None
-    buys = [p for p in items if not _unknown_date(p) and first <= _day(p.get("acilis")) <= last]
+    # "parca": the sold part of a position that is still (partly) held; a sale, not a second buy
+    buys = [p for p in items if not _unknown_date(p) and not p.get("parca") and first <= _day(p.get("acilis")) <= last]
     sells = [p for p in items if p["durum"] == "kapali" and p.get("kapanis_fiyat") is not None and first <= _day(p.get("kapanis_zamani")) <= last]
     realized: dict[str, float] = {}
     for p in sells:
@@ -185,7 +186,8 @@ def account_items(raw) -> list[dict]:
         symbol = bist.yahoo_symbol(code) if mkt == "BIST" else us.key(code) if mkt == "ABD" else alerts_store.pair_to_symbol(pair)
         out.append({"symbol": symbol, "pair": pair, "piyasa": mkt, "adet": qty, "giris": cost, "kaynak": "site",
                     "acilis": str(p.get("acilis") or ""), "durum": "kapali" if sold else "acik",
-                    "kapanis_fiyat": price, "kapanis_zamani": str(p.get("kapanis") or "") if sold else None})
+                    "kapanis_fiyat": price, "kapanis_zamani": str(p.get("kapanis") or "") if sold else None,
+                    "parca": bool(p.get("parca")) and sold})
     return out
 
 

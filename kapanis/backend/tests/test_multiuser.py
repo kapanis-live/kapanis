@@ -5,6 +5,7 @@ so the backend code path (RS256 signature, expiry, issuer, azp, verified e-mail)
 Run: .venv\\Scripts\\python -m unittest tests.test_multiuser -v
 """
 import os
+from datetime import datetime, timedelta
 import sys
 import time
 import unittest
@@ -301,6 +302,46 @@ class MultiUserTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((got["son"]["ay"], [m["ay"] for m in got["gecmis"]], "user_id" in got["son"]), ("2026-09", ["2026-09", "2026-08"], False))
         self.assertEqual((await self.c.get("/api/portfolio/monthly", headers=b)).json()["gecmis"], [])
         self.assertEqual((await self.c.get("/api/sonuclar/aylik", headers=a)).status_code, 403)
+
+    async def test_partial_sales_reach_the_monthly_report(self):
+        h = auth("user_a")
+        pid = (await self.c.post("/api/portfolio/positions", headers=h, json={"piyasa": "BIST", "kod": "THYAO", "adet": 10, "maliyet": 290, "stop": 280})).json()["id"]
+        await self.c.post(f"/api/portfolio/positions/{pid}/sell", headers=h, json={"fiyat": 300, "adet": 4})
+        await self.c.post(f"/api/portfolio/positions/{pid}/sell", headers=h, json={"fiyat": 310, "adet": 2})
+        self.assertEqual((await self.c.post("/api/portfolio/monthly", headers=h)).json(), {"ok": True, "pozisyon": 3})
+        cmd = [c for c in (await self.c.get("/api/commands/pending", headers=BOT)).json() if c["type"] == "monthly.request"][0]
+        rows = cmd["payload"]["positions"]
+        self.assertEqual([(r["durum"], r["adet"], r.get("kapanis_fiyat"), bool(r.get("parca"))) for r in rows],
+                         [("acik", 4.0, None, False), ("kapali", 4.0, 300.0, True), ("kapali", 2.0, 310.0, True)])
+        self.assertTrue(all(r["maliyet"] == 290.0 and r["acilis"] == rows[0]["acilis"] for r in rows))
+        # the sale that closes the position is the position row itself, not one more part
+        doc = {"positions": [{"id": "p1", "piyasa": "ABD", "kod": "NVDA", "adet": 3, "maliyet": 100, "acilis": "a", "durum": "kapali", "kapanis_fiyat": 130, "kapanis": "t2"}],
+               "transactions": [{"tur": "satis", "pozisyon_id": "p1", "adet": 2, "fiyat": 120, "zaman": "t1"}, {"tur": "satis", "pozisyon_id": "p1", "adet": 3, "fiyat": 130, "zaman": "t2"},
+                                {"tur": "satis", "pozisyon_id": "gone", "adet": 1, "fiyat": 1, "zaman": "t0"}, {"tur": "alis", "pozisyon_id": "p1", "adet": 5, "zaman": "t0"}]}
+        self.assertEqual([(r["durum"], r["adet"], r["kapanis_fiyat"], bool(r.get("parca"))) for r in server._monthly_rows(doc)],
+                         [("kapali", 3, 130, False), ("kapali", 2, 120, True)])
+
+    async def test_a_fresh_card_is_shared_and_all_accounts_have_a_cap(self):
+        a, b = auth("user_a"), auth("user_b")
+        now = datetime.now(server.TR_OFFSET)
+        card = lambda hours: {"hisse": "NVDA", "piyasa": "ABD", "uretildi": (now - timedelta(hours=hours)).isoformat(timespec="seconds")}
+        # the owner's card from an hour ago: the next account gets it at once, the bot is not asked
+        await self.c.post("/api/ingest/sonuclar", headers=BOT, json=[{"id": "temel", "tur": "temel", "kod": "NVDA", "piyasa": "ABD", "zaman": "x", "kart": card(1), "metin": "owner only"}])
+        r = (await self.c.post("/api/stock-card", headers=a, json={"kod": "NVDA", "piyasa": "ABD"})).json()
+        self.assertEqual(r, {"ok": True, "kod": "NVDA", "piyasa": "ABD", "hazir": True})
+        self.assertEqual((await self.c.get("/api/commands/pending", headers=BOT)).json(), [])
+        mine = (await self.c.get("/api/stock-card", headers=a)).json()
+        self.assertEqual((mine["kart"]["uretildi"], "metin" in mine, "hata" in mine), (card(1)["uretildi"], False, False))   # the card only, with its own time
+        self.assertEqual((await self.c.get("/api/stock-card", headers=b)).json(), {"zaman": None})
+        # an old card is not shared: the bot is asked
+        await self.c.post("/api/ingest/sonuclar", headers=BOT, json=[{"id": "temel", "tur": "temel", "kod": "MSFT", "piyasa": "ABD", "zaman": "x", "kart": card(server.CARD_SHARE_HOURS + 1)}])
+        self.assertNotIn("hazir", (await self.c.post("/api/stock-card", headers=a, json={"kod": "MSFT", "piyasa": "ABD"})).json())
+        self.assertEqual(len((await self.c.get("/api/commands/pending", headers=BOT)).json()), 1)
+        # all accounts together: a cap of one a day here; the second account is refused although it asked for nothing yet
+        with unittest.mock.patch.dict(server.ACCOUNT_REQUESTS, {"fundamentals.request": (10, 1, "hisse kartı")}):
+            r = await self.c.post("/api/stock-card", headers=b, json={"kod": "AMD", "piyasa": "ABD"})
+            self.assertEqual((r.status_code, "ortak hisse kartı kapasitesi" in r.json()["detail"]), (429, True))
+            self.assertEqual((await self.c.post("/api/stock-card", headers=b, json={"kod": "NVDA", "piyasa": "ABD"})).json().get("hazir"), True)   # a shared card costs nothing
 
     async def test_telegram_link_one_time_code(self):
         h = auth("user_a")
